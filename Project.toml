@@ -1,0 +1,7 @@
+name = "OceananigansLagrangianFilter"
+uuid = "3a2ee588-b56c-4451-ba19-103f511bcf00"
+authors = ["lbaker "]
+version = "0.1.0"
+
+[deps]
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
