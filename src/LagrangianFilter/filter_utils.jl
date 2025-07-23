@@ -101,12 +101,10 @@ function set_data_on_disk!(fields_filename; direction = "backward", T_start = no
                     if current_direction == "forward"
                         if isnothing(T_start) # If we're not given a starting time, set it to simulation start time 
                             T_start = t_simulation[1]
-                            
                         end
         
                         if isnothing(T_end) 
-                            T_end = t_simulation[Nt] # If we're not given a end time, set it to simulation end time 
-                            
+                            T_end = t_simulation[Nt] # If we're not given a end time, set it to simulation end time                             
                         end
 
                         for (i, iter) in enumerate(backward_iterations)
@@ -162,7 +160,7 @@ function set_data_on_disk!(fields_filename; direction = "backward", T_start = no
       
 end
 
-function load_data(fields_filename, tracer_names; velocity_names = ("u","v","w"), architecture=CPU(), backend= InMemory())
+function load_data(fields_filename, tracer_names, velocity_names; architecture=CPU(), backend= InMemory())
     velocity_timeseries = ()
     for vel_name in velocity_names
         vel_ts = FieldTimeSeries(fields_filename, vel_name; architecture=architecture, backend=backend)
@@ -180,7 +178,7 @@ function load_data(fields_filename, tracer_names; velocity_names = ("u","v","w")
     return velocity_timeseries, tracer_dict, grid
 end
 
-function set_filter_params(;N=1,freq_c=1) 
+function set_BW_filter_params(;N=1,freq_c=1) 
     N_coeffs = 2^(N-1)
     filter_params = NamedTuple()
     for i in 1:N_coeffs
@@ -267,10 +265,10 @@ function create_forcing(tracers, saved_tracers, filter_tracer_names, velocity_na
             gSkey = Symbol(tracer_name,"S",i)   # Dynamically create a Symbol for the key
 
             # Store in dictionary
-            gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters =filter_params, field_dependencies = (gCkey,gSkey))
+            gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
             gCdict[gCkey] = (saved_tracers[tracer_name],gC_forcing_i)
 
-            gS_forcing_i = Forcing(make_gS_forcing_func(i), parameters =filter_params, field_dependencies = (gCkey,gSkey))
+            gS_forcing_i = Forcing(make_gS_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
             gSdict[gSkey] = gS_forcing_i
             
         end
@@ -338,15 +336,7 @@ function create_output_fields(model, filter_tracer_names, velocity_names, filter
     return outputs_dict
 end
 
-# function update_velocities!(sim, fts_velocities)
-#     model = sim.model
-#     time = sim.model.clock.time
-#     u_fts, v_fts = fts_velocities
-#     set!(model, u=u_fts[Time(time)], v= v_fts[Time(time)])
-#     return nothing
-# end
 
-#TODO make sure update velocities works for any combo of u,v,w 
 function update_velocities!(sim, fts_velocities)
     model = sim.model
     time = sim.model.clock.time
@@ -354,3 +344,20 @@ function update_velocities!(sim, fts_velocities)
     set!(model, u=u_fts[Time(time)], v= v_fts[Time(time)])
     return nothing
 end
+
+function update_vorticity!(sim, fts_vorticity)
+    model = sim.model
+    time = sim.model.clock.time
+    ω_fts = fts_vorticity
+    set!(model.auxiliary_fields.ω, ω_fts[Time(time)])
+    return nothing
+end
+
+
+# function update_velocities!(sim, fts_velocities)
+#     model = sim.model
+#     t = sim.model.clock.time
+#     kwargs = (; (Symbol(field.name) => field[Time(t)] for field in fts_velocities)...)
+#     set!(model; kwargs...)          # keyword splat
+#     return nothing
+# end
