@@ -3,7 +3,7 @@ using JLD2: Group
 using Oceananigans
 using Oceananigans.Units: Time
 
-function set_data_on_disk!(fields_filename; direction = "backward", T_start = nothing, T_end = nothing)
+function set_data_on_disk!(original_data_filename; direction = "backward", T_start = nothing, T_end = nothing)
 
     # First check that a valid direction has been given
     if (direction !== "backward") && (direction !== "forward")
@@ -11,7 +11,7 @@ function set_data_on_disk!(fields_filename; direction = "backward", T_start = no
     end
     
     # Open the file
-    jldopen(fields_filename,"r+") do file
+    jldopen(original_data_filename,"r+") do file
 
         # Checking if this is the first time we've edited the file
         if !haskey(file, "direction")
@@ -160,22 +160,21 @@ function set_data_on_disk!(fields_filename; direction = "backward", T_start = no
       
 end
 
-function load_data(fields_filename, tracer_names, velocity_names; architecture=CPU(), backend= InMemory())
+function load_data(original_data_filename, original_var_names, velocity_names; architecture=CPU(), backend= InMemory())
     velocity_timeseries = ()
     for vel_name in velocity_names
-        vel_ts = FieldTimeSeries(fields_filename, vel_name; architecture=architecture, backend=backend)
+        vel_ts = FieldTimeSeries(original_data_filename, vel_name; architecture=architecture, backend=backend)
         velocity_timeseries = (velocity_timeseries...,vel_ts)
     end
-
-    # Tracers can be output as a dictionary here
-    tracer_dict = Dict()
-    for tracer_name in tracer_names
-        tracer_ts = FieldTimeSeries(fields_filename, tracer_name; architecture=architecture, backend=backend)
-        tracer_dict[tracer_name] = tracer_ts
+   
+    var_timeseries = ()
+    for var_name in original_var_names
+        var_ts = FieldTimeSeries(original_data_filename, var_name; architecture=architecture, backend=backend)
+        var_timeseries = (var_timeseries...,var_ts)
     end
     grid = velocity_timeseries[1].grid
 
-    return velocity_timeseries, tracer_dict, grid
+    return velocity_timeseries, var_timeseries, grid
 end
 
 function set_BW_filter_params(;N=1,freq_c=1) 
@@ -195,14 +194,23 @@ function set_BW_filter_params(;N=1,freq_c=1)
     return filter_params
 end
 
-function create_tracers(tracer_names, velocity_names, filter_params; map_to_mean=true)
+function create_original_vars(original_var_names, grid)
+    # Creates auxiliary fields to store the saved variables
+    vars = Dict()
+    for var_name in original_var_names
+        vars[Symbol(var_name)] = CenterField(grid)
+    end
+    return NamedTuple(vars)
+end
+
+function create_filtered_vars(original_var_names, velocity_names, filter_params; map_to_mean=true)
     N_coeffs = Int(length(filter_params)/4)
     gC = ()  # Start with an empty tuple
     gS = ()  # Start with an empty tuple
-    for tracer_name in tracer_names
+    for var_name in original_var_names
         for i in 1:N_coeffs
-            new_gC = Symbol(tracer_name,"C", i) 
-            new_gS = Symbol(tracer_name,"S", i) 
+            new_gC = Symbol(var_name,"C", i) 
+            new_gS = Symbol(var_name,"S", i) 
             gC = (gC..., new_gC)  
             gS = (gS..., new_gS)  
         end
@@ -226,47 +234,53 @@ end
 function make_gC_forcing_func(i)
     c_index = (i-1)*4 + 3
     d_index = (i-1)*4 + 4
-    # Return a new function 
-    return (x,y,t,gC,gS,p) -> -p[c_index]*gC - p[d_index]*gS
+    # Return a new function. In 3D, this would be (x,y,z,t,gC,gS,p) -> -p[c_index]*gC - p[d_index]*gS
+    return (args...) -> -args[end][c_index]*args[end-2] - args[end][d_index]*args[end-1]
 end
 
 function make_gS_forcing_func(i)
     c_index = (i-1)*4 + 3
     d_index = (i-1)*4 + 4
-    # Return a new function 
-    return (x,y,t,gC,gS,p) -> -p[c_index]*gS + p[d_index]*gC  
+    # Return a new function. In 3D, this would be (x,y,z,t,gC,gS,p) -> -p[c_index]*gS + p[d_index]*gC
+    return (args...) -> -args[end][c_index]*args[end-1] + args[end][d_index]*args[end-2]
 end
 
 function make_xiC_forcing_func(i)
     c_index = (i-1)*4 + 3
     d_index = (i-1)*4 + 4
-    # Return a new function 
-    return (x,y,t,u,p) -> -p[c_index]/(p[c_index]^2 + p[d_index]^2)*u
+    # Return a new function. In 3D, this would be (x,y,z,t,u,p) -> -p[c_index]/(p[c_index]^2 + p[d_index]^2)*u
+    return (args...) -> -args[end][c_index]/(args[end][c_index]^2 + args[end][d_index]^2)*args[end-1]
 end
 
 function make_xiS_forcing_func(i)
     c_index = (i-1)*4 + 3
     d_index = (i-1)*4 + 4
-    # Return a new function 
-    return (x,y,t,u,p) -> -p[d_index]/(p[c_index]^2 + p[d_index]^2)*u
+    # Return a new function. In 3D, this would be (x,y,z,t,u,p) -> -p[d_index]/(p[c_index]^2 + p[d_index]^2)*u
+    return (args...) -> -args[end][d_index]/(args[end][c_index]^2 + args[end][d_index]^2)*args[end-1]
 end
 
-function create_forcing(tracers, saved_tracers, filter_tracer_names, velocity_names, filter_params)
+function create_forcing(filtered_vars, original_var_names, velocity_names, filter_params)
 
     N_coeffs = Int(length(filter_params)/4)
 
     # Initialize dictionary
     gCdict = Dict()
     gSdict = Dict()
-    for tracer_name in filter_tracer_names
+
+    # Make forcing function for original data term. Final arg is the field dependence.
+    original_var_forcing_func(args...) = args[end]
+
+    for var_name in original_var_names
+        original_var = Symbol(var_name)
         for i in 1:N_coeffs
             
-            gCkey = Symbol(tracer_name,"C",i)   # Dynamically create a Symbol for the key
-            gSkey = Symbol(tracer_name,"S",i)   # Dynamically create a Symbol for the key
-
+            gCkey = Symbol(var_name,"C",i)   # Dynamically create a Symbol for the key
+            gSkey = Symbol(var_name,"S",i)   # Dynamically create a Symbol for the key
+            
             # Store in dictionary
             gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
-            gCdict[gCkey] = (saved_tracers[tracer_name],gC_forcing_i)
+            gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies= (;original_var))
+            gCdict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
 
             gS_forcing_i = Forcing(make_gS_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
             gSdict[gSkey] = gS_forcing_i
@@ -275,12 +289,13 @@ function create_forcing(tracers, saved_tracers, filter_tracer_names, velocity_na
     end
 
     # We might need xi forcing too, forced by the model's velocities
-    if length(tracers) > length(filter_tracer_names)*N_coeffs*2
+    if length(filtered_vars) > N_coeffs*length(original_var_names)*2
         for velocity_name in velocity_names
+            vel_key = Symbol(velocity_name)
             for i in 1:N_coeffs
                 gCkey = Symbol("xi_",velocity_name,"_C", i) 
                 gSkey = Symbol("xi_",velocity_name,"_S", i) 
-                vel_key = Symbol(velocity_name)
+                
                 # Store in dictionary
                 gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters =filter_params, field_dependencies = (gCkey,gSkey))
                 xiC_forcing_i = Forcing(make_xiC_forcing_func(i),parameters =filter_params, field_dependencies = (;vel_key))
@@ -297,67 +312,78 @@ function create_forcing(tracers, saved_tracers, filter_tracer_names, velocity_na
     return forcing
 end
 
-function create_output_fields(model, filter_tracer_names, velocity_names, filter_params)
+function create_output_fields(model, original_var_names, velocity_names, filter_params)
     N_coeffs = Int(length(filter_params)/4)
-    N_tracers = length(model.tracers)
-    half_N_tracers = Int(N_tracers/2)
+    N_filtered_vars = length(model.tracers)
+    half_N_filtered_vars = Int(N_filtered_vars/2)
     outputs_dict = Dict()
-    for (i_tracer, tracer) in enumerate(filter_tracer_names)
+    for (i_var, original_var) in enumerate(original_var_names)
 
-        g_total = (filter_params[1]*model.tracers[(i_tracer-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_tracers + (i_tracer-1)*N_coeffs + 1])
+        g_total = (filter_params[1]*model.tracers[(i_var-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_filtered_vars + (i_var-1)*N_coeffs + 1])
     
         for i in 2:N_coeffs
             a_index = (i-1)*4 + 1
             b_index = (i-1)*4 + 2
-            gC_index = (i_tracer-1)*N_coeffs + i
-            gS_index = half_N_tracers + (i_tracer-1)*N_coeffs + i
+            gC_index = (i_var-1)*N_coeffs + i
+            gS_index = half_N_filtered_vars + (i_var-1)*N_coeffs + i
             g_total = g_total + (filter_params[a_index]*model.tracers[gC_index] + filter_params[b_index]*model.tracers[gS_index])
         end
-        outputs_dict[tracer*"_filtered"] = g_total
+        outputs_dict[original_var*"_filtered"] = g_total
     end
 
     # May need to output maps too
-    if N_tracers > N_coeffs*length(filter_tracer_names)*2
+    if N_filtered_vars > N_coeffs*length(original_var_names)*2
         for (i_vel, vel) in enumerate(velocity_names)
-            i_tracer = i_vel + length(filter_tracer_names)
-            g_total = (filter_params[1]*model.tracers[(i_tracer-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_tracers + (i_tracer-1)*N_coeffs + 1])
+            i_var = i_vel + length(original_var_names)
+            g_total = (filter_params[1]*model.tracers[(i_var-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_filtered_vars + (i_var-1)*N_coeffs + 1])
         
             for i in 2:N_coeffs
                 a_index = (i-1)*4 + 1
                 b_index = (i-1)*4 + 2
-                gC_index = (i_tracer-1)*N_coeffs + i
-                gS_index = half_N_tracers + (i_tracer-1)*N_coeffs + i
+                gC_index = (i_var-1)*N_coeffs + i
+                gS_index = half_N_filtered_vars + (i_var-1)*N_coeffs + i
                 g_total = g_total + (filter_params[a_index]*model.tracers[gC_index] + filter_params[b_index]*model.tracers[gS_index])
             end
             outputs_dict["xi_"*vel] = g_total
         end
     end
 
+    # Let's also add the saved vars for comparison
+    for original_var in original_var_names
+        outputs_dict[original_var] = getproperty(model.auxiliary_fields,Symbol(original_var))
+    end
     return outputs_dict
 end
 
-
-function update_velocities!(sim, fts_velocities)
+function update_input_data!(sim, input_data)
+    velocity_timeseries = input_data.velocities
+    original_var_timeseries = input_data.original_vars
     model = sim.model
-    time = sim.model.clock.time
-    u_fts, v_fts = fts_velocities
-    set!(model, u=u_fts[Time(time)], v= v_fts[Time(time)])
-    return nothing
+    t = sim.model.clock.time
+    
+    kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
+    set!(model; kwargs...)          
+
+    # We also update the saved variables to be used for forcing - these are auxiliary fields so need to be set separately
+    for original_var_fts in original_var_timeseries
+        set!(getproperty(model.auxiliary_fields, Symbol(original_var_fts.name)), original_var_fts[Time(t)])
+    end
 end
 
-function update_vorticity!(sim, fts_vorticity)
-    model = sim.model
-    time = sim.model.clock.time
-    ω_fts = fts_vorticity
-    set!(model.auxiliary_fields.ω, ω_fts[Time(time)])
-    return nothing
-end
 
-
-# function update_velocities!(sim, fts_velocities)
+# function update_saved_data!(sim, fts_velocities)
 #     model = sim.model
-#     t = sim.model.clock.time
-#     kwargs = (; (Symbol(field.name) => field[Time(t)] for field in fts_velocities)...)
-#     set!(model; kwargs...)          # keyword splat
+#     time = sim.model.clock.time
+#     u_fts, v_fts = fts_velocities
+#     set!(model, u=u_fts[Time(time)], v= v_fts[Time(time)])
 #     return nothing
 # end
+
+# function update_vorticity!(sim, fts_vorticity)
+#     model = sim.model
+#     time = sim.model.clock.time
+#     ω_fts = fts_vorticity
+#     set!(model.auxiliary_fields.ω, ω_fts[Time(time)])
+#     return nothing
+# end
+

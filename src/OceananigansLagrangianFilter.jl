@@ -21,7 +21,7 @@ using Oceananigans.Utils: sum_of_velocities
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale
 
-export set_data_on_disk!, load_data, create_tracers, set_BW_filter_params, create_forcing, update_velocities!, create_output_fields, update_vorticity!
+export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!
 export c_div_U
 
 include("LagrangianFilter/lagrangian_filter.jl")
