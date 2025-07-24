@@ -21,13 +21,13 @@ using Oceananigans.Utils: sum_of_velocities
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale
 
-export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!
+export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!
 export c_div_U
 
 include("LagrangianFilter/lagrangian_filter.jl")
 include("LagrangianFilter/compute_lagrangian_filter_buffer_tendencies.jl")
 include("LagrangianFilter/compute_lagrangian_filter_tendencies.jl")
-include("LagrangianFilter/filter_utils.jl")
+include("LagrangianFilter/lagrangian_filter_utils.jl")
 include("LagrangianFilter/lagrangian_filter_tendency_kernel_functions.jl")
 include("LagrangianFilter/lagrangian_filtering_advection_operators.jl")
 include("LagrangianFilter/set_lagrangian_filter.jl")

@@ -1,7 +1,10 @@
 using JLD2
 using JLD2: Group
 using Oceananigans
+using Oceananigans.Fields: Center
 using Oceananigans.Units: Time
+using GeoStats
+using ProgressBars
 
 function set_data_on_disk!(original_data_filename; direction = "backward", T_start = nothing, T_end = nothing)
 
@@ -371,19 +374,87 @@ function update_input_data!(sim, input_data)
 end
 
 
-# function update_saved_data!(sim, fts_velocities)
-#     model = sim.model
-#     time = sim.model.clock.time
-#     u_fts, v_fts = fts_velocities
-#     set!(model, u=u_fts[Time(time)], v= v_fts[Time(time)])
-#     return nothing
-# end
+function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename,T,velocity_names, original_var_names)
+# Combine the forward and backward simulations by summing them into a single file
 
-# function update_vorticity!(sim, fts_vorticity)
-#     model = sim.model
-#     time = sim.model.clock.time
-#     ω_fts = fts_vorticity
-#     set!(model.auxiliary_fields.ω, ω_fts[Time(time)])
-#     return nothing
-# end
+    # Make a copy of the forward file to fill in with combined data
+    cp(forward_output_filename, combined_output_filename,force=true)
 
+    # List the names of the fields that we will combine
+    data_field_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in original_var_names])
+
+    # Then, we open the combined data and add backward scalars and maps at the correct timesteps
+    jldopen(combined_output_filename,"r+") do file
+        forward_iterations = parse.(Int, keys(file["timeseries/t"]))
+        for field in data_field_names
+            # Open the backward data as a FieldTimeSeries
+            fts_backward = FieldTimeSeries(backward_output_filename, field)
+
+            # Loop over forward times and add the backward data
+            for iter in forward_iterations
+                forward_time = file["timeseries/t/$iter"]
+                forward_data = file["timeseries/$field/$iter"] # Load in data
+                Base.delete!(file, "timeseries/$field/$iter") # Delete the entry
+                # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
+                file["timeseries/$field/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data) 
+            end
+        end
+    end
+    println("Combined forward and backward contributions into $combined_output_filename")
+end
+
+function regrid_to_mean_position!(combined_output_filename, original_var_names, interpolation_model=IDW(), maxneighbors=10)
+    
+    jldopen(combined_output_filename,"r+") do file
+        iterations = parse.(Int, keys(file["timeseries/t"]))
+        x = file["grid/xᶜᵃᵃ"]
+        y = file["grid/yᵃᶜᵃ"]
+        # X = x .* ones(length(y))'
+        # Y = y' .* ones(length(x))
+        new_grid = CartesianGrid((x[1],y[1]),(x[end],y[end]),dims=(length(x),length(y)))
+
+        # First add the necessary serialized entry for each new variable
+        for var in original_var_names 
+            Base.delete!(file, "timeseries/$var"*"_filtered_regrid/serialized") #incase we already tried to write this
+            g = Group(file, "timeseries/$var"*"_filtered_regrid/serialized")
+            for property in keys(file["timeseries/$var/serialized"])
+                g[property] = file["timeseries/$var/serialized/$property"]
+            end
+        end
+        
+        for iter in ProgressBar(iterations)
+            
+            # Mapped coordinates (should be different if periodic or not, need to think about this)
+            xi_u_dat = file["timeseries/xi_u/$iter"]
+            xi_v_dat = file["timeseries/xi_v/$iter"]
+            
+            Xi_u = x .+ selectdim(xi_u_dat,ndims(xi_u_dat),1)
+            Xi_v = y' .+ selectdim(xi_v_dat,ndims(xi_v_dat),1)
+
+            # if periodic
+            Xi_u = Xi_u .- floor.((Xi_u .- x[1])./(x[end-3] - x[3])) .* (x[end-3] - x[3])
+            Xi_v = Xi_v .- floor.((Xi_v .- y[1])./(y[end-3] - y[3])) .* (y[end-3] - y[3])
+            
+            allnodes = hcat(vec(Xi_u),vec(Xi_v))
+            coords = Tuple.(eachrow(allnodes))
+
+            for var in original_var_names
+                var_data = file["timeseries/$var"*"_filtered/$iter"]
+                var_data_squeeze = selectdim(var_data, ndims(var_data), 1)
+                table_var = (; var=vec(var_data_squeeze))
+                geotable = georef(table_var, coords)
+                
+                interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
+                interp_data = reshape(interp.var,(size(var_data_squeeze)...,1))
+
+                # We could also find mask by mapping x and y
+
+                new_var_loc = "timeseries/$var"*"_filtered_regrid/$iter"
+                Base.delete!(file, new_var_loc) #incase we already tried to write this variable
+                file[new_var_loc] = interp_data
+                
+            end
+
+        end
+    end
+end
