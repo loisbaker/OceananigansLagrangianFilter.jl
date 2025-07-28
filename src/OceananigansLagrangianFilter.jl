@@ -28,8 +28,10 @@ using JLD2
 using JLD2: Group
 using Oceananigans
 using Oceananigans.Fields: Center
+using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
 using Oceananigans.Units: Time
-using GeoStats: georef, InterpolateNeighbors, CartesianGrid
+using GeoStats: georef, InterpolateNeighbors, RegularGrid
+
 using ProgressBars
 export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!
 export c_div_U

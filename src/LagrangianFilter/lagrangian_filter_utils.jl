@@ -397,16 +397,27 @@ function sum_forward_backward_contributions!(combined_output_filename,forward_ou
     println("Combined forward and backward contributions into $combined_output_filename")
 end
 
-function regrid_to_mean_position!(combined_output_filename, original_var_names, interpolation_model=IDW(), maxneighbors=10)
-    
+function regrid_to_mean_position!(combined_output_filename, original_var_names, velocity_names, interpolation_model=IDW(), maxneighbors=10)
+    # use velocity names to make this good in multiple dims
     jldopen(combined_output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
-        x = file["grid/xᶜᵃᵃ"]
-        y = file["grid/yᵃᶜᵃ"]
-        # X = x .* ones(length(y))'
-        # Y = y' .* ones(length(x))
-        new_grid = CartesianGrid((x[1],y[1]),(x[end],y[end]),dims=(length(x),length(y)))
+        original_grid = file["serialized/grid"]
+        dim_dict, new_grid = _create_generalized_regular_grid(original_grid)
 
+        # Work out the periodic directions
+        test_var = original_var_names[1]
+        BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
+        periodic_dimensions = []
+        if BCs.west == PeriodicBoundaryCondition()
+            push!(periodic_dimensions,"x")
+        end
+        if BCs.south == PeriodicBoundaryCondition()
+            push!(periodic_dimensions,"y")
+        end
+        if BCs.top == PeriodicBoundaryCondition()
+            push!(periodic_dimensions,"z")
+        end
+        
         # First add the necessary serialized entry for each new variable
         for var in original_var_names 
             new_path = "timeseries/$var"*"_filtered_regrid/serialized"
@@ -421,32 +432,61 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
         
         for iter in ProgressBar(iterations)
             
-            # Mapped coordinates (should be different if periodic or not, need to think about this)
-            xi_u_dat = file["timeseries/xi_u/$iter"]
-            xi_v_dat = file["timeseries/xi_v/$iter"]
+            Xi_list = []
+            for dim in ("x","y","z")
+                if dim in keys(dim_dict) # This limits to only the non-singleton dimensions
+                    if (dim == "x") && ("u" in velocity_names)
+                        Xi_u = dim_dict["x"] .+ file["timeseries/xi_u/$iter"]
+                        # move xi points outside of domain + halo regions into domain
+                        if "x" in periodic_dimensions                           
+                            Xi_u .-= floor.((Xi_u .- dim_dict["x"][1])./(dim_dict["x"][end] - dim_dict["x"][1])) .* original_grid.Lx
+                        end
+                        push!(Xi_list,vec(Xi_u))
+                    elseif (dim == "x") && !("u" in velocity_names)
+                        Xi_u = dim_dict["x"] .+ zeros(dim_dict["original_size"])
+                        push!(Xi_list,vec(Xi_u))
+                    elseif (dim == "y") && ("v" in velocity_names)
+                        
+                        Xi_v =  dim_dict["y"]' .+ file["timeseries/xi_v/$iter"]
+                        # move xi points outside of domain + halo regions into domain
+                        if "y" in periodic_dimensions                    
+                            Xi_v .-= floor.((Xi_v .- dim_dict["y"][1])./(dim_dict["y"][end] - dim_dict["y"][1])) .* original_grid.Ly
+                        end
+                        push!(Xi_list,vec(Xi_v))
+                    elseif (dim == "y") && !("v" in velocity_names)
+                        Xi_v = dim_dict["y"]' .+ zeros(dim_dict["original_size"])
+                        push!(Xi_list,vec(Xi_v))
+                    elseif (dim == "z") && ("w" in velocity_names)
+                        Xi_w = reshape(dim_dict["z"],1,1,length(dim_dict["z"])) .+ file["timeseries/xi_w/$iter"]
+                        # move xi points outside of domain + halo regions into domain
+                        if "z" in periodic_dimensions
+                            Xi_w .-= floor.((Xi_w .- dim_dict["z"][1])./(dim_dict["z"][end] - dim_dict["z"][1])) .* original_grid.Lz
+                        end
+                        push!(vec(Xi_list),vec(Xi_w))
+                    elseif (dim == "z") && !("w" in velocity_names)
+                        Xi_w = reshape(dim_dict["z"],1,1,length(dim_dict["z"])) .+ zeros(dim_dict["original_size"])
+                        push!(vec(Xi_list),vec(Xi_w))
+                    else
+                        error("Something's wrong")
+                    end
+                end
             
-            Xi_u = x .+ selectdim(xi_u_dat,ndims(xi_u_dat),1)
-            Xi_v = y' .+ selectdim(xi_v_dat,ndims(xi_v_dat),1)
+            end
 
-            # if periodic
-            Xi_u = Xi_u .- floor.((Xi_u .- x[1])./(x[end-3] - x[3])) .* (x[end-3] - x[3])
-            Xi_v = Xi_v .- floor.((Xi_v .- y[1])./(y[end-3] - y[3])) .* (y[end-3] - y[3])
-            
-            allnodes = hcat(vec(Xi_u),vec(Xi_v))
+            # We hopefully don't need padding because we have the halo
+            Xi_tuple = Tuple(Xi_list)
+
+            allnodes = hcat(Xi_tuple...)
+
             coords = Tuple.(eachrow(allnodes))
 
             for var in original_var_names
                 var_data = file["timeseries/$var"*"_filtered/$iter"]
-                var_data_squeeze = selectdim(var_data, ndims(var_data), 1)
-                table_var = (; var=vec(var_data_squeeze))
+                table_var = (; var=vec(var_data))
                 geotable = georef(table_var, coords)
                 
-                #interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
                 interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
-                interp_data = reshape(interp.var,(size(var_data_squeeze)...,1))
-
-                # We could also find mask by mapping x and y
-
+                interp_data = reshape(interp.var,(dim_dict["original_size"]...))
                 new_var_loc = "timeseries/$var"*"_filtered_regrid/$iter"
                 if haskey(file, new_var_loc)
                     Base.delete!(file, new_var_loc) #incase we already tried to write this variable
@@ -459,7 +499,40 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
     end
 end
 
+function _create_generalized_regular_grid(original_grid)
+    original_grid_size = (original_grid.Nx + 2*original_grid.Hx, original_grid.Ny+ 2*original_grid.Hy, original_grid.Nz+ + 2*original_grid.Hz)
+    x = xnodes(original_grid, Center(), with_halos = true)
+    y = ynodes(original_grid, Center(), with_halos = true)
+    z = znodes(original_grid, Center(), with_halos = true)
+    start_values = []
+    end_values = []
+    dim_lengths = []
+    coords = (x,y,z)
+    coord_names = ("x","y","z")
+    dim_dict = Dict()
+    dim_dict["original_size"] = original_grid_size
+    for (i_coord, coord) in enumerate(coords)
+        if coord !== nothing
+            push!(start_values, coord[1])
+            push!(end_values, coord[end])
+            push!(dim_lengths, length(coord))
+            dim_dict[coord_names[i_coord]] = Array(parent(coord))
+        end
+    end
+
+    # Convert lists to tuples, as CartesianGrid constructor expects tuples
+    grid_start_coords = Tuple(start_values)
+    grid_end_coords = Tuple(end_values)
+    grid_dims = Tuple(dim_lengths)
+
+    # Naming of new grid dimensions won't necessarily match old grid. First dim x, second y, etc.
+    new_grid = RegularGrid(grid_start_coords, grid_end_coords, dims=grid_dims)
+    return dim_dict, new_grid
+end
+
+
 # TODO 
 # Look at boundaries, 3D, etc in interpolation
 # Add in a single exponential as a filter
-# How can BCs be implemented? Might need fill_halo_regions
+# How can BCs be implemented? Might need fill_halo_regions. especially for a closed boundary where U neq 0
+# Keyword args
