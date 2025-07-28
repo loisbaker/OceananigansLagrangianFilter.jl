@@ -1,7 +1,9 @@
 module OceananigansLagrangianFilter
 
 using Reexport
-@reexport using Oceananigans   # re-export every public Oceananigans symbol
+@reexport using Oceananigans   # We have to use v0.96.19 for now, since later versions 
+#use KrylovPreconditioners.jl, which depends on LightGraphs.jl, which is depreciated and
+#requires a version of DataStructures.jl that is incompatible with GeoStatsTransforms.
 
 using DocStringExtensions
 
@@ -20,9 +22,18 @@ using Oceananigans.Utils: sum_of_velocities
 
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale
+import Oceananigans.OutputWriters: default_included_properties
 
+using JLD2
+using JLD2: Group
+using Oceananigans
+using Oceananigans.Fields: Center
+using Oceananigans.Units: Time
+using GeoStats: georef, InterpolateNeighbors, CartesianGrid
+using ProgressBars
 export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!
 export c_div_U
+export default_included_properties
 
 include("LagrangianFilter/lagrangian_filter.jl")
 include("LagrangianFilter/compute_lagrangian_filter_buffer_tendencies.jl")
@@ -64,6 +75,8 @@ Return a flattened `NamedTuple` of the prognostic fields associated with `Lagran
 prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.tracers)
 
 
+# This is a now-defunct part of OutputWriters/jld2_writer.jl that is needed in the earlier version of Oceananigans being temporarily used
+default_included_properties(model::LagrangianFilter) = [:grid]
 
 export LagrangianFilter
 end # module OceananigansLagrangianFilter

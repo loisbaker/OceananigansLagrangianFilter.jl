@@ -1,10 +1,3 @@
-using JLD2
-using JLD2: Group
-using Oceananigans
-using Oceananigans.Fields: Center
-using Oceananigans.Units: Time
-using GeoStats
-using ProgressBars
 
 function set_data_on_disk!(original_data_filename; direction = "backward", T_start = nothing, T_end = nothing)
 
@@ -370,6 +363,7 @@ function update_input_data!(sim, input_data)
     # We also update the saved variables to be used for forcing - these are auxiliary fields so need to be set separately
     for original_var_fts in original_var_timeseries
         set!(getproperty(model.auxiliary_fields, Symbol(original_var_fts.name)), original_var_fts[Time(t)])
+        # halo regions get filled automatically
     end
 end
 
@@ -415,8 +409,11 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
 
         # First add the necessary serialized entry for each new variable
         for var in original_var_names 
-            Base.delete!(file, "timeseries/$var"*"_filtered_regrid/serialized") #incase we already tried to write this
-            g = Group(file, "timeseries/$var"*"_filtered_regrid/serialized")
+            new_path = "timeseries/$var"*"_filtered_regrid/serialized"
+            if haskey(file, new_path)
+                Base.delete!(file, new_path) #incase we already tried to write this
+            end
+            g = Group(file, new_path)
             for property in keys(file["timeseries/$var/serialized"])
                 g[property] = file["timeseries/$var/serialized/$property"]
             end
@@ -444,13 +441,16 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                 table_var = (; var=vec(var_data_squeeze))
                 geotable = georef(table_var, coords)
                 
+                #interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
                 interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
                 interp_data = reshape(interp.var,(size(var_data_squeeze)...,1))
 
                 # We could also find mask by mapping x and y
 
                 new_var_loc = "timeseries/$var"*"_filtered_regrid/$iter"
-                Base.delete!(file, new_var_loc) #incase we already tried to write this variable
+                if haskey(file, new_var_loc)
+                    Base.delete!(file, new_var_loc) #incase we already tried to write this variable
+                end
                 file[new_var_loc] = interp_data
                 
             end
@@ -458,3 +458,8 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
         end
     end
 end
+
+# TODO 
+# Look at boundaries, 3D, etc in interpolation
+# Add in a single exponential as a filter
+# How can BCs be implemented? Might need fill_halo_regions
