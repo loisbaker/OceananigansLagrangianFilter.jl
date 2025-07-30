@@ -60,7 +60,7 @@ v = Field(vh / h)
 
 
 ## Running a simulation
-simulation = Simulation(model, Δt = 1e-3, stop_time = 10)
+simulation = Simulation(model, Δt = 1e-3, stop_time = 20)
 
 function progress(sim)
     model = sim.model
