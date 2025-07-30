@@ -47,9 +47,9 @@ docs/Manifest.toml
 *.bin
 *.m
 
-# Jupyter Lab stuff and notebooks
-*.ipynb
+# Jupyter Lab stuff and old notebooks
 .ipynb_checkpoints
+/testing/old_tests/*
 
 # MacOS stuff
 *.DS_Store
