@@ -1,9 +1,7 @@
 module OceananigansLagrangianFilter
 
 using Reexport
-@reexport using Oceananigans   # We have to use v0.96.19 for now, since later versions 
-#use KrylovPreconditioners.jl, which depends on LightGraphs.jl, which is depreciated and
-#requires a version of DataStructures.jl that is incompatible with GeoStatsTransforms.
+@reexport using Oceananigans   
 
 using DocStringExtensions
 
@@ -33,7 +31,7 @@ using Oceananigans.Units: Time
 using GeoStats: georef, InterpolateNeighbors, RegularGrid
 
 using ProgressBars
-export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!
+export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!,jld2_to_netcdf
 export c_div_U
 export default_included_properties
 

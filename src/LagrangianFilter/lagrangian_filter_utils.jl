@@ -530,7 +530,204 @@ function _create_generalized_regular_grid(original_grid)
     return dim_dict, new_grid
 end
 
+# Maybe we should keep this one elsewhere
+using DataStructures: OrderedDict
+using NCDatasets
+function jld2_to_netcdf(jld2_filename,nc_filename)
+    jldopen("combined_LF.jld2", "r") do file
+        
+        iterations = parse.(Int, keys(file["timeseries/t"]))
+        times = [file["timeseries/t/$iter"] for iter in iterations]
+        dt = times[2] - times[1]
+        grid = file["serialized/grid"]
 
+        rm(nc_filename, force=true)
+        ds = NCDataset(nc_filename,"c", attrib = OrderedDict(
+            "Julia"                     => "This file was generated using Julia Version $VERSION",
+
+        ))
+
+        # Dimensions
+        ds.dim["time"] = length(times)
+        ds.dim["y_afa"] = try; length(grid.yᵃᶠᵃ) catch; 1 end
+        ds.dim["x_faa"] = try; length(grid.xᶠᵃᵃ) catch; 1 end
+        ds.dim["x_caa"] = try; length(grid.xᶜᵃᵃ) catch;1 end
+        ds.dim["y_aca"] = try; length(grid.yᵃᶜᵃ) catch; 1 end
+        ds.dim["z_aaf"] = try; length(grid.z.cᵃᵃᶠ) catch; 1 end
+        ds.dim["z_aac"] = try; length(grid.z.cᶜᵃᵃ) catch; 1 end
+
+
+        # Declare grid variables
+
+        nctime = defVar(ds,"time", Float64, ("time",), attrib = OrderedDict(
+            "units"                     => "seconds",
+            "long_name"                 => "Time",
+        ))
+        nctime[:] = times
+
+        ncy_afa = defVar(ds,"y_afa", Float32, ("y_afa",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell face locations in the y-direction.",
+        ))
+        ncy_afa[:] = try; parent(grid.yᵃᶠᵃ) catch; 0 end
+
+        ncx_faa = defVar(ds,"x_faa", Float32, ("x_faa",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell face locations in the x-direction.",
+        ))
+        ncx_faa[:] = try; parent(grid.xᶠᵃᵃ) catch; 0 end
+
+        ncx_caa = defVar(ds,"x_caa", Float32, ("x_caa",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell center locations in the x-direction.",
+        ))
+        ncx_caa[:] = try; parent(grid.xᶜᵃᵃ) catch; 0 end
+
+        ncy_aca = defVar(ds,"y_aca", Float32, ("y_aca",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell center locations in the y-direction.",
+        ))
+        ncy_aca[:] = try; parent(grid.yᵃᶜᵃ) catch; 0 end
+
+        ncz_aac = defVar(ds,"z_aac", Float32, ("z_aac",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell center locations in the z-direction.",
+        ))
+        ncz_aac[:] = try; parent(grid.z.cᵃᵃᶜ) catch; 0 end
+
+        ncz_aaf = defVar(ds,"z_aaf", Float32, ("z_aaf",), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Cell face locations in the z-direction.",
+        ))
+        ncz_aaf[:] = try; parent(grid.z.cᵃᵃᶠ) catch; 0 end
+
+        ncdx_caa = defVar(ds,"dx_caa", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell faces (located at the cell centers) in the x-direction.",
+        ))
+        ncdx_caa[:] = try; parent(grid.Δxᶜᵃᵃ) catch; 0 end
+
+        ncdx_faa = defVar(ds,"dx_faa", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell centers (located at the cell faces) in the x-direction.",
+        ))
+        ncdx_faa[:] = try; parent(grid.Δxᶠᵃᵃ) catch; 0 end
+
+        ncdy_aca = defVar(ds,"dy_aca", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell faces (located at cell centers) in the y-direction.",
+        ))
+        ncdy_aca[:] = try; parent(grid.Δyᵃᶜᵃ) catch; 0 end
+
+        ncdy_afa = defVar(ds,"dy_afa", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell centers (located at cell faces) in the y-direction.",
+        ))
+        ncdy_afa[:] = try; parent(grid.Δyᵃᶠᵃ) catch; 0 end
+
+        ncdz_aac = defVar(ds,"dz_aac", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell faces (located at cell centers) in the z-direction.",
+        ))
+        ncdz_aac[:] = try; parent(grid.Δz.cᵃᵃᶜ) catch; 0 end
+
+        ncdz_aaf = defVar(ds,"dz_aaf", Float32, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Spacing between cell centers (located at cell faces) in the z-direction.",
+        ))
+        ncdz_aaf[:] = try; parent(grid.Δz.cᵃᵃᶠ) catch; 0 end
+
+        # Define dimensions
+        ncNx = defVar(ds,"Nx", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of cells in the x-direction.",
+        ))
+        ncNx[:] = grid.Nx
+
+        ncNy = defVar(ds,"Ny", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of cells in the y-direction.",
+        ))
+        ncNy[:] = grid.Ny
+
+
+        ncNz = defVar(ds,"Nz", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of cells in the z-direction.",
+        ))
+        ncNz[:] = grid.Nz
+        # Define halos
+
+        ncHx = defVar(ds,"Hx", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of halo cells in the x-direction.",
+        ))
+        ncHx[:] = grid.Hx
+
+        ncHy = defVar(ds,"Hy", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of halo cells in the y-direction.",
+        ))
+        ncHy[:] = grid.Hy
+
+        ncHz = defVar(ds,"Hz", Int64, (), attrib = OrderedDict(
+            "units"                     => "None",
+            "long_name"                 => "Number of halo cells in the z-direction.",
+        ))
+        ncHz[:] = grid.Hz
+
+        # Define dimension lengths
+
+        ncLx = defVar(ds,"Lx", Float64, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Length of the domain in the x-direction.",
+        ))
+        ncLx[:] = grid.Lx
+        ncLy = defVar(ds,"Ly", Float64, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Length of the domain in the y-direction.",
+        ))
+        ncLy[:] = grid.Ly   
+        ncLz = defVar(ds,"Lz", Float64, (), attrib = OrderedDict(
+            "units"                     => "m",
+            "long_name"                 => "Length of the domain in the z-direction.",
+        ))
+        ncLz[:] = grid.Lz
+
+        # And define variables 
+        location_map = Dict(
+            (Center,Center,Center) => ("x_caa","y_aca","z_aac"),
+            (Face,Center,Center)   => ("x_faa","y_aca","z_aac"),
+            (Center,Face,Center)   => ("x_caa","y_afa","z_aac"),
+            (Face,Face,Center)     => ("x_faa","y_afa","z_aac"),
+            (Center,Center,Face)   => ("x_caa","y_aca","z_aaf"),
+            (Face,Center,Face)     => ("x_faa","y_aca","z_aaf"),
+            (Center,Face,Face)     => ("x_caa","y_afa","z_aaf"),
+            (Face,Face,Face)       => ("x_faa","y_afa","z_aaf"),
+        )
+        
+
+        for varname in keys(file["timeseries"])
+            if varname != "t"
+                    
+                # Create a variable in the NetCDF file
+                bc_string = sprint(show, file["timeseries/xi_u/serialized/boundary_conditions"])
+                ncv = defVar(ds, varname, Float64, (location_map[file["timeseries/$varname/serialized/location"]]...,"time"), attrib = OrderedDict(
+                    "boundary conditions"                     => bc_string,
+                ))
+                for (it,iter) in enumerate(iterations)
+                    # Assign data to the variable
+
+                    ncv[:, :, :, it] = file["timeseries/$varname/$iter"]
+                end
+                
+            end
+        end
+
+        close(ds)
+        
+    end
+end
 # TODO 
 # Look at boundaries, 3D, etc in interpolation
 # Add in a single exponential as a filter

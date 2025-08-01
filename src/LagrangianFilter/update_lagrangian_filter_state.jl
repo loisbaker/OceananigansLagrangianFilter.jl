@@ -1,8 +1,7 @@
 using Oceananigans: UpdateStateCallsite
 using Oceananigans.Architectures
 using Oceananigans.BoundaryConditions
-#using Oceananigans.BoundaryConditions: update_boundary_conditions! #this is for the later v0.97, we're using an older version for now for compat
-using Oceananigans.BoundaryConditions: update_boundary_condition! #this is the v0.96 version
+using Oceananigans.BoundaryConditions: update_boundary_conditions! 
 using Oceananigans.TurbulenceClosures: compute_diffusivities!
 using Oceananigans.Fields: compute!
 using Oceananigans.ImmersedBoundaries: mask_immersed_field!
@@ -28,8 +27,7 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
     update_model_field_time_series!(model, model.clock)
 
     # Update the boundary conditions
-    #update_boundary_conditions!(fields(model), model)
-    update_boundary_condition!(fields(model), model)
+    update_boundary_conditions!(fields(model), model)
 
     # Fill halos for velocities and tracers
     fill_halo_regions!(merge(model.velocities, model.tracers), model.clock, fields(model); 
