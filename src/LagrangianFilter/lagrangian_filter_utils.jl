@@ -846,7 +846,6 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
                 ))
                 for (it,iter) in enumerate(iterations)
                     # Assign data to the variable
-                    println("Writing $varname at iteration $iter")
                     ncv[:, :, :, it] = file["timeseries/$varname/$iter"]
                 end
                 
