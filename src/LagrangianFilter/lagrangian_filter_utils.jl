@@ -397,13 +397,14 @@ function sum_forward_backward_contributions!(combined_output_filename,forward_ou
     println("Combined forward and backward contributions into $combined_output_filename")
 end
 
-function regrid_to_mean_position!(combined_output_filename, original_var_names, velocity_names, interpolation_model=IDW(), maxneighbors=10)
+function regrid_to_mean_position!(combined_output_filename, original_var_names, velocity_names, interpolation_model=IDW(), maxneighbors=10, npad = 10)
     # use velocity names to make this good in multiple dims
     jldopen(combined_output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         original_grid = file["serialized/grid"]
         dim_dict, new_grid = _create_generalized_regular_grid(original_grid)
-
+        Hx, Hy, Hz = original_grid.Hx, original_grid.Hy, original_grid.Hz
+        
         # Work out the periodic directions
         test_var = original_var_names[1]
         BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
@@ -433,39 +434,74 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
         for iter in ProgressBar(iterations)
             
             Xi_list = []
+            n_true_dims = 0
             for dim in ("x","y","z")
                 if dim in keys(dim_dict) # This limits to only the non-singleton dimensions
+                    n_true_dims +=1
                     if (dim == "x") && ("u" in velocity_names)
                         Xi_u = dim_dict["x"] .+ file["timeseries/xi_u/$iter"]
-                        # move xi points outside of domain + halo regions into domain
+                        # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
+                        Xi_u = Xi_u[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
+
+                        # move xi points outside of domain into domain
                         if "x" in periodic_dimensions                           
-                            Xi_u .-= floor.((Xi_u .- dim_dict["x"][1])./(dim_dict["x"][end] - dim_dict["x"][1])) .* original_grid.Lx
+                            Xi_u .-= floor.((Xi_u .- dim_dict["x"][Hx+1])./original_grid.Lx) .* original_grid.Lx
                         end
                         push!(Xi_list,vec(Xi_u))
+
+
                     elseif (dim == "x") && !("u" in velocity_names)
                         Xi_u = dim_dict["x"] .+ zeros(dim_dict["original_size"])
+                        # Lose the halo regions 
+                        Xi_u = Xi_u[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
                         push!(Xi_list,vec(Xi_u))
                     elseif (dim == "y") && ("v" in velocity_names)
                         
                         Xi_v =  dim_dict["y"]' .+ file["timeseries/xi_v/$iter"]
+                        # Lose the halo regions 
+                        Xi_v = Xi_v[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
                         # move xi points outside of domain + halo regions into domain
                         if "y" in periodic_dimensions                    
-                            Xi_v .-= floor.((Xi_v .- dim_dict["y"][1])./(dim_dict["y"][end] - dim_dict["y"][1])) .* original_grid.Ly
+                            Xi_v .-= floor.((Xi_v .- dim_dict["y"][Hy+1])./original_grid.Ly) .* original_grid.Ly
                         end
                         push!(Xi_list,vec(Xi_v))
                     elseif (dim == "y") && !("v" in velocity_names)
                         Xi_v = dim_dict["y"]' .+ zeros(dim_dict["original_size"])
+                        # Lose the halo regions 
+                        Xi_v = Xi_v[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
                         push!(Xi_list,vec(Xi_v))
                     elseif (dim == "z") && ("w" in velocity_names)
                         Xi_w = reshape(dim_dict["z"],1,1,length(dim_dict["z"])) .+ file["timeseries/xi_w/$iter"]
+                        # Lose the halo regions 
+                        Xi_w = Xi_w[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
                         # move xi points outside of domain + halo regions into domain
                         if "z" in periodic_dimensions
-                            Xi_w .-= floor.((Xi_w .- dim_dict["z"][1])./(dim_dict["z"][end] - dim_dict["z"][1])) .* original_grid.Lz
+                            Xi_w .-= floor.((Xi_w .- dim_dict["z"][Hz+1])./original_grid.Lz) .* original_grid.Lz
                         end
-                        push!(vec(Xi_list),vec(Xi_w))
+                        push!(Xi_list,vec(Xi_w))
                     elseif (dim == "z") && !("w" in velocity_names)
                         Xi_w = reshape(dim_dict["z"],1,1,length(dim_dict["z"])) .+ zeros(dim_dict["original_size"])
-                        push!(vec(Xi_list),vec(Xi_w))
+                        # Lose the halo regions 
+                        Xi_w = Xi_w[
+                            Hx != 0 ? (Hx+1:end-Hx) : (:),
+                            Hy != 0 ? (Hy+1:end-Hy) : (:),
+                            Hz != 0 ? (Hz+1:end-Hz) : (:)]
+                        push!(Xi_list,vec(Xi_w))
                     else
                         error("Something's wrong")
                     end
@@ -473,18 +509,111 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
             
             end
 
-            # We hopefully don't need padding because we have the halo
-            Xi_tuple = Tuple(Xi_list)
-
-            allnodes = hcat(Xi_tuple...)
-
-            coords = Tuple.(eachrow(allnodes))
-
+            # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
+            # First construct a matrix that contains the coordinates and the fields to interpolate
             for var in original_var_names
                 var_data = file["timeseries/$var"*"_filtered/$iter"]
-                table_var = (; var=vec(var_data))
-                geotable = georef(table_var, coords)
+                # Lose the halo regions 
+                var_data = var_data[
+                    Hx != 0 ? (Hx+1:end-Hx) : (:),
+                    Hy != 0 ? (Hy+1:end-Hy) : (:),
+                    Hz != 0 ? (Hz+1:end-Hz) : (:)]
+                push!(Xi_list, vec(var_data))
+            end
+
+            data_tuple = Tuple(Xi_list)
+            data_array = hcat(data_tuple...) # This is a matrix where the rows are the data points and the columns are the coordinates then the variables
+
+            # Then we take the array and repeat rows as necessary to add extra padding data
+            
+            column_number = 1
+            n_columns = size(data_array,2)
+
+            for dim in periodic_dimensions
+                if dim == "x"
+                    max_x = dim_dict["x"][end-Hx]
+                    min_x = dim_dict["x"][Hx+1] 
+                    xpad = npad*original_grid.Δxᶜᵃᵃ
+                    Xi_x_vec = data_array[:,column_number] 
+                    mask_max_x = ((Xi_x_vec .< max_x ) .& (Xi_x_vec .> max_x - xpad))
+                    mask_min_x = ((Xi_x_vec .> min_x ) .& (Xi_x_vec .< min_x + xpad))
+                    Xi_x_to_repeat = Xi_x_vec[mask_max_x .| mask_min_x]
+                    # Remove or add Lx
+                    Xi_x_to_repeat[(Xi_x_to_repeat.< max_x).& (Xi_x_to_repeat .> max_x - xpad)] .-= original_grid.Lx
+                    Xi_x_to_repeat[(Xi_x_to_repeat .> min_x ) .& (Xi_x_to_repeat .< min_x + xpad)] .+= original_grid.Lx
+
+                    extra_padding = fill(NaN, (length(Xi_x_to_repeat), n_columns))
+                    extra_padding[:,column_number] = Xi_x_to_repeat
+                    # And fill in the rest of the columns with straightforward repeateded data
+                    for i in 1:n_columns
+                        if i != column_number # Don't overwrite the x coordinate
+                            extra_padding[:,i] = data_array[mask_max_x .| mask_min_x,i]
+                        end
+                    end
+                    # Now join it on to the data array
+                    data_array = vcat(data_array, extra_padding)
+                    # Move along the rows to the next coordinate
+                    column_number += 1
+                elseif dim == "y"
+                    max_y = dim_dict["y"][end-Hy]
+                    min_y = dim_dict["y"][Hy+1]
+                    ypad = npad*original_grid.Δyᵃᶜᵃ
+                    Xi_y_vec = data_array[:,column_number]
+                    mask_max_y = ((Xi_y_vec .< max_y ) .& (Xi_y_vec .> max_y - ypad))
+                    mask_min_y = ((Xi_y_vec .> min_y ) .& (Xi_y_vec .< min_y + ypad))
+                    Xi_y_to_repeat = Xi_y_vec[mask_max_y .| mask_min_y] 
+
+                    # Remove or add Ly
+                    Xi_y_to_repeat[(Xi_y_to_repeat.< max_y).& (Xi_y_to_repeat .> max_y - ypad)] .-= original_grid.Ly
+                    Xi_y_to_repeat[(Xi_y_to_repeat .> min_y ) .& (Xi_y_to_repeat .< min_y + ypad)] .+= original_grid.Ly
+
+                    extra_padding = fill(NaN, (length(Xi_y_to_repeat), n_columns))
+                    extra_padding[:,column_number] = Xi_y_to_repeat
+                    # And fill in the rest of the columns with straightforward repeateded data
+                    for i in 1:n_columns
+                        if i != column_number # Don't overwrite the y coordinate
+                            extra_padding[:,i] = data_array[mask_max_y .| mask_min_y,i]
+                        end
+                    end
+                    # Now join it on to the data array
+                    data_array = vcat(data_array, extra_padding)
+                    # Move along to the next coordinate
+                    column_number += 1
+                elseif dim == "z"
+                    max_z = dim_dict["z"][end-Hz]
+                    min_z = dim_dict["z"][Hz+1]
+                    zpad = npad*original_grid.Δz.cᵃᵃᶜ   
+                    Xi_z_vec = data_array[:,column_number]
+                    mask_max_z = ((Xi_z_vec .< max_z ) .& (Xi_z_vec .> max_z - zpad))
+                    mask_min_z = ((Xi_z_vec .> min_z ) .& (Xi_z_vec .< min_z + zpad))
+                    Xi_z_to_repeat = Xi_z_vec[mask_max_z .| mask_min_z] 
+
+                    # Remove or add Lz
+                    Xi_z_to_repeat[(Xi_z_to_repeat.< max_z).& (Xi_z_to_repeat .> max_z - zpad)] .-= original_grid.Lz
+                    Xi_z_to_repeat[(Xi_z_to_repeat .> min_z ) .& (Xi_z_to_repeat .< min_z + zpad)] .+= original_grid.Lz
+
+                    extra_padding = fill(NaN, (length(Xi_z_to_repeat), n_columns))
+                    extra_padding[:,column_number] = Xi_z_to_repeat
+                    # And fill in the rest of the columns with straightforward repeateded data
+                    for i in 1:n_columns
+                        if i != column_number # Don't overwrite the z coordinate
+                            extra_padding[:,i] = data_array[mask_max_z .| mask_min_z,i]
+                        end
+                    end
+                    # Now join it on to the data array
+                    data_array = vcat(data_array, extra_padding)
+
+                end
+            end
+
+            # Now we split back into coords and data
+            coords = Tuple.(eachrow(data_array[:,1:n_true_dims])) # The first columns are the coordinates
+            var_data = data_array[:,(n_true_dims+1):end] # The rest is the data
+            
+            for (ivar,var) in enumerate(original_var_names)
                 
+                table_var = (; var=var_data[:,ivar])
+                geotable = georef(table_var, coords)
                 interp = geotable |> InterpolateNeighbors(new_grid, model=interpolation_model,maxneighbors=maxneighbors)
                 interp_data = reshape(interp.var,(dim_dict["original_size"]...))
                 new_var_loc = "timeseries/$var"*"_filtered_regrid/$iter"
@@ -534,7 +663,7 @@ end
 using DataStructures: OrderedDict
 using NCDatasets
 function jld2_to_netcdf(jld2_filename,nc_filename)
-    jldopen("combined_LF.jld2", "r") do file
+    jldopen(jld2_filename, "r") do file
         
         iterations = parse.(Int, keys(file["timeseries/t"]))
         times = [file["timeseries/t/$iter"] for iter in iterations]
