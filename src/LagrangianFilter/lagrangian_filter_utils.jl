@@ -683,7 +683,7 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
         ds.dim["x_caa"] = try; length(grid.xᶜᵃᵃ) catch;1 end
         ds.dim["y_aca"] = try; length(grid.yᵃᶜᵃ) catch; 1 end
         ds.dim["z_aaf"] = try; length(grid.z.cᵃᵃᶠ) catch; 1 end
-        ds.dim["z_aac"] = try; length(grid.z.cᶜᵃᵃ) catch; 1 end
+        ds.dim["z_aac"] = try; length(grid.z.cᵃᵃᶜ) catch; 1 end
 
 
         # Declare grid variables
