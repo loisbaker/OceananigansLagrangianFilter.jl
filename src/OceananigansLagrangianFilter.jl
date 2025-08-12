@@ -28,7 +28,13 @@ using Oceananigans
 using Oceananigans.Fields: Center
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
 using Oceananigans.Units: Time
-using GeoStats: georef, InterpolateNeighbors, RegularGrid
+
+# We need a python import to use the LinearNDInterpolator for regridding
+using PythonCall
+const scipy_interpolate = PythonCall.pynew()
+function __init__()
+    PythonCall.pycopy!(scipy_interpolate, pyimport("scipy.interpolate"))
+end
 
 using ProgressBars
 export set_data_on_disk!, load_data, set_BW_filter_params, create_original_vars, create_filtered_vars, create_forcing, create_output_fields, update_input_data!, sum_forward_backward_contributions!, regrid_to_mean_position!,jld2_to_netcdf
