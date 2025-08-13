@@ -480,7 +480,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                         Xi_u = remove_halos(Xi_u,grid)
                         # move xi points outside of domain into domain
                         if "x" in periodic_dimensions                           
-                            Xi_u .-= floor.((Xi_u .- coord_dict["x"][grid.Hx+1])./grid.Lx) .* grid.Lx
+                            Xi_u .-= floor.((Xi_u .- grid.xᶠᵃᵃ[1])./grid.Lx) .* grid.Lx
                         end
                         push!(Xi_list,vec(Xi_u))
 
@@ -497,7 +497,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                         Xi_v = remove_halos(Xi_v,grid)
                         # move xi points outside of domain + halo regions into domain
                         if "y" in periodic_dimensions
-                            Xi_v .-= floor.((Xi_v .- coord_dict["y"][grid.Hy+1])./grid.Ly) .* grid.Ly
+                            Xi_v .-= floor.((Xi_v .- grid.yᵃᶠᵃ[1])./grid.Ly) .* grid.Ly
                         end
                         push!(Xi_list,vec(Xi_v))
 
@@ -513,7 +513,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                         Xi_w = remove_halos(Xi_w,grid)
                         # move xi points outside of domain + halo regions into domain
                         if "z" in periodic_dimensions
-                            Xi_w .-= floor.((Xi_w .- coord_dict["z"][grid.Hz+1])./grid.Lz) .* grid.Lz
+                            Xi_w .-= floor.((Xi_w .- grid.z.cᵃᵃᶠ[1])./grid.Lz) .* grid.Lz
                         end
                         push!(Xi_list,vec(Xi_w))
 
@@ -548,16 +548,16 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
 
             for dim in periodic_dimensions
                 if dim == "x"
-                    max_x = coord_dict["x"][end-grid.Hx]
-                    min_x = coord_dict["x"][grid.Hx+1] 
+                    max_x = grid.xᶠᵃᵃ[grid.Nx+1]
+                    min_x = grid.xᶠᵃᵃ[1]
                     xpad = npad*grid.Δxᶜᵃᵃ
                     Xi_x_vec = data_array[:,column_number] 
-                    mask_max_x = (Xi_x_vec .> max_x - xpad)
-                    mask_min_x = (Xi_x_vec .< min_x + xpad)
+                    mask_max_x = (Xi_x_vec .> max_x - xpad) .& (Xi_x_vec .< max_x)
+                    mask_min_x = (Xi_x_vec .< min_x + xpad) .& (Xi_x_vec .> min_x)
                     Xi_x_to_repeat = Xi_x_vec[mask_max_x .| mask_min_x]
                     # Remove or add Lx
-                    Xi_x_to_repeat[(Xi_x_to_repeat .> max_x - xpad)] .-= grid.Lx
-                    Xi_x_to_repeat[(Xi_x_to_repeat .< min_x + xpad)] .+= grid.Lx
+                    Xi_x_to_repeat[(Xi_x_to_repeat .> max_x - xpad) .& (Xi_x_to_repeat .< max_x)] .-= grid.Lx
+                    Xi_x_to_repeat[(Xi_x_to_repeat .< min_x + xpad) .& (Xi_x_to_repeat .> min_x)] .+= grid.Lx
                     extra_padding = fill(NaN, (length(Xi_x_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_x_to_repeat
                     # And fill in the rest of the columns with straightforward repeateded data
@@ -572,17 +572,19 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                     column_number += 1
 
                 elseif dim == "y"
-                    max_y = coord_dict["y"][end-grid.Hy]
-                    min_y = coord_dict["y"][grid.Hy+1]
+                    max_y = grid.yᵃᶠᵃ[grid.Ny+1]
+                    min_y = grid.yᵃᶠᵃ[1]
                     ypad = npad*grid.Δyᵃᶜᵃ
                     Xi_y_vec = data_array[:,column_number]
-                    mask_max_y = (Xi_y_vec .> max_y - ypad)
-                    mask_min_y = (Xi_y_vec .< min_y + ypad)
+                    mask_max_y = (Xi_y_vec .> max_y - ypad) .& (Xi_y_vec .< max_y )
+                    mask_min_y = (Xi_y_vec .< min_y + ypad) .& (Xi_y_vec .> min_y)   
                     Xi_y_to_repeat = Xi_y_vec[mask_max_y .| mask_min_y] 
-                    # Remove or add Ly
-                    Xi_y_to_repeat[(Xi_y_to_repeat .> max_y - ypad)] .-= grid.Ly
-                    Xi_y_to_repeat[(Xi_y_to_repeat .< min_y + ypad)] .+= grid.Ly
 
+                    # Remove or add Ly
+                    Xi_y_to_repeat[(Xi_y_to_repeat .> max_y - ypad) .& (Xi_y_to_repeat .< max_y)] .-= grid.Ly
+                    Xi_y_to_repeat[(Xi_y_to_repeat .< min_y + ypad) .& (Xi_y_to_repeat .> min_y)] .+= grid.Ly
+
+                    
                     extra_padding = fill(NaN, (length(Xi_y_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_y_to_repeat
                     # And fill in the rest of the columns with straightforward repeateded data
@@ -596,17 +598,17 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
                     # Move along to the next coordinate
                     column_number += 1
                 elseif dim == "z"
-                    max_z = coord_dict["z"][end-grid.Hz]
-                    min_z = coord_dict["z"][grid.Hz+1]
+                    max_z = grid.z.cᵃᵃᶠ[grid.Nz+1]
+                    min_z = grid.z.cᵃᵃᶠ[1]
                     zpad = npad*grid.Δz.cᵃᵃᶜ
                     Xi_z_vec = data_array[:,column_number]
-                    mask_max_z = ((Xi_z_vec .> max_z - zpad))
-                    mask_min_z = ((Xi_z_vec .< min_z + zpad))
-                    Xi_z_to_repeat = Xi_z_vec[mask_max_z .| mask_min_z] 
+                    mask_max_z = (Xi_z_vec .> max_z - zpad) .& (Xi_z_vec .< max_z)
+                    mask_min_z = (Xi_z_vec .< min_z + zpad) .& (Xi_z_vec .> min_z)
+                    Xi_z_to_repeat = Xi_z_vec[mask_max_z .| mask_min_z]
 
                     # Remove or add Lz
-                    Xi_z_to_repeat[(Xi_z_to_repeat .> max_z - zpad)] .-= grid.Lz
-                    Xi_z_to_repeat[(Xi_z_to_repeat .< min_z + zpad)] .+= grid.Lz
+                    Xi_z_to_repeat[(Xi_z_to_repeat .> max_z - zpad) .& (Xi_z_to_repeat .< max_z)] .-= grid.Lz
+                    Xi_z_to_repeat[(Xi_z_to_repeat .< min_z + zpad) .& (Xi_z_to_repeat .> min_z)] .+= grid.Lz
 
                     extra_padding = fill(NaN, (length(Xi_z_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_z_to_repeat
