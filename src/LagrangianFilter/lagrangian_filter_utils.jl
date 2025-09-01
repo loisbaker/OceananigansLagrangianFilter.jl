@@ -1,171 +1,226 @@
+using JLD2
+using JLD2: Group
+using Oceananigans
+using Oceananigans.Fields: Center
+using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
+using Oceananigans.Units: Time
+using DataStructures: OrderedDict
+using NCDatasets
+using ProgressBars
 
-function set_data_on_disk!(original_data_filename; direction = "backward", T_start = nothing, T_end = nothing)
-
-    # First check that a valid direction has been given
-    if (direction !== "backward") && (direction !== "forward")
-        error("Invalid direction: $direction")
-    end
-    
-    # Open the file
-    jldopen(original_data_filename,"r+") do file
-
-        # Checking if this is the first time we've edited the file
-        if !haskey(file, "direction")
-            # It should currently be forward, because direction hasn't been assigned yet
-            file["direction"] = "forward"
-
-            # This is also the first time we've edited the file, so we'll create some data to store original simulation times
-            iterations = parse.(Int, keys(file["timeseries/t"]))
-            times = [file["timeseries/t/$iter"] for iter in iterations]
-            g = Group(file, "timeseries/t_simulation")
-            for (i,iter) in enumerate(iterations)
-                g["$iter"] = times[i]
-            end
-        end    
-
-        # Now load in current direction and simulation times
-        current_direction = file["direction"]
-        println("Current direction is $current_direction")
-        iterations = parse.(Int, keys(file["timeseries/t"]))
-        t_simulation = [file["timeseries/t_simulation/$iter"] for iter in iterations]
-        Nt = length(t_simulation)
-
-        # If already the right direction, we just need to make sure the times correspond to the filter period we want
-        if current_direction == direction
-            println("No need to reverse order of data")
-            # We might need to update times
-            if (current_direction == "forward") 
-
-                if isnothing(T_start) # If we're not given a starting time, set it to simulation start time 
-                    T_start = t_simulation[1]
-                    
-                end
-
-                if isnothing(T_end) 
-                    T_end = t_simulation[Nt] # If we're not given a end time, set it to simulation end time 
-                    
-                end
-
-                # Make a new time coordinate that is zero at T_start
-                Base.delete!(file, "timeseries/t")
-                g = Group(file, "timeseries/t")
-                for (i,iter) in enumerate((iterations))
-                    g["$iter"] = t_simulation[i] - T_start
-                end
-                
-            else # current direction is backward
-
-                if isnothing(T_start) # If we're not given a starting time, set it to simulation start time 
-                    T_start = t_simulation[Nt]
-                    
-                end
-
-                if isnothing(T_end) 
-                    T_end = t_simulation[1] # If we're not given a end time, set it to simulation end time 
-                    
-                end
-
-                # Make a new time coordinate that is zero at T_end
-                Base.delete!(file, "timeseries/t")
-                g = Group(file, "timeseries/t")
-                for (i,iter) in enumerate(iterations)
-                    g["$iter"] = T_end - t_simulation[i]
-                end 
-            end
-
-        else # current direction is wrong, so we need to reverse everything and also update times
-            Base.delete!(file, "direction")
-            file["direction"] = direction
-            println("Reversing order of data")
-            for var in keys(file["timeseries"])
-                if (var == "t_simulation") || (var == "t") # Then no serialized entry
-                    backward_iterations = reverse(keys(file["timeseries/$var"])) 
-                else
-                    backward_iterations = reverse(keys(file["timeseries/$var"])[2:end]) # don't include serialized
-                end
-                # for velocities, we reverse all entries and negate them
-                if (var == "u") || (var == "v") || (var == "w")
-                    for iter in backward_iterations 
-                        data = file["timeseries/$var/$iter"] # Load in data
-                        Base.delete!(file, "timeseries/$var/$iter") # Delete the entry
-                        file["timeseries/$var/$iter"] = -data # Write it again, but negative                  
-                    end
-                    println("Reversed order of and switched sign of $var")
-
-                # For time, we need to reverse the data and also make sure its correctly aligned with start and end points
-                elseif var == "t"
-                    if current_direction == "forward"
-                        if isnothing(T_start) # If we're not given a starting time, set it to simulation start time 
-                            T_start = t_simulation[1]
-                        end
-        
-                        if isnothing(T_end) 
-                            T_end = t_simulation[Nt] # If we're not given a end time, set it to simulation end time                             
-                        end
-
-                        for (i, iter) in enumerate(backward_iterations)
-                            Base.delete!(file, "timeseries/$var/$iter") # Delete the entry
-                            file["timeseries/$var/$iter"] = T_end - t_simulation[Nt+1-i]
-                        end
-
-                    else # current_direction is backward
-
-                        if isnothing(T_start) # If we're not given a starting time, set it to simulation start time 
-                            T_start = t_simulation[Nt]
-                            println("New T_start is $T_start")
-                        end
-        
-                        if isnothing(T_end) 
-                            T_end = t_simulation[1] # If we're not given a end time, set it to simulation end time 
-                            println("New T_end is $T_end")
-                        end
-
-                        for (i, iter) in enumerate(backward_iterations)
-                            Base.delete!(file, "timeseries/$var/$iter") # Delete the entry
-                            file["timeseries/$var/$iter"] = t_simulation[Nt+1-i] - T_start
-                        end
-                    end
-                    println("Reversed order of and shifted $var")
-                # if var is t_simulation, the data doesn't change
-                elseif var == "t_simulation"
-                    for iter in backward_iterations 
-                        data = file["timeseries/$var/$iter"] # Load in data
-                        Base.delete!(file, "timeseries/$var/$iter") # Delete the entry
-                        file["timeseries/$var/$iter"] = data # Write it again 
-                    end
-                    println("Reversed order of $var")
-                # if var is a scalar, we need to make sure that it's on the correct (center) grid   
-                else
-                    location = file["timeseries/$var/serialized/location"]
-                    if location !== (Center, Center, Center)
-                        @warn "$var is on grid $location, but should be output on (Center, Center, Center). Continuing anyway."
-                    end 
-                    for iter in backward_iterations 
-                        data = file["timeseries/$var/$iter"] # Load in data
-                        Base.delete!(file, "timeseries/$var/$iter") # Delete the entry
-                        file["timeseries/$var/$iter"] = data # Write it again 
-                    end
-                    println("Reversed order of $var")
-                end
-            end
-            println("New direction is $direction")
-        end
-        T_filter = T_end - T_start # Update total filter time
-        return T_filter 
-    end
-      
+# Python import to use the LinearNDInterpolator for regridding
+using PythonCall
+const scipy_interpolate = PythonCall.pynew()
+function __init__()
+    PythonCall.pycopy!(scipy_interpolate, pyimport("scipy.interpolate"))
 end
 
-function load_data(original_data_filename, original_var_names, velocity_names; architecture=CPU(), backend= InMemory())
+
+"""
+    copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
+
+Copies Oceananigans output JLD2 file metadata to a new file. 
+
+Copies variables and their serialized entries as defined in `timeseries_vars_to_copy`, but does not copy any timeseries data, or times.
+
+"""
+function copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
+
+    # Copy over metadata that isn't associated with variables
+    for path in ("grid","serialized","coriolis")
+        _copy_jld2_recursive!(original_file, new_file, path)
+    end
+
+    # Copy serialized entries for timeseries variables
+    for var in timeseries_vars_to_copy
+        _copy_jld2_recursive!(original_file, new_file, "timeseries/$var/serialized")
+    end
+
+end
+
+
+
+"""
+    _copy_jld2_recursive!(source::JLD2.JLDFile, dest::JLD2.JLDFile, path::String)
+
+A helper function to recursively copy data and groups.
+"""
+function _copy_jld2_recursive!(source::JLD2.JLDFile, dest::JLD2.JLDFile, path::String)
+    
+    # Check if the path points to a JLD2 group
+    if isa(source[path], JLD2.Group)
+        # Recreate the group in the destination file
+        dest_group = JLD2.Group(dest, path)
+
+        # Recursively copy the contents of the group
+        for key in keys(source[path])
+            _copy_jld2_recursive!(source, dest, "$path/$key")
+        end
+    else
+        # Simply copy the variable if it's not a group
+        dest[path] = source[path]
+    end
+end
+
+"""
+    create_input_data_on_disk(original_data_filename::String, var_names_to_filter::Tuple{Vararg{String}}, velocity_names::Tuple{Vararg{String}}; direction::String="forward", T_start::Union{Real, Nothing}=nothing, T_end::Union{Real, Nothing}=nothing)
+
+Creates a new temporary JLD2 file for filtering named <original_data_filename>_filter_input.jld2 with reorganised and reorientated data
+
+This function is designed to handle simulation data stored on disk and prepare it for time-stepping.
+
+It performs four main tasks:
+1. Deletes any existing version of this file
+2. Creates a new file with the original file's metadata, and adds `direction` and `t_simulation` as extra variables.
+3. Changes the time coordinate `t` to be relative to `T_start` or `T_end` depending on `direction`.
+4. Reverses the order and/or sign of data fields from the original data and saves to the new file.
+
+
+# Arguments
+- `original_data_filename`: The path to the original JLD2 file to be copied.
+- `var_names_to_filter`: A tuple of tracer variable names to copy from the original data.
+- `velocity_names`: A tuple of velocity variable names to copy from the original data.
+
+# Keyword Arguments
+- `direction::String`: The desired direction of the time-series. Can be `"forward"` or `"backward"`.
+  Defaults to `"forward"`.
+- `T_start::Union{Real, Nothing}`: The start time for the filtered period. If `nothing`, it defaults to the
+  first time step in the simulation for `"forward"` direction, or the last time step for `"backward"`.
+- `T_end::Union{Real, Nothing}`: The end time for the filtered period. If `nothing`, it defaults to the
+  last time step in the simulation for `"forward"` direction, or the first time step for `"backward"`.
+
+# Returns
+- `T_filter`: The total duration of the filtered period.
+
+# Examples
+```julia
+# Create a file named "my_data_filter_input.jld2" to run in the backward direction
+create_input_data_on_disk("my_data.jld2", ("var1", "var2"), ("vel1", "vel2"); direction="backward")
+
+# Reformat "my_data_filter_input.jld2" for a forward simulation from time 10 to 20
+create_input_data_on_disk("my_data.jld2", ("var1", "var2"), ("vel1", "vel2"); direction="forward", T_start=10, T_end=20)
+```
+"""
+function create_input_data_on_disk(original_data_filename::String, var_names_to_filter::Tuple{Vararg{String}}, velocity_names::Tuple{Vararg{String}}; direction::String="forward", T_start::Union{Real, Nothing}=nothing, T_end::Union{Real, Nothing}=nothing)
+    
+    # Check that a valid direction has been given
+    if direction ∉ ("backward", "forward")
+        error("Invalid direction: $direction. Must be 'backward' or 'forward'.")
+    end
+
+    # Check that the original file exists 
+    if !isfile(original_data_filename)
+        error("Source file not found: $original_data_filename")
+    end
+
+    # Create a new filename and delete any file that already has that name
+    new_filename = original_data_filename[1:end-5]*"_filter_input.jld2"
+    if isfile(new_filename)
+        rm(new_filename)
+    end
+
+    # Open the original file for reading 
+    jldopen(original_data_filename,"r") do original_file
+
+        # Check if velocities and tracers given are in the original_file
+        for var in (var_names_to_filter..., velocity_names...)
+            if !haskey(original_file["timeseries"], var)
+                error("Variable '$var' not found in original data file.")
+            end
+        end
+
+        # Check if T_start and T_end are found in the original_file
+        iterations = parse.(Int, keys(original_file["timeseries/t"]))
+        times = [original_file["timeseries/t/$iter"] for iter in iterations]
+        
+        # If T_start is not specified, use the first simulation time
+        T_start = isnothing(T_start) ? times[1] : T_start
+
+        # If T_end is not specified, use the last simulation time
+        T_end = isnothing(T_end) ? times[end] : T_end
+
+        if T_start < times[1] || T_start > times[end]
+            error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+        end
+
+        if T_end < times[1] || T_end > times[end]
+            error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+        end
+
+        # Create a truncated iterations variable with just the times to copy
+        iterations_truncated = iterations[(times .>= T_start) .& (times .<= T_end)]
+
+        # Create a new filename for the filtered input data
+        jldopen(new_filename, "w") do new_file
+
+            # We need to copy the standard metadata from the old file to the new file
+            copy_file_metadata!(original_file, new_file, (var_names_to_filter..., velocity_names...))
+
+            # Add an indicator of the direction 
+            new_file["direction"] = direction
+
+            # Add an old (t_simulation) and a new (t) time variable 
+            t_sim_group = JLD2.Group(new_file, "timeseries/t_simulation")
+            t_group = JLD2.Group(new_file, "timeseries/t")
+
+            if direction == "forward"
+
+                # First write times, starting from T_start
+                for iter in iterations_truncated
+                    t_sim_group["$iter"] = original_file["timeseries/t/$iter"]
+                    t_group["$iter"] = original_file["timeseries/t/$iter"] - T_start
+                end
+
+                # Then write in data, as in original file
+                for var in (var_names_to_filter..., velocity_names...)
+                    for iter in iterations_truncated
+                        new_file["timeseries/$var/$iter"] = original_file["timeseries/$var/$iter"]
+                    end
+                end
+
+            elseif direction == "backward"
+
+                # First write times, starting from T_end
+                for iter in reverse(iterations_truncated)
+                    t_sim_group["$iter"] = original_file["timeseries/t/$iter"]
+                    t_group["$iter"] = T_end - original_file["timeseries/t/$iter"]
+                end
+
+                # Then write in data (as in original file for tracers and negated for velocities)
+                for var in var_names_to_filter
+                    for iter in reverse(iterations_truncated)
+                        new_file["timeseries/$var/$iter"] = original_file["timeseries/$var/$iter"]
+                    end
+                end
+
+                for var in velocity_names
+                    for iter in reverse(iterations_truncated)
+                        new_file["timeseries/$var/$iter"] = -original_file["timeseries/$var/$iter"]
+                    end
+                end
+
+                
+            end
+
+            # Calculate and return the total filter time
+            T_filter = T_end - T_start
+            return T_filter
+        end
+    end
+end
+
+function load_data(original_data_filename, var_names_to_filter, velocity_names; architecture=CPU(), backend= InMemory())
+
+    input_data_filename = original_data_filename[1:end-5]*"_filter_input.jld2"
     velocity_timeseries = ()
     for vel_name in velocity_names
-        vel_ts = FieldTimeSeries(original_data_filename, vel_name; architecture=architecture, backend=backend)
+        vel_ts = FieldTimeSeries(input_data_filename, vel_name; architecture=architecture, backend=backend)
         velocity_timeseries = (velocity_timeseries...,vel_ts)
     end
    
     var_timeseries = ()
-    for var_name in original_var_names
-        var_ts = FieldTimeSeries(original_data_filename, var_name; architecture=architecture, backend=backend)
+    for var_name in var_names_to_filter
+        var_ts = FieldTimeSeries(input_data_filename, var_name; architecture=architecture, backend=backend)
         var_timeseries = (var_timeseries...,var_ts)
     end
     grid = velocity_timeseries[1].grid
@@ -190,20 +245,20 @@ function set_BW_filter_params(;N=1,freq_c=1)
     return filter_params
 end
 
-function create_original_vars(original_var_names, grid)
+function create_original_vars(var_names_to_filter, grid)
     # Creates auxiliary fields to store the saved variables
     vars = Dict()
-    for var_name in original_var_names
+    for var_name in var_names_to_filter
         vars[Symbol(var_name)] = CenterField(grid)
     end
     return NamedTuple(vars)
 end
 
-function create_filtered_vars(original_var_names, velocity_names, filter_params; map_to_mean=true)
+function create_filtered_vars(var_names_to_filter, velocity_names, filter_params; map_to_mean=true)
     N_coeffs = Int(length(filter_params)/4)
     gC = ()  # Start with an empty tuple
     gS = ()  # Start with an empty tuple
-    for var_name in original_var_names
+    for var_name in var_names_to_filter
         for i in 1:N_coeffs
             new_gC = Symbol(var_name,"C", i) 
             new_gS = Symbol(var_name,"S", i) 
@@ -255,7 +310,7 @@ function make_xiS_forcing_func(i)
     return (args...) -> -args[end][d_index]/(args[end][c_index]^2 + args[end][d_index]^2)*args[end-1]
 end
 
-function create_forcing(filtered_vars, original_var_names, velocity_names, filter_params)
+function create_forcing(filtered_vars, var_names_to_filter, velocity_names, filter_params)
 
     N_coeffs = Int(length(filter_params)/4)
 
@@ -266,7 +321,7 @@ function create_forcing(filtered_vars, original_var_names, velocity_names, filte
     # Make forcing function for original data term. Final arg is the field dependence.
     original_var_forcing_func(args...) = args[end]
 
-    for var_name in original_var_names
+    for var_name in var_names_to_filter
         original_var = Symbol(var_name)
         for i in 1:N_coeffs
             
@@ -285,7 +340,7 @@ function create_forcing(filtered_vars, original_var_names, velocity_names, filte
     end
 
     # We might need xi forcing too, forced by the model's velocities
-    if length(filtered_vars) > N_coeffs*length(original_var_names)*2
+    if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
         for velocity_name in velocity_names
             vel_key = Symbol(velocity_name)
             for i in 1:N_coeffs
@@ -310,12 +365,12 @@ function create_forcing(filtered_vars, original_var_names, velocity_names, filte
 end
 
 #TODO the following shouldn't be done with indexing, do it by keys instead
-function create_output_fields(model, original_var_names, velocity_names, filter_params)
+function create_output_fields(model, var_names_to_filter, velocity_names, filter_params)
     N_coeffs = Int(length(filter_params)/4)
     N_filtered_vars = length(model.tracers)
     half_N_filtered_vars = Int(N_filtered_vars/2)
     outputs_dict = Dict()
-    for (i_var, original_var) in enumerate(original_var_names)
+    for (i_var, original_var) in enumerate(var_names_to_filter)
 
         g_total = (filter_params[1]*model.tracers[(i_var-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_filtered_vars + (i_var-1)*N_coeffs + 1])
     
@@ -330,9 +385,9 @@ function create_output_fields(model, original_var_names, velocity_names, filter_
     end
 
     # May need to output maps too
-    if N_filtered_vars > N_coeffs*length(original_var_names)*2
+    if N_filtered_vars > N_coeffs*length(var_names_to_filter)*2
         for (i_vel, vel) in enumerate(velocity_names)
-            i_var = i_vel + length(original_var_names)
+            i_var = i_vel + length(var_names_to_filter)
             g_total = (filter_params[1]*model.tracers[(i_var-1)*N_coeffs + 1] + filter_params[2]*model.tracers[half_N_filtered_vars + (i_var-1)*N_coeffs + 1])
         
             for i in 2:N_coeffs
@@ -347,7 +402,7 @@ function create_output_fields(model, original_var_names, velocity_names, filter_
     end
 
     # Let's also add the saved vars for comparison
-    for original_var in original_var_names
+    for original_var in var_names_to_filter
         outputs_dict[original_var] = getproperty(model.auxiliary_fields,Symbol(original_var))
     end
     return outputs_dict
@@ -370,14 +425,14 @@ function update_input_data!(sim, input_data)
 end
 
 
-function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename,T,velocity_names, original_var_names)
+function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename,T,velocity_names, var_names_to_filter)
 # Combine the forward and backward simulations by summing them into a single file
 
     # Make a copy of the forward file to fill in with combined data
     cp(forward_output_filename, combined_output_filename,force=true)
 
     # List the names of the fields that we will combine
-    data_field_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in original_var_names])
+    data_field_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in var_names_to_filter])
 
     # Then, we open the combined data and add backward scalars and maps at the correct timesteps
     jldopen(combined_output_filename,"r+") do file
@@ -435,14 +490,14 @@ function _create_coords(grid)
     return coord_dict
 end
 
-function regrid_to_mean_position!(combined_output_filename, original_var_names, velocity_names, npad = 5)
+function regrid_to_mean_position!(combined_output_filename, var_names_to_filter, velocity_names, npad = 5)
 
     jldopen(combined_output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         grid = file["serialized/grid"]
         coord_dict = _create_coords(grid)
         # Work out the periodic directions
-        test_var = original_var_names[1]
+        test_var = var_names_to_filter[1]
         BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
         periodic_dimensions = []
         if BCs.west == PeriodicBoundaryCondition()
@@ -456,7 +511,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
         end
         
         # First add the necessary serialized entry for each new variable
-        for var in original_var_names 
+        for var in var_names_to_filter 
             new_path = "timeseries/$var"*"_filtered_regrid/serialized"
             if haskey(file, new_path)
                 Base.delete!(file, new_path) #incase we already tried to write this
@@ -531,7 +586,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
             end
             # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
             # First construct a matrix that contains the coordinates and the fields to interpolate
-            for var in original_var_names
+            for var in var_names_to_filter
                 var_data = file["timeseries/$var"*"_filtered/$iter"]
                 # Lose the halo regions 
                 var_data = remove_halos(var_data,grid)
@@ -627,7 +682,7 @@ function regrid_to_mean_position!(combined_output_filename, original_var_names, 
             coords = data_array[:,1:n_true_dims] # The first columns are the coordinates
             var_data = data_array[:,(n_true_dims+1):end] # The rest is the data
             
-            for (ivar,var) in enumerate(original_var_names)
+            for (ivar,var) in enumerate(var_names_to_filter)
                 
                 values = var_data[:,ivar]
                 interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
