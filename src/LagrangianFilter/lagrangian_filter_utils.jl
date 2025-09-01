@@ -261,7 +261,7 @@ function load_data(original_data_filename::String,
 end
 
 """
-    set_BW_filter_params(;N=1, freq_c=1)
+    set_BW_filter_params(;N::Int=1, freq_c::Real=1)
 
 Calculates the coefficients for a filter with that has frequency response given by a
 Butterworth filter with order `2^N` and cutoff frequency `freq_c`, squared. 
@@ -281,7 +281,7 @@ Real filter shape: G(t) = sum_{i=1}^{2^(N-1)} exp(-c_i*abs(t))*(a_i*cos(d_i * ab
   The coefficients are named `a1, b1, c1, d1, a2, b2, ...` up to `2^(N-1)` pairs.
 
 """
-function set_BW_filter_params(;N=1,freq_c=1) 
+function set_BW_filter_params(;N::Int=1,freq_c::Real=1) 
     N_coeffs = 2^(N-1)
     filter_params = NamedTuple()
     for i in 1:N_coeffs
@@ -402,7 +402,7 @@ function make_gC_forcing_func(i::Int)
         gC = args[end-2]
         gS = args[end-1]
         return -c .* gC .- d .* gS
-
+    end
     return gC_forcing
 end
 
@@ -427,7 +427,7 @@ function make_gS_forcing_func(i::Int)
         gC = args[end-2]
         gS = args[end-1]
         return -c .* gS .+ d .* gC
-
+    end
     return gS_forcing
 end
 
@@ -452,7 +452,7 @@ function make_xiC_forcing_func(i::Int)
         u = args[end-1]
 
         return -c .* u ./ (c.^2 .+ d.^2)
-
+    end
     return xiC_forcing
 end
 
@@ -477,7 +477,7 @@ function make_xiS_forcing_func(i::Int)
         u = args[end-1]
         
         return -d .* u ./ (c.^2 .+ d.^2)
-
+    end
     return xiS_forcing
 end
 
