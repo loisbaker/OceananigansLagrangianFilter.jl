@@ -28,6 +28,8 @@ using Oceananigans
 using Oceananigans.Fields: Center
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
 using Oceananigans.Units: Time
+using DataStructures: OrderedDict
+using NCDatasets
 
 # We need a python import to use the LinearNDInterpolator for regridding
 using PythonCall
