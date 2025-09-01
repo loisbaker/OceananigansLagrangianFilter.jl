@@ -17,6 +17,10 @@ using Oceananigans.Grids: XYRegularRG, XZRegularRG, YZRegularRG, XYZRegularRG
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
 
+using JLD2
+using JLD2: Group
+using Oceananigans.Fields: Center
+using Oceananigans.Units: Time
 
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale
@@ -31,6 +35,7 @@ include("LagrangianFilter/lagrangian_filter.jl")
 include("LagrangianFilter/compute_lagrangian_filter_buffer_tendencies.jl")
 include("LagrangianFilter/compute_lagrangian_filter_tendencies.jl")
 include("LagrangianFilter/lagrangian_filter_utils.jl")
+include("LagrangianFilter/post_processing_utils.jl")
 include("LagrangianFilter/lagrangian_filter_tendency_kernel_functions.jl")
 include("LagrangianFilter/lagrangian_filtering_advection_operators.jl")
 include("LagrangianFilter/set_lagrangian_filter.jl")
