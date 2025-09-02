@@ -20,7 +20,7 @@ import Oceananigans.Models: total_velocities, default_nan_checker, timestepper
 
 
 
-mutable struct LagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
+mutable struct OfflineLagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
                                    V, K, B, AF} <: AbstractModel{TS, A}
 
          architecture :: A        # Computer `Architecture` on which `Model` is run
@@ -38,7 +38,7 @@ mutable struct LagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
 end
 
 """
-    LagrangianFilter(;           grid,
+    OfflineLagrangianFilter(;           grid,
                                     clock = Clock{eltype(grid)}(time = 0),
                                 advection = Centered(),
                       forcing::NamedTuple = NamedTuple(),
@@ -75,7 +75,7 @@ Keyword arguments
 """
 
 
-function LagrangianFilter(; grid,
+function OfflineLagrangianFilter(; grid,
                              clock = Clock{eltype(grid)}(time = 0),
                              advection = Centered(),
                              forcing::NamedTuple = NamedTuple(),
@@ -92,11 +92,11 @@ function LagrangianFilter(; grid,
     tracers = tupleit(tracers) # supports tracers=:c keyword argument (for example)
 
    
-    # We don't support CAKTE for LagrangianFilter yet.
+    # We don't support CAKTE for OfflineLagrangianFilter yet.
     closure = validate_closure(closure)
     first_closure = closure isa Tuple ? first(closure) : closure
     first_closure isa FlavorOfCATKE &&
-        error("CATKEVerticalDiffusivity is not supported for LagrangianFilter --- yet!")
+        error("CATKEVerticalDiffusivity is not supported for OfflineLagrangianFilter --- yet!")
 
     # Adjust advection scheme to be valid on a particular grid size. i.e. if the grid size
     # is smaller than the advection order, reduce the order of the advection in that particular
@@ -147,7 +147,7 @@ function LagrangianFilter(; grid,
     # Regularize forcing for model tracer and velocity fields.
     forcing = model_forcing(model_fields; forcing...)
 
-    model = LagrangianFilter(arch, grid, clock, advection,
+    model = OfflineLagrangianFilter(arch, grid, clock, advection,
                                 forcing, closure, buoyancy, velocities, tracers,
                                 diffusivity_fields, timestepper, auxiliary_fields)
 
@@ -156,7 +156,7 @@ function LagrangianFilter(; grid,
     return model
 end
 
-architecture(model::LagrangianFilter) = model.architecture
+architecture(model::OfflineLagrangianFilter) = model.architecture
 
 function inflate_grid_halo_size(grid, tendency_terms...)
     user_halo = grid.Hx, grid.Hy, grid.Hz
