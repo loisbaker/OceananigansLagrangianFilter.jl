@@ -17,7 +17,7 @@ copying large timeseries data. It copies core simulation metadata (`grid`, `seri
 function copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
 
     # Copy over metadata that isn't associated with variables
-    for path in ("grid","serialized","coriolis")
+    for path in ("grid","serialized")
         _copy_jld2_recursive!(original_file, new_file, path)
     end
 
@@ -272,30 +272,46 @@ Frequency response: Ghat(omega) = 1 / (1 + (omega / freq_c)^(2^(N+1)))
 Real filter shape: G(t) = sum_{i=1}^{2^(N-1)} exp(-c_i*abs(t))*(a_i*cos(d_i * abs(t)) + b_i*sin(d_i * abs(t)))
 
 # Keyword Arguments
-- `N::Int`: log_2 order of the Butterworth filter. Must be a positive integer.
+- `N::Int`: log_2 order of the Butterworth filter. Must be a non-negative integer.
   Defaults to 1.
 - `freq_c::Real`: The cutoff frequency of the filter. Defaults to 1.
 
 # Returns
 - `NamedTuple`: A `NamedTuple` containing the calculated coefficients.
-  The coefficients are named `a1, b1, c1, d1, a2, b2, ...` up to `2^(N-1)` pairs.
+  The coefficients are named `a1, b1, c1, d1, a2, b2, ...` up to `2^(N-1)` pairs. The number of coefficients `N_coeffs`
+  is also stored fro convenience.
+
+  In the special case that `N=0`, the uni-directional filter is a single exponential, and `N_coeffs = 0.5`. 
+  Only `a1` and `c1` are returned.
 
 """
 function set_BW_filter_params(;N::Int=1,freq_c::Real=1) 
-    N_coeffs = 2^(N-1)
-    filter_params = NamedTuple()
-    for i in 1:N_coeffs
-        
-        a = (freq_c/2^N)*sin(pi/(2^(N+1))*(2*i-1))
-        b = (freq_c/2^N)*cos(pi/(2^(N+1))*(2*i-1))
-        c = freq_c*sin(pi/(2^(N+1))*(2*i-1))
-        d = freq_c*cos(pi/(2^(N+1))*(2*i-1))
-
-        temp_params = NamedTuple{(Symbol("a$i"), Symbol("b$i"),Symbol("c$i"),Symbol("d$i"))}([a,b,c,d])
-        filter_params = merge(filter_params,temp_params)
+    if N != floor(N) || N < 0
+        error("N must be a non-negative integer.")
     end
-    
-    return filter_params
+    N_coeffs = (N==0) ? 0.5 : 2^(N-1)
+
+    if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
+        a1 = freq_c/2 
+        c1 = freq_c
+        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
+        return filter_params
+
+    else
+        filter_params = NamedTuple()
+        for i in 1:N_coeffs
+            
+            a = (freq_c/2^N)*sin(pi/(2^(N+1))*(2*i-1))
+            b = (freq_c/2^N)*cos(pi/(2^(N+1))*(2*i-1))
+            c = freq_c*sin(pi/(2^(N+1))*(2*i-1))
+            d = freq_c*cos(pi/(2^(N+1))*(2*i-1))
+
+            temp_params = NamedTuple{(Symbol("a$i"), Symbol("b$i"),Symbol("c$i"),Symbol("d$i"))}([a,b,c,d])
+            filter_params = merge(filter_params,temp_params)
+        end
+
+        return merge(filter_params, (; N_coeffs = N_coeffs))
+    end
 end
 
 """
@@ -355,131 +371,140 @@ function create_filtered_vars(var_names_to_filter::Tuple{Vararg{String}},
                               filter_params::NamedTuple;
                               map_to_mean::Bool=true)
                               
-    N_coeffs = Int(length(filter_params) / 4)
+    N_coeffs = filter_params.N_coeffs
 
-    gC_symbols = Symbol[]
-    gS_symbols = Symbol[]
-
-    for var_name in var_names_to_filter
-        for i in 1:N_coeffs
-            push!(gC_symbols, Symbol(var_name, "C", i))
-            push!(gS_symbols, Symbol(var_name, "S", i))
+    if N_coeffs == 0.5 # special case, single exponential only has a cosine component
+        gC_symbols = Symbol[]
+        for var_name in var_names_to_filter
+            push!(gC_symbols, Symbol(var_name, "_C1"))
         end
-    end
-
-    # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
-    if map_to_mean
-        for vel_name in velocity_names
-            for i in 1:N_coeffs
-                push!(gC_symbols, Symbol("xi_", vel_name, "_C", i))
-                push!(gS_symbols, Symbol("xi_", vel_name, "_S", i))
+        # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
+        if map_to_mean
+            for vel_name in velocity_names
+                push!(gC_symbols, Symbol("xi_", vel_name, "_C1", ))
             end
         end
-    end
 
-    return (Tuple(gC_symbols)..., Tuple(gS_symbols)...)
+        return Tuple(gC_symbols)
+
+    else
+        gC_symbols = Symbol[]
+        gS_symbols = Symbol[]
+
+        for var_name in var_names_to_filter
+            for i in 1:N_coeffs
+                push!(gC_symbols, Symbol(var_name, "_C", i))
+                push!(gS_symbols, Symbol(var_name, "_S", i))
+            end
+        end
+
+        # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
+        if map_to_mean
+            for vel_name in velocity_names
+                for i in 1:N_coeffs
+                    push!(gC_symbols, Symbol("xi_", vel_name, "_C", i))
+                    push!(gS_symbols, Symbol("xi_", vel_name, "_S", i))
+                end
+            end
+        end
+
+        return (Tuple(gC_symbols)..., Tuple(gS_symbols)...)
+    end
 end
 
 """
-    make_gC_forcing_func(i::Int)
+    make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 
-Creates a forcing function for the `i`-th cosine component of a filtered variable.
-The returned function can be passed directly to `ModelForcing` in Oceananigans.
+Create a forcing term for the cosine component (gC) of a filtered variable.
+Includes the special case of a single exponential.
 
 # Arguments
-- `i::Int`: The index of the filter coefficient pair to use.
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `var_name::String`: The name of the variable being filtered (e.g., "T").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
 
 # Returns
-- A function with the signature `(x, y, z, t, gC, gS, p)` (in 3D) that returns the forcing
-  function for `gCi`.
+- A `Forcing` object configured to compute the forcing term for the gC field.
 """
-function make_gC_forcing_func(i::Int)
-    
-    function gC_forcing(args...)
-        filter_params = args[end]
-        c = getproperty(filter_params,Symbol("c$i"))
-        d = getproperty(filter_params,Symbol("d$i"))
-        gC = args[end-2]
-        gS = args[end-1]
-        return -c .* gC .- d .* gS
+function make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
+        c = getproperty(filter_params, Symbol("c",i))
+        gCkey = Symbol(var_name,"_C",i)
+        forcing_func = (args...) -> -args[end][1]*args[end-1] 
+        return Forcing(forcing_func, parameters = (c,), field_dependencies = (gCkey,))
+    else
+        c = getproperty(filter_params, Symbol("c",i))
+        d = getproperty(filter_params, Symbol("d",i))
+        gCkey = Symbol(var_name,"_C",i)
+        gSkey = Symbol(var_name,"_S",i)  
+        forcing_func = (args...) -> -args[end][1]*args[end-2] - args[end][2]*args[end-1]
+        return Forcing(forcing_func, parameters = (c,d), field_dependencies = (gCkey,gSkey))
     end
-    return gC_forcing
 end
 
 """
-    make_gS_forcing_func(i::Int)
+    make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 
-Creates a forcing function for the `i`-th sine component of a filtered variable.
-The returned function can be passed directly to `ModelForcing` in Oceananigans.
+Create a forcing term for the sine component (gS) of a filtered variable.
 
 # Arguments
-- `i::Int`: The index of the filter coefficient pair to use.
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `var_name::String`: The name of the variable being filtered (e.g., "T").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
 
 # Returns
-- A function with the signature `(x, y, z, t, gC, gS, p)` (in 3D) that returns the forcing
-  function for `gSi`.
+- A `Forcing` object configured to compute the forcing term for the gS field.
 """
-function make_gS_forcing_func(i::Int)
-    function gS_forcing(args...)
-        filter_params = args[end]
-        c = getproperty(filter_params,Symbol("c$i"))
-        d = getproperty(filter_params,Symbol("d$i"))
-        gC = args[end-2]
-        gS = args[end-1]
-        return -c .* gS .+ d .* gC
-    end
-    return gS_forcing
+function make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+    c = getproperty(filter_params, Symbol("c",i))
+    d = getproperty(filter_params, Symbol("d",i))
+    gCkey = Symbol(var_name,"_C",i)
+    gSkey = Symbol(var_name,"_S",i)  
+    forcing_func = (args...) -> -args[end][1]*args[end-1] + args[end][2]*args[end-2]
+    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (gCkey,gSkey))
 end
 
 """
-    make_xiC_forcing_func(i::Int)
+    make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 
-Creates a forcing function for the `i`-th cosine component of a mapping variable.
-The returned function can be passed directly to `ModelForcing` in Oceananigans.
+Create a forcing term for the cosine component (xiC) of a map variable. The function handles 
+the special case of a single exponential filter where `d` is zero.
 
 # Arguments
-- `i::Int`: The index of the filter coefficient pair to use.
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `vel_name::String`: The name of the velocity variable (e.g., "u").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
 
 # Returns
-- A function with the signature `(x, y, z, t, u, p)` (in 3D) that returns the forcing
-  function for `xi_u_Ci`, where u is the corresponding velocity.
+- A `Forcing` object configured to compute the forcing term for the xiC field.
 """
-function make_xiC_forcing_func(i::Int)
-    function xiC_forcing(args...)
-        filter_params = args[end]
-        c = getproperty(filter_params,Symbol("c$i"))
-        d = getproperty(filter_params,Symbol("d$i"))
-        u = args[end-1]
-
-        return -c .* u ./ (c.^2 .+ d.^2)
-    end
-    return xiC_forcing
+function make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+    c = getproperty(filter_params, Symbol("c",i))
+    d = filter_params.N_coeffs == 0.5 ? 0 : getproperty(filter_params, Symbol("d",i)) # Single exponential special case gets d = 0
+    forcing_func = (args...) -> -args[end][1]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
+    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
 end
 
 """
-    make_xiS_forcing_func(i::Int)
+    make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 
-Creates a forcing function for the `i`-th sine component of a mapping variable.
-The returned function can be passed directly to `ModelForcing` in Oceananigans.
+Create a forcing term for the sine component (xiS) of a map variable. 
 
 # Arguments
-- `i::Int`: The index of the filter coefficient pair to use.
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `vel_name::String`: The name of the velocity variable (e.g., "u").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
 
 # Returns
-- A function with the signature `(x, y, z, t, u, p)` (in 3D) that returns the forcing
-  function for `xi_u_Si`, where u is the corresponding velocity
+- A `Forcing` object configured to compute the forcing term for the xiS field.
 """
-function make_xiS_forcing_func(i::Int)
-    function xiS_forcing(args...)
-        filter_params = args[end]
-        c = getproperty(filter_params,Symbol("c$i"))
-        d = getproperty(filter_params,Symbol("d$i"))
-        u = args[end-1]
-        
-        return -d .* u ./ (c.^2 .+ d.^2)
-    end
-    return xiS_forcing
+function make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+    c = getproperty(filter_params, Symbol("c",i))
+    d = getproperty(filter_params, Symbol("d",i))
+    forcing_func = (args...) -> -args[end][2]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
+    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
 end
+
 
 """
     create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
@@ -502,67 +527,100 @@ to be used in an Oceananigans model.
 # Returns
 - `forcing::NamedTuple`: A `NamedTuple` where each key is a filtered
   variable symbol and each value is an Oceananigans `Forcing` object.
-  The forcings are multi-term forcings where appropriate.
 """
 function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
                         var_names_to_filter::Tuple{Vararg{String}},
                         velocity_names::Tuple{Vararg{String}},
                         filter_params::NamedTuple)
 
-    N_coeffs = Int(length(filter_params)/4)
+    N_coeffs = filter_params.N_coeffs
 
     # Initialize dictionary
     gC_forcings_dict = Dict()
-    gS_forcings_dict = Dict()
+    
 
     # Make a simple forcing function for original data forcing - the final argument is the field dependence.
     original_var_forcing_func(args...) = args[end]
 
-    for var_name in var_names_to_filter
-        original_var = Symbol(var_name)
-        for i in 1:N_coeffs
-            
-            gCkey = Symbol(var_name,"C",i)   
-            gSkey = Symbol(var_name,"S",i)   
-            
+    # Special case `N_coeffs = 0.5`, single exponential
+    if N_coeffs == 0.5
+        # Build by hand as only one coefficient
+        for var_name in var_names_to_filter
+            var_key = Symbol(var_name)
+            gCkey = Symbol(var_name,"_C1")
+
             # The forcing for gC is the sum of a filter forcing term and the original data forcing
-            gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
-            gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies= (;original_var))
-            gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
-
-            # The forcing for gS is just a filter forcing term
-            gS_forcing_i = Forcing(make_gS_forcing_func(i), parameters = filter_params, field_dependencies = (gCkey,gSkey))
-            gS_forcings_dict[gSkey] = gS_forcing_i
-
+            gC_forcing = make_gC_forcing(1, var_name, filter_params)
+            gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies = (;var_key))
+            gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing)
         end
-    end
 
-    # Check if we need xi forcing (implied by number of filtered_vars)
-    if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
-        # Create forcing for xi maps (one for each velocity component)
-        for vel_name in velocity_names
-            vel_key = Symbol(velocity_name)
-            for i in 1:N_coeffs
-                gCkey = Symbol("xi_", vel_name, "_C", i) 
-                gSkey = Symbol("xi_", vel_name, "_S", i) 
-                
-                # The forcing for xiC includes a term involving xiC and xiS (as for tracers, so reuse forcing constructor) and a 
+        # Check if we need xi forcing (implied by number of filtered_vars)
+        if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
+
+            # Create forcing for xi maps (one for each velocity component)
+            for vel_name in velocity_names
+                gCkey = Symbol("xi_", vel_name, "_C1") 
+                var_name = "xi_" * vel_name 
+                # The forcing for xiC includes a term involving xiC (as for tracers) and a 
                 # term involving the corresponding velocity
-                gC_forcing_i = Forcing(make_gC_forcing_func(i), parameters =filter_params, field_dependencies = (gCkey,gSkey))
-                xiC_forcing_i = Forcing(make_xiC_forcing_func(i),parameters =filter_params, field_dependencies = (;vel_key))
-                gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
-
-                # The forcing for xiS also includes a term involving xiC and xiS and a term involving the corresponding velocity
-                gS_forcing_i = Forcing(make_gS_forcing_func(i), parameters =filter_params, field_dependencies = (gCkey,gSkey))
-                xiS_forcing_i = Forcing(make_xiS_forcing_func(i),parameters =filter_params, field_dependencies = (;vel_key))
-                gSdict[gSkey] = (xiS_forcing_i,gS_forcing_i)
+                gC_forcing = make_gC_forcing(1, var_name, filter_params)
+                xiC_forcing = make_xiC_forcing(1, vel_name, filter_params)
+                gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing)
 
             end
         end
-    end
-    forcing = (; NamedTuple(gC_forcings_dict)..., NamedTuple(gS_forcings_dict)...)
 
-    return forcing
+        return NamedTuple(gC_forcings_dict)
+
+    else
+        gS_forcings_dict = Dict()
+
+        for var_name in var_names_to_filter
+            var_key = Symbol(var_name)
+            for i in 1:N_coeffs
+
+                gCkey = Symbol(var_name,"_C",i)
+                gSkey = Symbol(var_name,"_S",i)   
+
+                # The forcing for gC is the sum of a filter forcing term and the original data forcing
+                gC_forcing_i = make_gC_forcing(i, var_name, filter_params)
+                gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies= (;var_key))
+                gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
+
+                # The forcing for gS is just a filter forcing term
+                gS_forcings_dict[gSkey] = make_gS_forcing(i, var_name, filter_params)
+
+            end
+        end
+
+        # Check if we need xi forcing (implied by number of filtered_vars)
+        if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
+            # Create forcing for xi maps (one for each velocity component)
+            for vel_name in velocity_names
+                
+                for i in 1:N_coeffs
+                    gCkey = Symbol("xi_", vel_name, "_C", i) 
+                    gSkey = Symbol("xi_", vel_name, "_S", i) 
+                    var_name = "xi_" * vel_name 
+
+                    # The forcing for xiC includes a term involving xiC and xiS (as for tracers, so reuse forcing constructor) and a 
+                    # term involving the corresponding velocity
+                    gC_forcing_i = make_gC_forcing(i, var_name, filter_params)
+                    xiC_forcing_i = make_xiC_forcing(i, vel_name, filter_params)
+                    gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
+
+                    # The forcing for xiS also includes a term involving xiC and xiS and a term involving the corresponding velocity
+                    gS_forcing_i = make_gS_forcing(i, var_name, filter_params)
+                    xiS_forcing_i = make_xiS_forcing(i, vel_name, filter_params)
+                    gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i)
+
+                end
+            end
+        end
+
+        return (; NamedTuple(gC_forcings_dict)..., NamedTuple(gS_forcings_dict)...)
+    end
 end
 
 """
@@ -593,52 +651,64 @@ function create_output_fields(model::LagrangianFilter,
                               velocity_names::Tuple{Vararg{String}},
                               filter_params::NamedTuple)
 
-    N_coeffs = Int(length(filter_params) / 4)
+    N_coeffs = filter_params.N_coeffs
     N_filtered_vars = length(model.tracers)
     outputs_dict = Dict()
 
-    for original_var in var_names_to_filter
-        
-        # Reconstruct the filtered tracer fields, starting with the first coefficient
-        gC1 = getproperty(model.tracers,Symbol(original_var * "C1"))
-        gS1 = getproperty(model.tracers,Symbol(original_var * "S1"))
-        g_total = filter_params.a1 .* gC1 .+ filter_params.b1 .* gS1
-    
-        # Then add the other coefficients
-        for i in 2:N_coeffs
-            a = getproperty(filter_params,Symbol("a$i"))
-            b = getproperty(filter_params,Symbol("b$i"))
-            gCi = getproperty(model.tracers,Symbol(original_var * "C" * i))
-            gSi = getproperty(model.tracers,Symbol(original_var * "S" * i))
-            g_total .+= a .* gCi .+ b .* gSi
-        end
-        outputs_dict[original_var * "_filtered"] = g_total
-    end
-
-    # Reconstruct the maps, if they exist
-    if N_filtered_vars > N_coeffs*length(var_names_to_filter)*2
-        for vel in velocity_names
-
-            # Start with the first coefficient
-            xiC1 = getproperty(model.tracers,Symbol("xi_" * vel * "_C1"))
-            xiS1 = getproperty(model.tracers,Symbol("xi_" * vel * "_S1"))
-            g_total = filter_params.a1 .* xiC1 .+ filter_params.b1 .* xiS1
+    for var_name in var_names_to_filter
+        if N_coeffs == 0.5
+            # Special case, single exponential only has a cosine component
+            gC1 = getproperty(model.tracers,Symbol(var_name * "_C1"))
+            g_total = filter_params.a1 * gC1
+            outputs_dict[var_name * "_filtered"] = g_total
+        else
+            # Reconstruct the filtered tracer fields, starting with the first coefficient
+            gC1 = getproperty(model.tracers, Symbol(var_name * "_C1"))
+            gS1 = getproperty(model.tracers, Symbol(var_name * "_S1"))
+            g_total = filter_params.a1 * gC1 + filter_params.b1 * gS1
 
             # Then add the other coefficients
             for i in 2:N_coeffs
                 a = getproperty(filter_params,Symbol("a$i"))
                 b = getproperty(filter_params,Symbol("b$i"))
-                xiCi = getproperty(model.tracers,Symbol("xi_" * vel * "C" * i))
-                xiSi = getproperty(model.tracers,Symbol("xi_" * vel * "S" * i))
-                g_total .+= a .* xiCi .+ b .* xiSi
+                gCi = getproperty(model.tracers,Symbol(var_name * "_C$i" ))
+                gSi = getproperty(model.tracers,Symbol(var_name * "_S$i" ))
+                g_total += a * gCi + b * gSi
             end
-            outputs_dict["xi_" * vel] = g_total
+            outputs_dict[var_name * "_filtered"] = g_total
+        end
+    end
+
+    # Reconstruct the maps, if they exist
+    if N_filtered_vars > N_coeffs*length(var_names_to_filter)*2
+        for vel_name in velocity_names
+            if N_coeffs == 0.5
+                # Special case, single exponential only has a cosine component
+                xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
+                g_total = filter_params.a1 * xiC1
+                outputs_dict["xi_" * vel_name] = g_total
+            else
+                # Start with the first coefficient
+                xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
+                xiS1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_S1"))
+                g_total = filter_params.a1 * xiC1 + filter_params.b1 * xiS1
+
+                # Then add the other coefficients
+                for i in 2:N_coeffs
+                    a = getproperty(filter_params,Symbol("a$i"))
+                    b = getproperty(filter_params,Symbol("b$i"))
+                    xiCi = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C$i"))
+                    xiSi = getproperty(model.tracers,Symbol("xi_" * vel_name * "_S$i"))
+                    g_total += a * xiCi + b * xiSi
+                end
+                outputs_dict["xi_" * vel_name] = g_total
+            end
         end
     end
 
     # Let's also add the saved vars for comparison
-    for original_var in var_names_to_filter
-        outputs_dict[original_var] = getproperty(model.auxiliary_fields, Symbol(original_var))
+    for var_name in var_names_to_filter
+        outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
     end
 
     return outputs_dict

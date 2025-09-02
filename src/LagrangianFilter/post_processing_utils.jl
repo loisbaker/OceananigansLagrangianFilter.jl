@@ -10,34 +10,70 @@ function __init__()
     PythonCall.pycopy!(scipy_interpolate, pyimport("scipy.interpolate"))
 end
 
-function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename,T,velocity_names, var_names_to_filter)
+"""
+    sum_forward_backward_contributions!(combined_output_filename::String, 
+                                       forward_output_filename::String, 
+                                       backward_output_filename::String, 
+                                       T::Real, 
+                                       velocity_names::Tuple{Vararg{String}}, 
+                                       var_names_to_filter::Tuple{Vararg{String}})
+
+Combines the results of a forward-in-time and a backward-in-time filter simulation by summing
+their contributions at the correct times and saving in a new file.
+
+
+# Arguments
+- `combined_output_filename::String`: The path to the output file for the combined data.
+- `forward_output_filename::String`: The path to the JLD2 file containing the forward simulation output.
+- `backward_output_filename::String`: The path to the JLD2 file containing the backward simulation output.
+- `T::Real`: The total duration of the filter simulation (end time).
+- `velocity_names::Tuple{Vararg{String}}`: A tuple of names for velocity variables to be filtered (e.g., ("u", "v")).
+- `var_names_to_filter::Tuple{Vararg{String}}`: A tuple of names for other variables to be filtered (e.g., ("T", "S")).
+"""
+
+function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename, T, velocity_names, var_names_to_filter)
 # Combine the forward and backward simulations by summing them into a single file
 
-    #TODO do this by creating a new file and copying metadata, rather than copying the forward file, then delete the forward and backward files, and delete the input file
-    # Make a copy of the forward file to fill in with combined data
-    cp(forward_output_filename, combined_output_filename,force=true)
-
     # List the names of the fields that we will combine
-    data_field_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in var_names_to_filter])
+    filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in var_names_to_filter])
+    
+    jldopen(combined_output_filename,"w") do combined_file
+        jldopen(forward_output_filename,"r") do forward_file
 
-    # Then, we open the combined data and add backward scalars and maps at the correct timesteps
-    jldopen(combined_output_filename,"r+") do file
-        forward_iterations = parse.(Int, keys(file["timeseries/t"]))
-        for field in data_field_names
-            # Open the backward data as a FieldTimeSeries
-            fts_backward = FieldTimeSeries(backward_output_filename, field)
+            # First copy the forward file metadata and file structure
+            copy_file_metadata!(forward_file, combined_file, (var_names_to_filter..., filtered_var_names...))
 
-            # Loop over forward times and add the backward data
-            for iter in forward_iterations
-                forward_time = file["timeseries/t/$iter"]
-                forward_data = file["timeseries/$field/$iter"] # Load in data
-                Base.delete!(file, "timeseries/$field/$iter") # Delete the entry
-                # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
-                file["timeseries/$field/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data) 
+            forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
+
+            # Copy over the unfiltered field data
+            for var_name in (var_names_to_filter...,"t")
+                for iter in forward_iterations
+                    combined_file["timeseries/$var_name/$iter"] = forward_file["timeseries/$var_name/$iter"]
+                end
+            end
+
+            # Copy over the filtered data, combined with backward data
+            for var_name in filtered_var_names
+                # Open the backward data as a FieldTimeSeries, so we can interpolate to match times
+                fts_backward = FieldTimeSeries(backward_output_filename, var_name)
+
+                # Loop over forward times and add the backward data
+                for iter in forward_iterations
+                    forward_time = forward_file["timeseries/t/$iter"]
+                    forward_data = forward_file["timeseries/$var_name/$iter"] # Load in data
+                    
+                    # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
+                    combined_file["timeseries/$var_name/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data)
+                end
             end
         end
     end
     println("Combined forward and backward contributions into $combined_output_filename")
+
+    # Delete the forward backward?
+    # rm(forward_output_filename)
+    # rm(backward_output_filename)
+
 end
 
 function remove_halos(data,grid)
