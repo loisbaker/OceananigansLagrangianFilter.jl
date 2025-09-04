@@ -56,7 +56,7 @@ fields(model::LagrangianFilter) = merge(model.velocities,
 """
     prognostic_fields(model::LagrangianFilter)
 
-Return a flattened `NamedTuple` of the prognostic fields associated with `LagrangianFilter`.
+Return a flattened `NamedTuple` of the prognostic fields associated with `LagrangianFilter`. velocities are not really prognostic, but we include them here for convenience.
 """
 prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.tracers)
 

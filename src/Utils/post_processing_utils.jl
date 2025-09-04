@@ -525,19 +525,36 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
     println("Wrote NetCDF file to $nc_filename")
 end
 
-function get_weight_function(t,tstar,N,freq_c)
+function get_weight_function(t, tref, filter_params)
     
-    N_coeffs = 2^(N-1)
-    G = zeros(t)
+    G = 0*t
+    N_coeffs = filter_params.N_coeffs
     for i in 1:N_coeffs
         
-        a = (freq_c/2^N)*sin(pi/(2^(N+1))*(2*i-1))
-        b = (freq_c/2^N)*cos(pi/(2^(N+1))*(2*i-1))
-        c = freq_c*sin(pi/(2^(N+1))*(2*i-1))
-        d = freq_c*cos(pi/(2^(N+1))*(2*i-1))
+        a = getproperty(filter_params, Symbol("a$i"))
+        b = getproperty(filter_params, Symbol("b$i"))
+        c = getproperty(filter_params, Symbol("c$i"))
+        d = getproperty(filter_params, Symbol("d$i"))
 
-        G += (a*cos(d*abs(t-tstar)) + b*sin(d*abs(t-tstar)))*exp(-c*abs(t-tstar))
+        G += (a.*cos.(d.*abs.(t .- tref)) .+ b.*sin.(d.*abs.(t .- tref))).*exp.(-c.*abs.(t .- tref))
     end
 
     return G
+end
+
+function get_frequency_response(freq, filter_params)
+    
+    Ghat = 0*freq
+    N_coeffs = filter_params.N_coeffs
+    for i in 1:N_coeffs
+        
+        a = getproperty(filter_params, Symbol("a$i"))
+        b = getproperty(filter_params, Symbol("b$i"))
+        c = getproperty(filter_params, Symbol("c$i"))
+        d = getproperty(filter_params, Symbol("d$i"))
+
+        Ghat += (a*c .+ b.*(d .+ freq))./(c^2 .+ (d .+ freq).^2) .+ (a*c .+ b.*(d .- freq))./(c^2 .+ (d .- freq).^2)
+    end
+
+    return Ghat
 end
