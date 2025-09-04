@@ -5,7 +5,7 @@ using Oceananigans.Grids: XFlatGrid, YFlatGrid
 
 
 # We assume here that top/bottom BC are always synched (no partitioning in z)
-function compute_buffer_tendencies!(model::OfflineLagrangianFilter)
+function compute_buffer_tendencies!(model::LagrangianFilter)
     grid = model.grid
     arch = architecture(grid)
 

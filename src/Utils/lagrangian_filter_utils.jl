@@ -1,3 +1,10 @@
+using Oceananigans
+using JLD2
+using JLD2: Group
+using Oceananigans.Fields: Center
+using Oceananigans.Units: Time
+using Oceananigans: AbstractModel
+
 """
     copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
 
@@ -101,21 +108,17 @@ T_filter = create_input_data_on_disk(
 )
 ```
 """
-function create_input_data_on_disk(original_data_filename::String, 
-                                   var_names_to_filter::Tuple{Vararg{String}}, 
-                                   velocity_names::Tuple{Vararg{String}}; 
-                                   direction::String="forward", 
-                                   T_start::Union{Real, Nothing}=nothing, 
-                                   T_end::Union{Real, Nothing}=nothing)
+function create_input_data_on_disk(config; direction::String="forward")
     
+    original_data_filename = config.original_data_filename
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    T_start = config.T_start
+    T_end = config.T_end
+
     # Check that a valid direction has been given
     if direction ∉ ("backward", "forward")
         error("Invalid direction: $direction. Must be 'backward' or 'forward'.")
-    end
-
-    # Check that the original file exists 
-    if !isfile(original_data_filename)
-        error("Source file not found: $original_data_filename")
     end
 
     # Create a new filename and delete any file that already has that name
@@ -127,31 +130,10 @@ function create_input_data_on_disk(original_data_filename::String,
     # Open the original file for reading 
     jldopen(original_data_filename,"r") do original_file
 
-        # Check if velocities and tracers given are in the original_file
-        for var in (var_names_to_filter..., velocity_names...)
-            if !haskey(original_file["timeseries"], var)
-                error("Variable '$var' not found in original data file.")
-            end
-        end
-
         # Check if T_start and T_end are found in the original_file
         iterations = parse.(Int, keys(original_file["timeseries/t"]))
         times = [original_file["timeseries/t/$iter"] for iter in iterations]
         
-        # If T_start is not specified, use the first simulation time
-        T_start = isnothing(T_start) ? times[1] : T_start
-
-        # If T_end is not specified, use the last simulation time
-        T_end = isnothing(T_end) ? times[end] : T_end
-
-        if T_start < times[1] || T_start > times[end]
-            error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
-        end
-
-        if T_end < times[1] || T_end > times[end]
-            error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
-        end
-
         # Create a truncated iterations variable with just the times to copy
         iterations_truncated = iterations[(times .>= T_start) .& (times .<= T_end)]
 
@@ -207,9 +189,6 @@ function create_input_data_on_disk(original_data_filename::String,
                 
             end
 
-            # Calculate and return the total filter time
-            T_filter = T_end - T_start
-            return T_filter
         end
     end
 end
@@ -244,20 +223,20 @@ and extracts the grid from the first loaded time series.
     - `var_timeseries::Tuple`: A tuple of loaded tracer `FieldTimeSeries`.
     - `grid`: The grid object from the loaded data.
 """
-function load_data(original_data_filename::String, 
-                   var_names_to_filter::Tuple{Vararg{String}}, 
-                   velocity_names::Tuple{Vararg{String}}; 
-                   architecture=CPU(), 
-                   backend=InMemory())
+function load_data(config)
+
+    original_data_filename = config.original_data_filename
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    architecture = config.architecture
+    backend = config.backend
 
     input_data_filename = original_data_filename[1:end-5] * "_filter_input.jld2"
     
     velocity_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in velocity_names)
     var_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in var_names_to_filter)
 
-    grid = velocity_timeseries[1].grid
-
-    return velocity_timeseries, var_timeseries, grid
+    return velocity_timeseries, var_timeseries
 end
 
 """
@@ -328,7 +307,10 @@ Creates a `NamedTuple` of `CenterField`s on the given `grid` for each variable n
   and values as `CenterField` objects initialized on `grid`.
 
 """
-function create_original_vars(var_names_to_filter::Tuple{Vararg{String}}, grid::AbstractGrid)
+function create_original_vars(config)
+
+    var_names_to_filter = config.var_names_to_filter
+    grid = config.grid
     # Creates auxiliary fields to store the saved variables
     vars = Dict()
     for var_name in var_names_to_filter
@@ -366,11 +348,12 @@ are created for map variables to interpolate to mean position.
   The symbols for the cosine components are listed first, followed by the sine components.
 
 """
-function create_filtered_vars(var_names_to_filter::Tuple{Vararg{String}},
-                              velocity_names::Tuple{Vararg{String}},
-                              filter_params::NamedTuple;
-                              map_to_mean::Bool=true)
-                              
+function create_filtered_vars(config)
+    
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    filter_params = config.filter_params
+    map_to_mean = config.map_to_mean
     N_coeffs = filter_params.N_coeffs
 
     if N_coeffs == 0.5 # special case, single exponential only has a cosine component
@@ -413,7 +396,7 @@ function create_filtered_vars(var_names_to_filter::Tuple{Vararg{String}},
 end
 
 """
-    make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+    _make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 
 Create a forcing term for the cosine component (gC) of a filtered variable.
 Includes the special case of a single exponential.
@@ -426,7 +409,7 @@ Includes the special case of a single exponential.
 # Returns
 - A `Forcing` object configured to compute the forcing term for the gC field.
 """
-function make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+function _make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
     if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
         c = getproperty(filter_params, Symbol("c",i))
         gCkey = Symbol(var_name,"_C",i)
@@ -443,7 +426,7 @@ function make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 end
 
 """
-    make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+    _make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 
 Create a forcing term for the sine component (gS) of a filtered variable.
 
@@ -455,7 +438,7 @@ Create a forcing term for the sine component (gS) of a filtered variable.
 # Returns
 - A `Forcing` object configured to compute the forcing term for the gS field.
 """
-function make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+function _make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
     c = getproperty(filter_params, Symbol("c",i))
     d = getproperty(filter_params, Symbol("d",i))
     gCkey = Symbol(var_name,"_C",i)
@@ -465,7 +448,7 @@ function make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
 end
 
 """
-    make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+    _make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 
 Create a forcing term for the cosine component (xiC) of a map variable. The function handles 
 the special case of a single exponential filter where `d` is zero.
@@ -478,7 +461,7 @@ the special case of a single exponential filter where `d` is zero.
 # Returns
 - A `Forcing` object configured to compute the forcing term for the xiC field.
 """
-function make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+function _make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
     c = getproperty(filter_params, Symbol("c",i))
     d = filter_params.N_coeffs == 0.5 ? 0 : getproperty(filter_params, Symbol("d",i)) # Single exponential special case gets d = 0
     forcing_func = (args...) -> -args[end][1]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
@@ -486,7 +469,7 @@ function make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 end
 
 """
-    make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+    _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 
 Create a forcing term for the sine component (xiS) of a map variable. 
 
@@ -498,7 +481,7 @@ Create a forcing term for the sine component (xiS) of a map variable.
 # Returns
 - A `Forcing` object configured to compute the forcing term for the xiS field.
 """
-function make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
+function _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
     c = getproperty(filter_params, Symbol("c",i))
     d = getproperty(filter_params, Symbol("d",i))
     forcing_func = (args...) -> -args[end][2]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
@@ -528,11 +511,11 @@ to be used in an Oceananigans model.
 - `forcing::NamedTuple`: A `NamedTuple` where each key is a filtered
   variable symbol and each value is an Oceananigans `Forcing` object.
 """
-function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
-                        var_names_to_filter::Tuple{Vararg{String}},
-                        velocity_names::Tuple{Vararg{String}},
-                        filter_params::NamedTuple)
+function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config)
 
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
 
     # Initialize dictionary
@@ -550,7 +533,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
             gCkey = Symbol(var_name,"_C1")
 
             # The forcing for gC is the sum of a filter forcing term and the original data forcing
-            gC_forcing = make_gC_forcing(1, var_name, filter_params)
+            gC_forcing = _make_gC_forcing(1, var_name, filter_params)
             gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies = (;var_key))
             gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing)
         end
@@ -564,8 +547,8 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
                 var_name = "xi_" * vel_name 
                 # The forcing for xiC includes a term involving xiC (as for tracers) and a 
                 # term involving the corresponding velocity
-                gC_forcing = make_gC_forcing(1, var_name, filter_params)
-                xiC_forcing = make_xiC_forcing(1, vel_name, filter_params)
+                gC_forcing = _make_gC_forcing(1, var_name, filter_params)
+                xiC_forcing = _make_xiC_forcing(1, vel_name, filter_params)
                 gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing)
 
             end
@@ -584,12 +567,12 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
                 gSkey = Symbol(var_name,"_S",i)   
 
                 # The forcing for gC is the sum of a filter forcing term and the original data forcing
-                gC_forcing_i = make_gC_forcing(i, var_name, filter_params)
+                gC_forcing_i = _make_gC_forcing(i, var_name, filter_params)
                 gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies= (;var_key))
                 gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
 
                 # The forcing for gS is just a filter forcing term
-                gS_forcings_dict[gSkey] = make_gS_forcing(i, var_name, filter_params)
+                gS_forcings_dict[gSkey] = _make_gS_forcing(i, var_name, filter_params)
 
             end
         end
@@ -606,13 +589,13 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
 
                     # The forcing for xiC includes a term involving xiC and xiS (as for tracers, so reuse forcing constructor) and a 
                     # term involving the corresponding velocity
-                    gC_forcing_i = make_gC_forcing(i, var_name, filter_params)
-                    xiC_forcing_i = make_xiC_forcing(i, vel_name, filter_params)
+                    gC_forcing_i = _make_gC_forcing(i, var_name, filter_params)
+                    xiC_forcing_i = _make_xiC_forcing(i, vel_name, filter_params)
                     gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
 
                     # The forcing for xiS also includes a term involving xiC and xiS and a term involving the corresponding velocity
-                    gS_forcing_i = make_gS_forcing(i, var_name, filter_params)
-                    xiS_forcing_i = make_xiS_forcing(i, vel_name, filter_params)
+                    gS_forcing_i = _make_gS_forcing(i, var_name, filter_params)
+                    xiS_forcing_i = _make_xiS_forcing(i, vel_name, filter_params)
                     gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i)
 
                 end
@@ -624,7 +607,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
 end
 
 """
-    create_output_fields(model::LagrangianFilter,
+    create_output_fields(model::AbstractModel,
                          var_names_to_filter::Tuple{Vararg{String}},
                          velocity_names::Tuple{Vararg{String}},
                          filter_params::NamedTuple)
@@ -646,11 +629,11 @@ the filtered components (`_C#`, `_S#`) according to the filter coefficients.
   to the reconstructed output fields. This dictionary also includes the
   original fields for comparison.
 """
-function create_output_fields(model::LagrangianFilter,
-                              var_names_to_filter::Tuple{Vararg{String}},
-                              velocity_names::Tuple{Vararg{String}},
-                              filter_params::NamedTuple)
+function create_output_fields(model::AbstractModel, config)
 
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
     N_filtered_vars = length(model.tracers)
     outputs_dict = Dict()
@@ -744,5 +727,28 @@ function update_input_data!(sim::Simulation, input_data::NamedTuple)
     for original_var_fts in original_var_timeseries
         set!(getproperty(model.auxiliary_fields, Symbol(original_var_fts.name)), original_var_fts[Time(t)])
         # halo regions get filled automatically
+    end
+end
+
+# Docstring
+function initialise_filtered_vars(model, saved_original_vars, config)
+        filter_params = config.filter_params
+        
+    for original_var_fts in saved_original_vars
+        var_name = original_var_fts.name
+        if filter_params.N_coeffs == 0.5 # Special case of single exponential
+            filtered_var_C = Symbol(var_name,"_C1",)
+            c1 = filter_params.c1
+            set!(getproperty(model.tracers, filtered_var_C), 1/c1*original_var_fts[Time(0)])
+        else
+            for i in 1:filter_params.N_coeffs
+                filtered_var_C = Symbol(var_name,"_C",i)
+                filtered_var_S = Symbol(var_name,"_S",i)
+                ci = getproperty(filter_params,Symbol("c$i"))
+                di = getproperty(filter_params,Symbol("d$i"))
+                set!(getproperty(model.tracers, filtered_var_C), ci/(ci^2 + di^2)*original_var_fts[Time(0)])
+                set!(getproperty(model.tracers, filtered_var_S), di/(ci^2 + di^2)*original_var_fts[Time(0)])
+            end
+        end
     end
 end

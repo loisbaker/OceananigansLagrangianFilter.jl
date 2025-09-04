@@ -16,7 +16,7 @@ Update peripheral aspects of the model (halo regions, diffusivities, hydrostatic
 pressure) to the current model state. If `callbacks` are provided (in an array),
 they are called in the end.
 """
-function update_state!(model::OfflineLagrangianFilter, callbacks=[]; compute_tendencies = true)
+function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies = true)
     
     # Mask immersed tracers
     foreach(model.tracers) do tracer
@@ -52,7 +52,7 @@ function update_state!(model::OfflineLagrangianFilter, callbacks=[]; compute_ten
     return nothing
 end
 
-function compute_auxiliaries!(model::OfflineLagrangianFilter; κ_parameters = tuple(:xyz)) 
+function compute_auxiliaries!(model::LagrangianFilter; κ_parameters = tuple(:xyz)) 
 
     closure = model.closure
     diffusivity = model.diffusivity_fields

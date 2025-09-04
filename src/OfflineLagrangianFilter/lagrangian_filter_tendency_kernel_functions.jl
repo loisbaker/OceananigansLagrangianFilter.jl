@@ -51,7 +51,6 @@ velocity components, tracer fields, and precalculated diffusivities where applic
     model_fields = merge(velocities, tracers, auxiliary_fields)
 
 
-
     total_velocities = with_advective_forcing(forcing, velocities)
     buoyancy = nothing
     return ( - div_Uc(i, j, k, grid, advection, total_velocities, c)

@@ -30,7 +30,7 @@ T₀[T₀ .< 0.5] .= 0
 set!(model, u=u₀, v=v₀, T=T₀)
 ```
 """
-function set!(model::OfflineLagrangianFilter; kwargs...)
+function set!(model::LagrangianFilter; kwargs...)
     for (fldname, value) in kwargs
         if fldname ∈ propertynames(model.velocities)
             ϕ = getproperty(model.velocities, fldname)

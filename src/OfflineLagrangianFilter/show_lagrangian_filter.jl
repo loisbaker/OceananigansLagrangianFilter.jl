@@ -4,7 +4,7 @@ using Oceananigans.TurbulenceClosures: closure_summary
 function Base.summary(model::LagrangianFilter)
     A = nameof(typeof(architecture(model.grid)))
     G = nameof(typeof(model.grid))
-    return string("OfflineLagrangianFilter{$A, $G}",
+    return string("LagrangianFilter{$A, $G}",
                   "(time = ", prettytime(model.clock.time), ", iteration = ", model.clock.iteration, ")")
 end
 

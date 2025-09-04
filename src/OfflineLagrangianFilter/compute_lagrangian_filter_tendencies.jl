@@ -14,7 +14,7 @@ import Oceananigans.TimeSteppers: compute_tendencies!
 Calculate the interior and boundary contributions to tendency terms without the
 contribution from non-hydrostatic pressure.
 """
-function compute_tendencies!(model::OfflineLagrangianFilter, callbacks)
+function compute_tendencies!(model::LagrangianFilter, callbacks)
 
     # Note:
     #

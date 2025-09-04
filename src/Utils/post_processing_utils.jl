@@ -1,7 +1,8 @@
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
 using DataStructures: OrderedDict
 using NCDatasets
-using ProgressBars
+using JLD2
+using JLD2: Group
 
 # Python import to use the LinearNDInterpolator for regridding
 using PythonCall
@@ -31,8 +32,15 @@ their contributions at the correct times and saving in a new file.
 - `var_names_to_filter::Tuple{Vararg{String}}`: A tuple of names for other variables to be filtered (e.g., ("T", "S")).
 """
 
-function sum_forward_backward_contributions!(combined_output_filename,forward_output_filename,backward_output_filename, T, velocity_names, var_names_to_filter)
+function sum_forward_backward_contributions!(config)
 # Combine the forward and backward simulations by summing them into a single file
+
+combined_output_filename = config.combined_output_filename
+forward_output_filename = config.forward_output_filename
+backward_output_filename = config.backward_output_filename
+T = config.T
+velocity_names = config.velocity_names
+var_names_to_filter = config.var_names_to_filter
 
     # List the names of the fields that we will combine
     filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in var_names_to_filter])
@@ -70,13 +78,9 @@ function sum_forward_backward_contributions!(combined_output_filename,forward_ou
     end
     println("Combined forward and backward contributions into $combined_output_filename")
 
-    # Delete the forward backward?
-    # rm(forward_output_filename)
-    # rm(backward_output_filename)
-
 end
 
-function remove_halos(data,grid)
+function _remove_halos(data,grid)
     Hx = grid.Hx
     Hy = grid.Hy
     Hz = grid.Hz
@@ -112,7 +116,11 @@ function _create_coords(grid)
     return coord_dict
 end
 
-function regrid_to_mean_position!(combined_output_filename, var_names_to_filter, velocity_names, npad = 5)
+function regrid_to_mean_position!(config)
+    combined_output_filename = config.combined_output_filename
+    var_names_to_filter = config.var_names_to_filter
+    velocity_names = config.velocity_names
+    npad = config.npad 
 
     jldopen(combined_output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
@@ -143,7 +151,7 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
                 g[property] = file["timeseries/$var/serialized/$property"]
             end
         end
-        for iter in ProgressBar(iterations)
+        for iter in iterations
             Xi_list = []
             regular_coord_mesh = []
             n_true_dims = 0
@@ -154,7 +162,7 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
                     if (dim == "x") && ("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u/$iter"]
                         # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
-                        Xi_u = remove_halos(Xi_u,grid)
+                        Xi_u = _remove_halos(Xi_u,grid)
                         # move xi points outside of domain into domain
                         if "x" in periodic_dimensions                           
                             Xi_u .-= floor.((Xi_u .- grid.xᶠᵃᵃ[1])./grid.Lx) .* grid.Lx
@@ -165,13 +173,13 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
                     elseif (dim == "x") && !("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"]
                         # Lose the halo regions 
-                        Xi_u = remove_halos(Xi_u,grid)
+                        Xi_u = _remove_halos(Xi_u,grid)
                         push!(Xi_list,vec(Xi_u))
 
                     elseif (dim == "y") && ("v" in velocity_names)
                         Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v/$iter"]
                         # Lose the halo regions 
-                        Xi_v = remove_halos(Xi_v,grid)
+                        Xi_v = _remove_halos(Xi_v,grid)
                         # move xi points outside of domain + halo regions into domain
                         if "y" in periodic_dimensions
                             Xi_v .-= floor.((Xi_v .- grid.yᵃᶠᵃ[1])./grid.Ly) .* grid.Ly
@@ -181,13 +189,13 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
                     elseif (dim == "y") && !("v" in velocity_names)
                         Xi_v = coord_dict["y_mesh"]
                         # Lose the halo regions 
-                        Xi_v = remove_halos(Xi_v,grid)
+                        Xi_v = _remove_halos(Xi_v,grid)
                         push!(Xi_list,vec(Xi_v))
 
                     elseif (dim == "z") && ("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w/$iter"]
                         # Lose the halo regions 
-                        Xi_w = remove_halos(Xi_w,grid)
+                        Xi_w = _remove_halos(Xi_w,grid)
                         # move xi points outside of domain + halo regions into domain
                         if "z" in periodic_dimensions
                             Xi_w .-= floor.((Xi_w .- grid.z.cᵃᵃᶠ[1])./grid.Lz) .* grid.Lz
@@ -197,7 +205,7 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
                     elseif (dim == "z") && !("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ zeros(coord_dict["original_size"])
                         # Lose the halo regions 
-                        Xi_w = remove_halos(Xi_w,grid)
+                        Xi_w = _remove_halos(Xi_w,grid)
                         push!(Xi_list,vec(Xi_w))
 
                     else
@@ -211,7 +219,7 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
             for var in var_names_to_filter
                 var_data = file["timeseries/$var"*"_filtered/$iter"]
                 # Lose the halo regions 
-                var_data = remove_halos(var_data,grid)
+                var_data = _remove_halos(var_data,grid)
 
                 push!(Xi_list, vec(var_data))
             end
@@ -318,6 +326,7 @@ function regrid_to_mean_position!(combined_output_filename, var_names_to_filter,
             end
         end
     end
+    println("Wrote regridded data to new variables with _regrid suffix in file $combined_output_filename")
 end
 
 function jld2_to_netcdf(jld2_filename,nc_filename)
@@ -495,10 +504,10 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
         
 
         for varname in keys(file["timeseries"])
-            if varname != "t"
+            if varname ∉ ("t","t_simulation") 
                     
                 # Create a variable in the NetCDF file
-                bc_string = sprint(show, file["timeseries/xi_u/serialized/boundary_conditions"])
+                bc_string = sprint(show, file["timeseries/$varname/serialized/boundary_conditions"])
                 ncv = defVar(ds, varname, Float64, (location_map[file["timeseries/$varname/serialized/location"]]...,"time"), attrib = OrderedDict(
                     "boundary conditions"                     => bc_string,
                 ))
@@ -513,6 +522,7 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
         close(ds)
         
     end
+    println("Wrote NetCDF file to $nc_filename")
 end
 
 function get_weight_function(t,tstar,N,freq_c)

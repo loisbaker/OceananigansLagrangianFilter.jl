@@ -20,7 +20,7 @@ import Oceananigans.Models: total_velocities, default_nan_checker, timestepper
 
 
 
-mutable struct OfflineLagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
+mutable struct LagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
                                    V, K, B, AF} <: AbstractModel{TS, A}
 
          architecture :: A        # Computer `Architecture` on which `Model` is run
@@ -38,7 +38,7 @@ mutable struct OfflineLagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, 
 end
 
 """
-    OfflineLagrangianFilter(;           grid,
+    LagrangianFilter(;           grid,
                                     clock = Clock{eltype(grid)}(time = 0),
                                 advection = Centered(),
                       forcing::NamedTuple = NamedTuple(),
@@ -75,28 +75,28 @@ Keyword arguments
 """
 
 
-function OfflineLagrangianFilter(; grid,
-                             clock = Clock{eltype(grid)}(time = 0),
-                             advection = Centered(),
-                             forcing::NamedTuple = NamedTuple(),
-                             closure = nothing,
-                             boundary_conditions::NamedTuple = NamedTuple(),
-                             tracers = (),
-                             timestepper = :RungeKutta3,
-                             velocities = nothing,
-                             diffusivity_fields = nothing,
-                             auxiliary_fields = NamedTuple())
+function LagrangianFilter(; grid,
+                            clock = Clock{eltype(grid)}(time = 0),
+                            advection = Centered(),
+                            forcing::NamedTuple = NamedTuple(),
+                            closure = nothing,
+                            boundary_conditions::NamedTuple = NamedTuple(),
+                            tracers = (),
+                            timestepper = :RungeKutta3,
+                            velocities = nothing,
+                            diffusivity_fields = nothing,
+                            auxiliary_fields = NamedTuple())
 
     arch = architecture(grid)
 
     tracers = tupleit(tracers) # supports tracers=:c keyword argument (for example)
 
    
-    # We don't support CAKTE for OfflineLagrangianFilter yet.
+    # We don't support CAKTE for LagrangianFilter yet.
     closure = validate_closure(closure)
     first_closure = closure isa Tuple ? first(closure) : closure
     first_closure isa FlavorOfCATKE &&
-        error("CATKEVerticalDiffusivity is not supported for OfflineLagrangianFilter --- yet!")
+        error("CATKEVerticalDiffusivity is not supported for LagrangianFilter --- yet!")
 
     # Adjust advection scheme to be valid on a particular grid size. i.e. if the grid size
     # is smaller than the advection order, reduce the order of the advection in that particular
@@ -147,16 +147,16 @@ function OfflineLagrangianFilter(; grid,
     # Regularize forcing for model tracer and velocity fields.
     forcing = model_forcing(model_fields; forcing...)
 
-    model = OfflineLagrangianFilter(arch, grid, clock, advection,
-                                forcing, closure, buoyancy, velocities, tracers,
-                                diffusivity_fields, timestepper, auxiliary_fields)
+    model = LagrangianFilter(arch, grid, clock, advection,
+                              forcing, closure, buoyancy, velocities, tracers,
+                              diffusivity_fields, timestepper, auxiliary_fields)
 
     update_state!(model; compute_tendencies = false)
     
     return model
 end
 
-architecture(model::OfflineLagrangianFilter) = model.architecture
+architecture(model::LagrangianFilter) = model.architecture
 
 function inflate_grid_halo_size(grid, tendency_terms...)
     user_halo = grid.Hx, grid.Hy, grid.Hz
