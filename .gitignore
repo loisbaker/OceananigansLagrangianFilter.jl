@@ -63,3 +63,6 @@ docs/Manifest.toml
 statprof
 *.sqlite
 *.nsys-rep
+
+# Conda
+.CondaPkg
