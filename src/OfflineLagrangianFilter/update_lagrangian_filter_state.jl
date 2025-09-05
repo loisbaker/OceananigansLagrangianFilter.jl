@@ -1,5 +1,4 @@
 using Oceananigans: UpdateStateCallsite
-using Oceananigans.Architectures
 using Oceananigans.BoundaryConditions
 using Oceananigans.BoundaryConditions: update_boundary_conditions! 
 using Oceananigans.TurbulenceClosures: compute_diffusivities!
@@ -10,10 +9,9 @@ using Oceananigans.Models: update_model_field_time_series!
 import Oceananigans.TimeSteppers: update_state!
 
 """
-    update_state!(model::NonhydrostaticModel, callbacks=[])
+    update_state!(model::LagrangianFilter, callbacks=[])
 
-Update peripheral aspects of the model (halo regions, diffusivities, hydrostatic
-pressure) to the current model state. If `callbacks` are provided (in an array),
+Update peripheral aspects of the model (halo regions, diffusivities) to the current model state. If `callbacks` are provided (in an array),
 they are called in the end.
 """
 function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies = true)
@@ -38,7 +36,7 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
         compute!(aux_field)
     end
 
-    # Calculate diffusivities and hydrostatic pressure
+    # Calculate diffusivities 
     @apply_regionally compute_auxiliaries!(model)
     fill_halo_regions!(model.diffusivity_fields; only_local_halos = true)
     

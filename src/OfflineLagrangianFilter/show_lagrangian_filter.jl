@@ -11,11 +11,13 @@ end
 function Base.show(io::IO, model::LagrangianFilter)
     TS = nameof(typeof(model.timestepper))
     tracernames = prettykeys(model.tracers)
+    auxnames = prettykeys(model.auxiliary_fields)
 
     print(io, summary(model), "\n",
         "├── grid: ", summary(model.grid), "\n",
         "├── timestepper: ", TS, "\n",
         "├── advection scheme: ", summary(model.advection), "\n",
-        "├── tracers: ", tracernames, "\n",
+        "├── filtered variables: ", tracernames, "\n",
+        "├── original variables: ", auxnames, "\n",
         "├── closure: ", closure_summary(model.closure), "\n")
 end

@@ -65,9 +65,6 @@ function compute_interior_tendency_contributions!(model, kernel_parameters; acti
     diffusivities        = model.diffusivity_fields
     forcings             = model.forcing
     clock                = model.clock
-    u_immersed_bc        = velocities.u.boundary_conditions.immersed
-    v_immersed_bc        = velocities.v.boundary_conditions.immersed
-    w_immersed_bc        = velocities.w.boundary_conditions.immersed
 
     
     start_tracer_kernel_args = (advection, closure)

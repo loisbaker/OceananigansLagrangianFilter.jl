@@ -14,9 +14,13 @@ using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
 using Oceananigans.Grids: XYRegularRG, XZRegularRG, YZRegularRG, XYZRegularRG
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
+using Oceananigans.OutputReaders: AbstractInMemoryBackend
+using Oceananigans.Grids: AbstractGrid
+using Oceananigans.Architectures
 
 import Oceananigans: fields, prognostic_fields 
-import Oceananigans.Advection: cell_advection_timescale
+import Oceananigans.Advection: cell_advection_timescale, AbstractAdvectionScheme
+using ..OceananigansLagrangianFilter: AbstractConfig
 
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
@@ -32,7 +36,6 @@ include("set_lagrangian_filter.jl")
 include("show_lagrangian_filter.jl")
 include("update_lagrangian_filter_state.jl")
 
-# Need to reinclude the functions again here, or work out how to import them
 #####
 ##### Update some Oceananigans internal methods for our new LagrangianFilter model.
 #####
@@ -71,7 +74,7 @@ prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.trace
 
 A configuration object for `apply_offline_filter`.
 """
-struct OfflineFilterConfig
+struct OfflineFilterConfig <: AbstractConfig
     original_data_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}}
@@ -82,21 +85,77 @@ struct OfflineFilterConfig
     T_out::Real 
     filter_params::NamedTuple
     Δt::Real
-    backend
+    backend::AbstractInMemoryBackend
     map_to_mean::Bool
     forward_output_filename::String
     backward_output_filename::String
     combined_output_filename::String
-    verbose::Bool
     npad::Int
     delete_intermediate_files::Bool
+    compute_Eulerian_filter::Bool
     output_netcdf::Bool
     advection
     grid::AbstractGrid
 
 end
 
-# Outer constructor
+"""
+    OfflineFilterConfig(; original_data_filename::String,
+                        var_names_to_filter::Tuple{Vararg{String}},
+                        velocity_names::Tuple{Vararg{String}},
+                        T_start::Union{Real,Nothing} = nothing,
+                        T_end::Union{Real,Nothing} = nothing,
+                        T::Union{Real,Nothing} = nothing,
+                        architecture::AbstractArchitecture = CPU(),
+                        T_out::Union{Real,Nothing} = nothing,
+                        N::Union{Int, Nothing} = nothing,
+                        freq_c::Union{Int, Nothing} = nothing,
+                        filter_params::Union{NamedTuple, Nothing} = nothing,
+                        Δt::Union{Real,Nothing} = nothing,
+                        backend::AbstractInMemoryBackend = InMemory(4),
+                        map_to_mean::Bool = true,
+                        forward_output_filename::String = "forward_output.jld2",
+                        backward_output_filename::String = "backward_output.jld2",
+                        combined_output_filename::String = "combined_output.jld2",
+                        npad::Int = 5,
+                        delete_intermediate_files::Bool = true,
+                        compute_Eulerian_filter::Bool = false,
+                        output_netcdf::Bool = false,
+                        output_original_data::Bool = true
+                        advection::AbstractAdvectionScheme = WENO(),
+                        grid::Union{AbstractGrid, Nothing} = nothing)
+
+Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
+This function validates the input data file, time specifications, and filter parameters
+before creating the `OfflineFilterConfig` object.
+
+Keyword arguments
+=================
+
+  - `original_data_filename`: (required) The path to the JLD2 file containing the original Oceananigans output data.
+  - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
+  - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
+  - `T_start`: Start time for the filter. Must be within the time range of the data. If not given, defaults to either T_end - T (if they are given), or the start time of the original data.
+  - `T_end`: End time for the filter. Must be within the time range of the data. If not given, defaults to either T_start + T (after T_start given or computed, if T is given), or the end time of the original data.
+  - `T`: Duration of the filtering. If not given, defaults to T_end - T_start (after T_start and T_end are given or computed).
+  - `architecture`: The architecture (CPU or GPU) to be used for the filtering computation. Default: `CPU()`.
+  - `T_out`: The output time step for the filtered data. If `nothing`, it defaults to the time step of the original data.
+  - `N`, `freq_c`: Parameters for a Butterworth squared filter. `2^N` is the order of the filter, and `freq_c` is the cutoff frequency. These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
+  - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
+  - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
+  - `backend`: The backend for loading `FieldTimeSeries` data. See `Oceananigans.Fields.FieldTimeSeries`. Default: `InMemory(4)`.
+  - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
+  - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
+  - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
+  - `combined_output_filename`: The filename for the final combined and mapped output. Default: `"combined_output.jld2"`.
+  - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
+  - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
+  - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
+  - `output_netcdf`: A `Bool` indicating whether to also convert the final JLD2 output file to a NetCDF file. Default: `false`.
+    - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
+  - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
+  - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
+"""
 function OfflineFilterConfig(; original_data_filename::String,
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
@@ -109,16 +168,17 @@ function OfflineFilterConfig(; original_data_filename::String,
                             freq_c::Union{Int, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             Δt::Union{Real,Nothing} = nothing,
-                            backend = InMemory(4),
+                            backend::AbstractInMemoryBackend = InMemory(4),
                             map_to_mean::Bool = true,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
                             combined_output_filename::String = "combined_output.jld2",
-                            verbose::Bool = false,
                             npad::Int = 5,
                             delete_intermediate_files::Bool = true,
-                            output_netcdf = false,
-                            advection = WENO(),
+                            compute_Eulerian_filter::Bool = false,
+                            output_netcdf::Bool = false,
+                            output_original_data::Bool = true,
+                            advection::AbstractAdvectionScheme = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing)
 
     # Check that the original file exists 
@@ -186,16 +246,18 @@ function OfflineFilterConfig(; original_data_filename::String,
             error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
         end
 
+        @info "Filtering from T_start=$T_start to T_end=$T_end, duration T=$T"
+
         # Now check T_out, set if necessary to same as input
         if isnothing(T_out)
             T_out = times[2] - times[1]
-            println("T_out not set. Setting T_out = $T_out")
+            @info "T_out not set. Setting T_out = $T_out"
         end
 
         # If Δt not set, set to T_out/10
         if isnothing(Δt)
             Δt = T_out / 10
-            println("Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful")
+            @info "Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful"
         end
     end
 
@@ -205,8 +267,8 @@ function OfflineFilterConfig(; original_data_filename::String,
     elseif isnothing(filter_params) && (isnothing(N) || isnothing(freq_c))
         error("Must specify either filter_params or both N and freq_c.")
     elseif isnothing(filter_params) && !isnothing(N) && !isnothing(freq_c)
-        filter_params = set_BW_filter_params(;N,freq_c)
-        println("Setting filter parameters to use Butterworth squared, order $(2^N), cutoff frequency $freq_c")
+        filter_params = set_offline_BW_filter_params(;N,freq_c)
+        @info "Setting filter parameters to use Butterworth squared, order $(2^N), cutoff frequency $freq_c"
     else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
         # User has specified filter_params directly, but we should check it has the right fields
         if haskey(filter_params, :N_coeffs)
@@ -261,10 +323,11 @@ function OfflineFilterConfig(; original_data_filename::String,
                             forward_output_filename,
                             backward_output_filename,
                             combined_output_filename,
-                            verbose,
                             npad,
                             delete_intermediate_files,
+                            compute_Eulerian_filter,
                             output_netcdf,
+                            output_original_data,
                             advection,
                             grid)
 

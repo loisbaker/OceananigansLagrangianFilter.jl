@@ -1,7 +1,7 @@
 module OnlineLagrangianFilter
 
 function online_test_function()
-    println("This is a test function from OnlineLagrangianFilter.jl")
+    println("Online filtering isn't yet implemented - soon!")
 end
 
 export online_test_function

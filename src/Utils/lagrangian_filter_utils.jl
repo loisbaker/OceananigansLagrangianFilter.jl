@@ -1,27 +1,27 @@
-using Oceananigans
-using JLD2
-using JLD2: Group
-using Oceananigans.Fields: Center
-using Oceananigans.Units: Time
 using Oceananigans: AbstractModel
 
 """
-    copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
+    copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile,
+                        timeseries_vars_to_copy::Tuple{Vararg{String}})
 
-Copies essential metadata from an existing Oceananigans JLD2 output file to a new file.
+Copies essential metadata from an existing Oceananigans JLD2 output file to a
+new file.
 
-This function is a utility for creating a new file structure with all necessary
-simulation metadata (such as grid information and serialized objects) without
-copying large timeseries data. It copies core simulation metadata (`grid`, `serialized`,
-`coriolis`) and the `serialized` entries for specified timeseries variables.
+This function is a utility for creating a new file structure with all
+necessary simulation metadata (such as grid information and serialized
+objects) without copying large timeseries data. It copies core simulation
+metadata (`grid`, `serialized`, `coriolis`) and the `serialized` entries for
+specified timeseries variables.
 
 # Arguments
 - `original_file::JLD2.JLDFile`: The source JLD2 file.
 - `new_file::JLD2.JLDFile`: The destination JLD2 file.
-- `timeseries_vars_to_copy::Tuple{Vararg{String}}`: A tuple of timeseries variable names e.g., ("u", "v").
+- `timeseries_vars_to_copy::Tuple{Vararg{String}}`: A tuple of timeseries
+  variable names e.g., ("u", "v").
 
 """
-function copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, timeseries_vars_to_copy::Tuple{Vararg{String}})
+function copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile, 
+                             timeseries_vars_to_copy::Tuple{Vararg{String}})
 
     # Copy over metadata that isn't associated with variables
     for path in ("grid","serialized")
@@ -60,55 +60,41 @@ function _copy_jld2_recursive!(source::JLD2.JLDFile, dest::JLD2.JLDFile, path::S
 end
 
 """
-    create_input_data_on_disk(original_data_filename::String,
-                              var_names_to_filter::Tuple{Vararg{String}},
-                              velocity_names::Tuple{Vararg{String}};
-                              direction::String="forward",
-                              T_start::Union{Real, Nothing}=nothing,
-                              T_end::Union{Real, Nothing}=nothing)
+    create_input_data_on_disk(config::AbstractConfig; direction::String="forward")
 
-Creates a new JLD2 file for Lagrangian filtering from an existing Oceananigans
-simulation output file by subsetting and re-ordering data on disk.
+Prepares a new JLD2 file on disk with the time-filtered data for a forward or
+backward Lagrangian simulation.
 
-This function copies metadata and a truncated time-series of specified variables
-into a new file, `<original_data_filename>_filter_input.jld2`. The time coordinate
-and velocity fields are transformed based on `direction`.
+This function performs the following steps:
+1.  **Validates `direction`**: Ensures the direction is either `"forward"`
+    or `"backward"`.
+2.  **Creates a new file**: A new JLD2 file is created with the suffix
+    `_filter_input.jld2` and any existing file with the same name is deleted.
+3.  **Copies metadata**: Key metadata from the original file (e.g., `grid`
+    information) is copied to the new file to maintain consistency.
+4.  **Time truncation**: The data is truncated to the time range specified by
+    `config.T_start` and `config.T_end`.
+5.  **Time shifting**:
+    -   For `"forward"` filtering, a new time variable is created, shifted so
+        that `t=0` corresponds to `config.T_start`.
+    -   For `"backward"` filtering, the data is re-ordered and a new time
+        variable is created, shifted so that `t=0` corresponds to `config.T_end`.
+6.  **Velocity reversal**: For `"backward"` filtering, the velocity fields
+    (`u`, `v`, `w`) are negated to correctly simulate backward advection.
 
-# Functionality
-- **Data Subsetting:** Copies specified variables over a time range `[T_start, T_end]`.
-- **Direction Re-ordering:**
-    - `"forward"`: Time is shifted to start at `t=0`.
-    - `"backward"`: Time is inverted (`t = T_end - t_simulation`) and data is reversed,
-      with velocities negated.
+Arguments
+=========
 
-# Arguments
-- `original_data_filename::String`: Path to the source JLD2 file.
-- `var_names_to_filter::Tuple{Vararg{String}}`: Names of tracer variables to copy e.g., ("T", "S").
-- `velocity_names::Tuple{Vararg{String}}`: Names of velocity variables to copy e.g., ("u", "v", "w").
+- `config`: An instance of `AbstractConfig` containing the file paths,
+  variable names, and time specifications.
 
-# Keyword Arguments
-- `direction::String`: The direction of the new time coordinate (`"forward"` or `"backward"`).
-- `T_start::Union{Real, Nothing}`: Start time for the data subset. Defaults to the first time step.
-- `T_end::Union{Real, Nothing}`: End time for the data subset. Defaults to the last time step.
+Keyword Arguments
+=================
 
-# Returns
-- `T_filter::Real`: The total time span of the filtered data (`T_end - T_start`).
-
-# Example
-```julia
-# Create a new JLD2 file with filtered `u` and `v` velocities and a `T` tracer
-# over a specific time period, with the time coordinate running backwards.
-T_filter = create_input_data_on_disk(
-    "simulation.jld2",
-    ("T",),
-    ("u", "v");
-    direction="backward",
-    T_start=100.0,
-    T_end=200.0
-)
-```
+- `direction`: A `String` indicating the simulation direction. It must be
+  either `"forward"` (the default) or `"backward"`.
 """
-function create_input_data_on_disk(config; direction::String="forward")
+function create_input_data_on_disk(config::AbstractConfig; direction::String="forward")
     
     original_data_filename = config.original_data_filename
     var_names_to_filter = config.var_names_to_filter
@@ -194,36 +180,25 @@ function create_input_data_on_disk(config; direction::String="forward")
 end
 
 """
-    load_data(original_data_filename::String,
-              var_names_to_filter::Tuple{Vararg{String}},
-              velocity_names::Tuple{Vararg{String}};
-              architecture=CPU(),
-              backend=InMemory())
+    load_data(config::AbstractConfig)
 
-Loads time-series data for the Lagrangian filter from a JLD2 file.
+Loads the velocity and tracer data from the intermediate input file created by
+`create_input_data_on_disk`. The data for each variable is loaded as a `FieldTimeSeries`
+and returned as a single `NamedTuple`.
 
-This function assumes that the input data has already been prepared by
-`create_input_data_on_disk`. It loads the specified `FieldTimeSeries`
-and extracts the grid from the first loaded time series.
+Arguments
+=========
 
-# Arguments
-- `original_data_filename::String`: The path to the original JLD2 file.
-- `var_names_to_filter::Tuple{Vararg{String}}`: A tuple of tracer variable names.
-- `velocity_names::Tuple{Vararg{String}}`: A tuple of velocity variable names.
+- `config`: An instance of `AbstractConfig` containing the file path, variable names, 
+architecture, and backend.
 
-# Keyword Arguments
-- `architecture`: The architecture on which to load the data (`CPU` or `GPU`).
-  Defaults to `CPU`.
-- `backend`: The data backend for the `FieldTimeSeries` (`InMemory` or `OnDisk`).
-  Defaults to `InMemory`.
+Returns
+=======
 
-# Returns
-- `Tuple{Tuple, Tuple, Any}`: A tuple containing:
-    - `velocity_timeseries::Tuple`: A tuple of loaded velocity `FieldTimeSeries`.
-    - `var_timeseries::Tuple`: A tuple of loaded tracer `FieldTimeSeries`.
-    - `grid`: The grid object from the loaded data.
+A `NamedTuple` with fields `velocity_data` and `var_data`, where each field
+contains a `Tuple` of `FieldTimeSeries` objects.
 """
-function load_data(config)
+function load_data(config::AbstractConfig)
 
     original_data_filename = config.original_data_filename
     var_names_to_filter = config.var_names_to_filter
@@ -235,41 +210,48 @@ function load_data(config)
     
     velocity_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in velocity_names)
     var_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in var_names_to_filter)
-
-    return velocity_timeseries, var_timeseries
+    input_data = (:velocity_data = velocity_timeseries, :var_data = var_timeseries)
+    return input_data
 end
 
-"""
-    set_BW_filter_params(;N::Int=1, freq_c::Real=1)
 
-Calculates the coefficients for a filter with that has frequency response given by a
+"""
+    set_offline_BW_filter_params(; N::Int=1, freq_c::Real=1)
+
+Calculates the coefficients for a filter that has a frequency response given by a
 Butterworth filter with order `2^N` and cutoff frequency `freq_c`, squared. 
 
-Uses 2^N exponentials and 2^(N-1) sets of coefficients (which come in pairs to ensure real equations)
+Uses `2^N` exponentials and `2^(N-1)` sets of coefficients (which come in pairs
+to ensure real equations).
 
-Frequency response: Ghat(omega) = 1 / (1 + (omega / freq_c)^(2^(N+1)))
-Real filter shape: G(t) = sum_{i=1}^{2^(N-1)} exp(-c_i*abs(t))*(a_i*cos(d_i * abs(t)) + b_i*sin(d_i * abs(t)))
+Frequency response: `Ghat(omega) = 1 / (1 + (omega / freq_c)^(2^(N+1)))`
+Real filter shape: `G(t) = sum_{i=1}^{2^(N-1)} exp(-c_i*abs(t))*(a_i*cos(d_i * abs(t)) + b_i*sin(d_i * abs(t)))`
 
-# Keyword Arguments
-- `N::Int`: log_2 order of the Butterworth filter. Must be a non-negative integer.
-  Defaults to 1.
-- `freq_c::Real`: The cutoff frequency of the filter. Defaults to 1.
+This function supports two types of filters:
+* A **single exponential filter** when `N=0`. This is a special case that
+  generates two coefficients. The unidirectional filter is a single exponential,
+  and `N_coeffs = 0.5`. Only `a1` and `c1` are returned.
+* A **Butterworth squared filter** for `N>0`. This generates `4 * 2^(N-1)`
+  coefficients, arranged in pairs to represent a filter of order `2^N`. The
+  coefficients are computed based on the filter's order and cutoff frequency.
 
-# Returns
-- `NamedTuple`: A `NamedTuple` containing the calculated coefficients.
-  The coefficients are named `a1, b1, c1, d1, a2, b2, ...` up to `2^(N-1)` pairs. The number of coefficients `N_coeffs`
-  is also stored fro convenience.
+Arguments
+=========
+- `N`: The order parameter for the filter. `N=0` for a single exponential.
+  For `N>0`, the filter's order is `2^N`. Must be a non-negative integer.
+- `freq_c`: The cutoff frequency of the filter. Must be a real number.
 
-  In the special case that `N=0`, the uni-directional filter is a single exponential, and `N_coeffs = 0.5`. 
-  Only `a1` and `c1` are returned.
-
+Returns
+=======
+- A `NamedTuple` containing the filter coefficients and `N_coeffs`, the number
+  of coefficient pairs.
 """
-function set_BW_filter_params(;N::Int=1,freq_c::Real=1) 
+function set_offline_BW_filter_params(;N::Int=1,freq_c::Real=1) 
     if N != floor(N) || N < 0
         error("N must be a non-negative integer.")
     end
     N_coeffs = (N==0) ? 0.5 : 2^(N-1)
-
+    freq_c = abs(freq_c) # Ensure freq_c is positive
     if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
         a1 = freq_c/2 
         c1 = freq_c
@@ -294,24 +276,26 @@ function set_BW_filter_params(;N::Int=1,freq_c::Real=1)
 end
 
 """
-    create_original_vars(var_names_to_filter::Tuple{Vararg{String}}, grid::AbstractGrid)
+    create_original_vars(config::AbstractConfig)
 
-Creates a `NamedTuple` of `CenterField`s on the given `grid` for each variable name.
+Creates a `NamedTuple` of `CenterField`s to serve as auxiliary fields for
+the original variables in a simulation. The fields are instantiated on the
+`grid` specified in the `config` object.
 
-# Arguments
-- `var_names_to_filter::Tuple{Vararg{String}}`: A tuple of variable names e.g., ("T", "S").
-- `grid`: The original simulation grid 
+Arguments
+=========
+- `config`: An instance of `AbstractConfig` containing the names of the
+  variables and the simulation grid.
 
-# Returns
-- `NamedTuple`: A `NamedTuple` with keys corresponding to `var_names_to_filter`
-  and values as `CenterField` objects initialized on `grid`.
-
+Returns
+=======
+A `NamedTuple` where each key is a `Symbol` of a variable name to be filtered,
+and each value is an empty `CenterField` for that variable.
 """
-function create_original_vars(config)
+function create_original_vars(config::AbstractConfig)
 
     var_names_to_filter = config.var_names_to_filter
     grid = config.grid
-    # Creates auxiliary fields to store the saved variables
     vars = Dict()
     for var_name in var_names_to_filter
         vars[Symbol(var_name)] = CenterField(grid)
@@ -320,35 +304,32 @@ function create_original_vars(config)
 end
 
 """
-    create_filtered_vars(var_names_to_filter::Tuple{Vararg{String}},
-                         velocity_names::Tuple{Vararg{String}},
-                         filter_params::NamedTuple;
-                         map_to_mean::Bool=true)
+    create_filtered_vars(config::AbstractConfig)
 
-Creates a tuple of `Symbol`s for the filtered variables used in the
-Lagrangian filter. The symbols are generated to represent the
-cosine (`_C#`) and sine (`_S#`) components of the final filtered variables.
+Creates a `Tuple` of `Symbol`s representing the names of the filtered tracer
+variables.
 
-The number of components for each variable is determined by the number of
-coefficients in `filter_params`. If `map_to_mean` is true, additional symbols
-are created for map variables to interpolate to mean position.
+* For a single-exponential filter (`N_coeffs = 0.5`), the function generates
+  names with a `_C1` suffix.
+* For a multi-coefficient filter (`N_coeffs > 0.5`), it generates pairs of
+  names for each coefficient, suffixed with `_C#` and `_S#`, where `#` is the
+  coefficient index.
 
-# Arguments
-- `var_names_to_filter::Tuple{Vararg{String}}`: Names of tracer variables to filter.
-- `velocity_names::Tuple{Vararg{String}}`: Names of velocity variables.
-- `filter_params::NamedTuple`: A `NamedTuple` of filter coefficients, typically
-  from `set_BW_filter_params`, or custom.
+If `map_to_mean` is enabled in the configuration, additional symbols are created
+for the spatial mapping variables corresponding to each velocity component,
+prefixed with `xi_` and suffixed with the corresponding coefficient names.
 
-# Keyword Arguments
-- `map_to_mean::Bool`: If `true`, includes symbols for map variables.
-  Defaults to `true`.
+Arguments
+=========
+- `config`: An instance of `AbstractConfig` containing the names of the variables
+  to filter, the filter parameters, and the `map_to_mean` boolean.
 
-# Returns
-- `Tuple{Vararg{Symbol}}`: A tuple of symbols representing the filtered variables.
-  The symbols for the cosine components are listed first, followed by the sine components.
-
+Returns
+=======
+A `Tuple` of `Symbol`s representing the names of the filtered variables to be
+used as tracers in the simulation.
 """
-function create_filtered_vars(config)
+function create_filtered_vars(config::AbstractConfig)
     
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
@@ -490,28 +471,35 @@ end
 
 
 """
-    create_forcing(filtered_vars::Tuple{Vararg{Symbol}},
-                   var_names_to_filter::Tuple{Vararg{String}},
-                   velocity_names::Tuple{Vararg{String}},
-                   filter_params::NamedTuple)
+    create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
-Creates a `NamedTuple` of `Forcing` objects for each filtered variable
-to be used in an Oceananigans model.
+Creates a `NamedTuple` of forcing functions for each filtered variable and,
+if enabled, for the spatial mapping variables. These forcing terms are used
+to numerically integrate the filter equations.
 
-# Arguments
-- `filtered_vars::Tuple{Vararg{Symbol}}`: A tuple of symbols for all
-  filtered variables, from `create_filtered_vars`.
-- `var_names_to_filter::Tuple{Vararg{String}}`: Names of tracer variables
-  to be filtered (user defined).
-- `velocity_names::Tuple{Vararg{String}}`: Names of velocity variables
-  to be filtered (user defined).
-- `filter_params::NamedTuple`: A `NamedTuple` of filter coefficients.
+The function handles two cases: a single-exponential filter
+(`N_coeffs = 0.5`) and a multi-coefficient Butterworth squared filter
+(`N_coeffs > 0.5`).
 
-# Returns
-- `forcing::NamedTuple`: A `NamedTuple` where each key is a filtered
-  variable symbol and each value is an Oceananigans `Forcing` object.
+* For standard filtered variables, the forcing is a combination of terms
+  derived from the filter's coefficients and a term from the original data.
+* For spatial mapping variables (if `map_to_mean` is true), the forcing
+  includes terms derived from the filter's coefficients and a term from the
+  original velocity data.
+
+Arguments
+=========
+- `filtered_vars`: A `Tuple` of `Symbol`s representing the names of the
+  filtered variables.
+- `config`: An instance of `AbstractConfig` containing the names of the
+  variables to be filtered, velocity names, and the filter parameters.
+
+Returns
+=======
+A `NamedTuple` where each key is a variable name from `filtered_vars` and
+each value is a `Tuple` of the corresponding forcing functions.
 """
-function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config)
+function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
@@ -607,29 +595,35 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config)
 end
 
 """
-    create_output_fields(model::AbstractModel,
-                         var_names_to_filter::Tuple{Vararg{String}},
-                         velocity_names::Tuple{Vararg{String}},
-                         filter_params::NamedTuple)
+    create_output_fields(model::AbstractModel, config::AbstractConfig)
 
-Creates a `Dict` of the final, physically meaningful output fields by combining
-the filtered components (`_C#`, `_S#`) according to the filter coefficients.
+Reconstructs the final output fields from the model's tracers and auxiliary
+fields. This function performs the following steps:
 
-# Arguments
-- `model`: The Oceananigans Lagrangian Filter model containing the filtered fields.
-- `var_names_to_filter::Tuple{Vararg{String}}`: The names of the tracer
-  variables that were filtered.
-- `velocity_names::Tuple{Vararg{String}}`: The names of the velocity
-  variables that were filtered.
-- `filter_params::NamedTuple`: The filter coefficients used in the
-  model run, typically from `set_BW_filter_params`.
+1.  **Reconstructs filtered variables**: For each variable to be filtered, it sums
+    the contributions from the individual filter coefficients (`_C` and `_S`
+    tracers) using the coefficients from `filter_params`.
+2.  **Reconstructs spatial mapping fields**: If spatial mapping is enabled,
+    the function also reconstructs the `xi_` fields that represent the filtered
+    position.
+3.  **Includes original data**: The original data is added to the output
+    dictionary for comparison and analysis if `config.output_original_data`
+    is true.
 
-# Returns
-- `Dict`: A dictionary mapping descriptive names (e.g., `"T_filtered"`, `"u_filtered"`)
-  to the reconstructed output fields. This dictionary also includes the
-  original fields for comparison.
+Arguments
+=========
+- `model`: An instance of an `AbstractModel` containing the tracer and
+  auxiliary fields.
+- `config`: An instance of `AbstractConfig` with the names of the variables,
+  velocity components, and filter parameters.
+
+Returns
+=======
+A `Dict` where keys are the names of the output fields (e.g.,
+`var_name_Lagrangian_filtered`, `xi_vel_name`, `var_name`) and values are the
+corresponding reconstructed `Field`s.
 """
-function create_output_fields(model::AbstractModel, config)
+function create_output_fields(model::AbstractModel, config::AbstractConfig)
 
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
@@ -643,7 +637,7 @@ function create_output_fields(model::AbstractModel, config)
             # Special case, single exponential only has a cosine component
             gC1 = getproperty(model.tracers,Symbol(var_name * "_C1"))
             g_total = filter_params.a1 * gC1
-            outputs_dict[var_name * "_filtered"] = g_total
+            outputs_dict[var_name * "_Lagrangian_filtered"] = g_total
         else
             # Reconstruct the filtered tracer fields, starting with the first coefficient
             gC1 = getproperty(model.tracers, Symbol(var_name * "_C1"))
@@ -658,7 +652,7 @@ function create_output_fields(model::AbstractModel, config)
                 gSi = getproperty(model.tracers,Symbol(var_name * "_S$i" ))
                 g_total += a * gCi + b * gSi
             end
-            outputs_dict[var_name * "_filtered"] = g_total
+            outputs_dict[var_name * "_Lagrangian_filtered"] = g_total
         end
     end
 
@@ -689,9 +683,11 @@ function create_output_fields(model::AbstractModel, config)
         end
     end
 
-    # Let's also add the saved vars for comparison
-    for var_name in var_names_to_filter
-        outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
+    # We can also add the saved vars for comparison
+    if config.output_original_data
+        for var_name in var_names_to_filter
+            outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
+        end
     end
 
     return outputs_dict
@@ -700,22 +696,28 @@ end
 """
     update_input_data!(sim::Simulation, input_data::NamedTuple)
 
-Updates the input data fields in the Oceananigans model at the current simulation
-time. This function is used as a `callback` to ensure the model's velocity and
-auxiliary fields are kept in sync with the time-dependent input data.
+Updates the velocity and auxiliary fields of a simulation at the current
+simulation time `t`. This function is designed to be used as a callback in an
+Oceananigans `Simulation`.
 
-# Arguments
-- `sim::Simulation`: The Oceananigans `Simulation` object.
-- `input_data::NamedTuple`: A `NamedTuple` containing the time series data for
-  velocities and original tracer variables.
+The function performs two main tasks:
+1.  **Updates velocities**: It sets the `u`, `v`, and `w` velocity fields of
+    the `model` to the corresponding data from the `velocity_data`
+    `FieldTimeSeries` at the current simulation time.
+2.  **Updates auxiliary fields**: It updates the auxiliary fields of the
+    `model` with the original data from the `var_data` `FieldTimeSeries`, which
+    are used for forcing terms.
 
-# Side Effects
-- Modifies the fields within `sim.model.velocities` and `sim.model.auxiliary_fields`
-  in place, setting them to the values from `input_data` at the current simulation time.
+Arguments
+=========
+
+- `sim`: The `Simulation` object.
+- `input_data`: A `NamedTuple` containing `velocity_data` and `var_data`,
+  where each field is a `Tuple` of `FieldTimeSeries` objects.
 """
 function update_input_data!(sim::Simulation, input_data::NamedTuple)
-    velocity_timeseries = input_data.velocities
-    original_var_timeseries = input_data.original_vars
+    velocity_timeseries = input_data.velocity_data
+    original_var_timeseries = input_data.var_data
     model = sim.model
     t = sim.model.clock.time
     
@@ -730,8 +732,31 @@ function update_input_data!(sim::Simulation, input_data::NamedTuple)
     end
 end
 
-# Docstring
-function initialise_filtered_vars(model, saved_original_vars, config)
+"""
+    initialise_filtered_vars(model::AbstractModel, saved_original_vars::Tuple,
+                             config::AbstractConfig)
+
+Initializes the model's tracer fields, which represent the components of the
+filtered variables. This function sets the initial values of the filtered
+variables to the (scaled) first timestep of the original data. This improves
+the "spin-up" of the filter simulation by providing a good starting point.
+
+The initialization formula depends on the number of filter coefficients
+(`N_coeffs`):
+
+- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
+  tracer exists and is initialized.
+- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
+  tracers for each coefficient are initialized.
+
+Arguments
+=========
+- `model`: The `AbstractModel` whose tracers are to be initialized.
+- `saved_original_vars`: A `Tuple` of `FieldTimeSeries` objects containing
+  the original data for each variable.
+- `config`: An instance of `AbstractConfig` with the filter parameters.
+"""
+function initialise_filtered_vars(model::AbstractModel, saved_original_vars::Tuple, config::AbstractConfig)
         filter_params = config.filter_params
         
     for original_var_fts in saved_original_vars

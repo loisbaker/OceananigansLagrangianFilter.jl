@@ -1,8 +1,8 @@
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
 using DataStructures: OrderedDict
+using Oceananigans.Grids: AbstractGrid
 using NCDatasets
-using JLD2
-using JLD2: Group
+
 
 # Python import to use the LinearNDInterpolator for regridding
 using PythonCall
@@ -12,38 +12,39 @@ function __init__()
 end
 
 """
-    sum_forward_backward_contributions!(combined_output_filename::String, 
-                                       forward_output_filename::String, 
-                                       backward_output_filename::String, 
-                                       T::Real, 
-                                       velocity_names::Tuple{Vararg{String}}, 
-                                       var_names_to_filter::Tuple{Vararg{String}})
+    sum_forward_backward_contributions!(config::AbstractConfig)
 
-Combines the results of a forward-in-time and a backward-in-time filter simulation by summing
-their contributions at the correct times and saving in a new file.
+Combines the output from the forward and backward filter simulations into a
+single output file. This function performs the final step of the offline
+filter algorithm by summing the contributions from each pass.
 
+The function performs the following steps:
+1.  **Initializes the combined file**: A new JLD2 file is created to store
+    the final output.
+2.  **Copies metadata and unfiltered data**: The file structure, metadata,
+    and the original, unfiltered data are copied from the forward output file.
+3.  **Sums filtered contributions**: For each filtered variable, the data
+    from the backward output file is loaded as a `FieldTimeSeries`. The data
+    is then interpolated to match the time steps of the forward simulation,
+    and the two datasets are summed and written to the combined output file.
 
-# Arguments
-- `combined_output_filename::String`: The path to the output file for the combined data.
-- `forward_output_filename::String`: The path to the JLD2 file containing the forward simulation output.
-- `backward_output_filename::String`: The path to the JLD2 file containing the backward simulation output.
-- `T::Real`: The total duration of the filter simulation (end time).
-- `velocity_names::Tuple{Vararg{String}}`: A tuple of names for velocity variables to be filtered (e.g., ("u", "v")).
-- `var_names_to_filter::Tuple{Vararg{String}}`: A tuple of names for other variables to be filtered (e.g., ("T", "S")).
+Arguments
+=========
+- `config`: An instance of `AbstractConfig` containing the file paths and
+  variable names.
 """
+function sum_forward_backward_contributions!(config::AbstractConfig)
+    # Combine the forward and backward simulations by summing them into a single file
 
-function sum_forward_backward_contributions!(config)
-# Combine the forward and backward simulations by summing them into a single file
-
-combined_output_filename = config.combined_output_filename
-forward_output_filename = config.forward_output_filename
-backward_output_filename = config.backward_output_filename
-T = config.T
-velocity_names = config.velocity_names
-var_names_to_filter = config.var_names_to_filter
+    combined_output_filename = config.combined_output_filename
+    forward_output_filename = config.forward_output_filename
+    backward_output_filename = config.backward_output_filename
+    T = config.T
+    velocity_names = config.velocity_names
+    var_names_to_filter = config.var_names_to_filter
 
     # List the names of the fields that we will combine
-    filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_filtered" for var in var_names_to_filter])
+    filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_Lagrangian_filtered" for var in var_names_to_filter])
     
     jldopen(combined_output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
@@ -76,11 +77,26 @@ var_names_to_filter = config.var_names_to_filter
             end
         end
     end
-    println("Combined forward and backward contributions into $combined_output_filename")
+    @info "Combined forward and backward contributions into $combined_output_filename"
 
 end
 
-function _remove_halos(data,grid)
+"""
+    _remove_halos(data::AbstractArray, grid::AbstractGrid)
+
+Removes the halo regions from a 3D data array based on the halo sizes specified
+in the `grid` object.
+
+Arguments
+=========
+- `data`: An `AbstractArray` representing the 3D data with halo regions.
+- `grid`: An object containing the halo sizes `Hx`, `Hy`, and `Hz`.
+
+Returns
+=======
+- A view of the `data` array with the halo regions removed.
+"""
+function _remove_halos(data::AbstractArray, grid::AbstractGrid)
     Hx = grid.Hx
     Hy = grid.Hy
     Hz = grid.Hz
@@ -116,7 +132,30 @@ function _create_coords(grid)
     return coord_dict
 end
 
-function regrid_to_mean_position!(config)
+"""
+    regrid_to_mean_position!(config::AbstractConfig)
+
+Regrids the filtered data to the mean position. This function reads the combined 
+output file, interpolates the filtered variables to the mean position, and saves the
+result in new variables within the same file.
+
+The regridding process involves the following steps:
+1.  **Extracts positions**: The mean positions (`xi_u`, `xi_v`, `xi_w`) and
+    filtered variable data are extracted for each time step.
+2.  **Handles periodicity**: For periodic dimensions (x, y, or z), the data is
+    padded by repeating values near the boundaries to ensure accurate
+    interpolation across the periodic boundaries.
+3.  **Interpolates data**: A linear interpolator is used to map the filtered data
+    from the irregular advected positions to the original, regular grid points.
+4.  **Saves new fields**: The regridded data is saved as new variables in the
+    combined output file, with a `_Lagrangian_filtered_at_mean` suffix.
+
+Arguments
+=========
+- `config`: An instance of `AbstractConfig` containing the file paths, variable
+  names, and grid information.
+"""
+function regrid_to_mean_position!(config::AbstractConfig)
     combined_output_filename = config.combined_output_filename
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
@@ -126,6 +165,7 @@ function regrid_to_mean_position!(config)
         iterations = parse.(Int, keys(file["timeseries/t"]))
         grid = file["serialized/grid"]
         coord_dict = _create_coords(grid)
+
         # Work out the periodic directions
         test_var = var_names_to_filter[1]
         BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
@@ -142,7 +182,7 @@ function regrid_to_mean_position!(config)
         
         # First add the necessary serialized entry for each new variable
         for var in var_names_to_filter 
-            new_path = "timeseries/$var"*"_filtered_regrid/serialized"
+            new_path = "timeseries/$var"*"_Lagrangian_filtered_at_mean/serialized"
             if haskey(file, new_path)
                 Base.delete!(file, new_path) #incase we already tried to write this
             end
@@ -151,6 +191,8 @@ function regrid_to_mean_position!(config)
                 g[property] = file["timeseries/$var/serialized/$property"]
             end
         end
+
+        # Now loop over time steps, extract the positions and data, and interpolate to the mean position
         for iter in iterations
             Xi_list = []
             regular_coord_mesh = []
@@ -161,8 +203,10 @@ function regrid_to_mean_position!(config)
                     push!(regular_coord_mesh, coord_dict["$(dim)_mesh"])
                     if (dim == "x") && ("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u/$iter"]
+
                         # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
                         Xi_u = _remove_halos(Xi_u,grid)
+
                         # move xi points outside of domain into domain
                         if "x" in periodic_dimensions                           
                             Xi_u .-= floor.((Xi_u .- grid.xᶠᵃᵃ[1])./grid.Lx) .* grid.Lx
@@ -172,14 +216,17 @@ function regrid_to_mean_position!(config)
 
                     elseif (dim == "x") && !("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"]
+
                         # Lose the halo regions 
                         Xi_u = _remove_halos(Xi_u,grid)
                         push!(Xi_list,vec(Xi_u))
 
                     elseif (dim == "y") && ("v" in velocity_names)
                         Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v/$iter"]
+
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
+
                         # move xi points outside of domain + halo regions into domain
                         if "y" in periodic_dimensions
                             Xi_v .-= floor.((Xi_v .- grid.yᵃᶠᵃ[1])./grid.Ly) .* grid.Ly
@@ -188,14 +235,17 @@ function regrid_to_mean_position!(config)
 
                     elseif (dim == "y") && !("v" in velocity_names)
                         Xi_v = coord_dict["y_mesh"]
+
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
                         push!(Xi_list,vec(Xi_v))
 
                     elseif (dim == "z") && ("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w/$iter"]
+
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
+
                         # move xi points outside of domain + halo regions into domain
                         if "z" in periodic_dimensions
                             Xi_w .-= floor.((Xi_w .- grid.z.cᵃᵃᶠ[1])./grid.Lz) .* grid.Lz
@@ -204,12 +254,13 @@ function regrid_to_mean_position!(config)
 
                     elseif (dim == "z") && !("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ zeros(coord_dict["original_size"])
+
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
                         push!(Xi_list,vec(Xi_w))
 
                     else
-                        error("Something's wrong")
+                        error("Something's wrong with the dimensions of the regridding routine")
                     end
                 end
             
@@ -217,7 +268,8 @@ function regrid_to_mean_position!(config)
             # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
             # First construct a matrix that contains the coordinates and the fields to interpolate
             for var in var_names_to_filter
-                var_data = file["timeseries/$var"*"_filtered/$iter"]
+                var_data = file["timeseries/$var"*"_Lagrangian_filtered/$iter"]
+
                 # Lose the halo regions 
                 var_data = _remove_halos(var_data,grid)
 
@@ -240,19 +292,23 @@ function regrid_to_mean_position!(config)
                     mask_max_x = (Xi_x_vec .> max_x - xpad) .& (Xi_x_vec .< max_x)
                     mask_min_x = (Xi_x_vec .< min_x + xpad) .& (Xi_x_vec .> min_x)
                     Xi_x_to_repeat = Xi_x_vec[mask_max_x .| mask_min_x]
+
                     # Remove or add Lx
                     Xi_x_to_repeat[(Xi_x_to_repeat .> max_x - xpad) .& (Xi_x_to_repeat .< max_x)] .-= grid.Lx
                     Xi_x_to_repeat[(Xi_x_to_repeat .< min_x + xpad) .& (Xi_x_to_repeat .> min_x)] .+= grid.Lx
                     extra_padding = fill(NaN, (length(Xi_x_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_x_to_repeat
+
                     # And fill in the rest of the columns with straightforward repeateded data
                     for i in 1:n_columns
                         if i != column_number # Don't overwrite the x coordinate
                             extra_padding[:,i] = data_array[mask_max_x .| mask_min_x,i]
                         end
                     end
+
                     # Now join it on to the data array
                     data_array = vcat(data_array, extra_padding)
+
                     # Move along the rows to the next coordinate
                     column_number += 1
 
@@ -272,14 +328,17 @@ function regrid_to_mean_position!(config)
                     
                     extra_padding = fill(NaN, (length(Xi_y_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_y_to_repeat
+
                     # And fill in the rest of the columns with straightforward repeateded data
                     for i in 1:n_columns
                         if i != column_number # Don't overwrite the y coordinate
                             extra_padding[:,i] = data_array[mask_max_y .| mask_min_y,i]
                         end
                     end
+
                     # Now join it on to the data array
                     data_array = vcat(data_array, extra_padding)
+
                     # Move along to the next coordinate
                     column_number += 1
                 elseif dim == "z"
@@ -297,6 +356,7 @@ function regrid_to_mean_position!(config)
 
                     extra_padding = fill(NaN, (length(Xi_z_to_repeat), n_columns))
                     extra_padding[:,column_number] = Xi_z_to_repeat
+
                     # And fill in the rest of the columns with straightforward repeateded data
                     for i in 1:n_columns
                         if i != column_number # Don't overwrite the z coordinate
@@ -317,7 +377,7 @@ function regrid_to_mean_position!(config)
                 values = var_data[:,ivar]
                 interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
                 interp_data = pyconvert(Array,interpolator(regular_coord_mesh...))
-                new_var_loc = "timeseries/$var"*"_filtered_regrid/$iter"
+                new_var_loc = "timeseries/$var"*"_Lagrangian_filtered_at_mean/$iter"
                 if haskey(file, new_var_loc)
                     Base.delete!(file, new_var_loc) #incase we already tried to write this variable
                 end
@@ -326,10 +386,37 @@ function regrid_to_mean_position!(config)
             end
         end
     end
-    println("Wrote regridded data to new variables with _regrid suffix in file $combined_output_filename")
+    @info "Wrote regridded data to new variables with _at_mean suffix in file $combined_output_filename"
 end
 
-function jld2_to_netcdf(jld2_filename,nc_filename)
+"""
+    jld2_to_netcdf(jld2_filename::String, nc_filename::String)
+
+Converts a JLD2 output file generated by an Oceananigans simulation into a
+standard NetCDF file. This function is useful for post-processing and for
+sharing data with other tools that expect the NetCDF format.
+
+The conversion process involves the following steps:
+1.  **Read JLD2 data**: Opens the input JLD2 file and reads the grid, time,
+    and all timeseries variables.
+2.  **Create NetCDF file**: Creates a new NetCDF file with a `.nc` extension.
+3.  **Define dimensions**: Defines NetCDF dimensions based on the grid sizes
+    and staggered locations (e.g., `x_caa` for cell centers, `x_faa` for
+    cell faces).
+4.  **Define grid variables**: Writes the grid coordinates and metadata
+    (e.g., `Lx`, `Ny`, `Hx`) as variables to the NetCDF file.
+5.  **Write timeseries data**: Iterates through each variable in the JLD2
+    file's timeseries, determines its location on the grid, and writes the
+    data to a new variable in the NetCDF file.
+6.  **Add metadata**: Adds attributes to each variable, including boundary
+    conditions and units, for better documentation.
+
+Arguments
+=========
+- `jld2_filename`: A `String` specifying the path to the input JLD2 file.
+- `nc_filename`: A `String` specifying the path for the output NetCDF file.
+"""
+function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
     jldopen(jld2_filename, "r") do file
         
         iterations = parse.(Int, keys(file["timeseries/t"]))
@@ -522,10 +609,31 @@ function jld2_to_netcdf(jld2_filename,nc_filename)
         close(ds)
         
     end
-    println("Wrote NetCDF file to $nc_filename")
+    @info "Wrote NetCDF file to $nc_filename"
 end
 
-function get_weight_function(t, tref, filter_params)
+"""
+    get_weight_function(t::AbstractArray, tref::Real, filter_params::NamedTuple)
+
+Computes the weighting function for the offline filter. This function calculates
+the filter's impulse response, which determines how much each point in the
+timeseries `t` contributes to the filtered value at a reference time `tref`.
+The weighting function is based on the provided `filter_params`, which contains
+the coefficients for the filter's impulse response.
+
+Arguments
+=========
+- `t`: A collection of time points in the timeseries.
+- `tref`: The reference time at which the filter is being evaluated.
+- `filter_params`: A `NamedTuple` containing the coefficients (`a`, `b`, `c`,
+  `d`) and the number of coefficient pairs (`N_coeffs`).
+
+Returns
+=======
+- A vector of weights `G`, with the same dimensions as `t`, representing the
+  value of the filter's impulse response at each time point relative to `tref`.
+"""
+function get_weight_function(t::AbstractArray, tref::Real, filter_params::NamedTuple)
     
     G = 0*t
     N_coeffs = filter_params.N_coeffs
@@ -542,7 +650,29 @@ function get_weight_function(t, tref, filter_params)
     return G
 end
 
-function get_frequency_response(freq, filter_params)
+"""
+    get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
+
+Calculates the frequency response of the offline filter. This function takes a set
+of frequencies and the filter's coefficients to compute how the filter amplifies
+or attenuates different frequency components of a signal.
+
+The response is computed by summing the contributions of each coefficient pair
+based on the filter's transfer function in the frequency domain. The result is
+a measure of the filter's gain at each given frequency.
+
+Arguments
+=========
+- `freq`: A vector of frequencies (in radians per unit time).
+- `filter_params`: A `NamedTuple` containing the filter coefficients (`a`, `b`,
+  `c`, `d`) and the number of coefficient pairs (`N_coeffs`).
+
+Returns
+=======
+- A vector `Ghat` representing the filter's frequency response at each
+  corresponding frequency in `freq`.
+"""
+function get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
     
     Ghat = 0*freq
     N_coeffs = filter_params.N_coeffs
@@ -557,4 +687,69 @@ function get_frequency_response(freq, filter_params)
     end
 
     return Ghat
+end
+
+"""
+    compute_Eulerian_filter!(config::AbstractConfig)
+
+Computes the Eulerian filter for specified variables and writes the results to a
+combined output file. This function performs a direct, convolution-style
+filtering of a time series by applying a weighting function to the data at each
+time step.
+
+The function iterates through each variable to be filtered:
+1.  **Reads data**: The entire time series of the variable is read from the
+    JLD2 file.
+2.  **Applies weighting**: At each output time, a weighting function `G` is
+    computed and applied to the entire time series. The weighted data is summed
+    to produce the filtered field.
+3.  **Writes output**: The resulting filtered field is saved back to the
+    same JLD2 file in a new group with the `_Eulerian_filtered` suffix.
+
+This method serves as a benchmark for comparison with the main Lagrangian filter.
+
+Arguments
+=========
+- `config`: An instance of `AbstractConfig` containing the file path, variable
+  names, and filter parameters.
+"""
+function compute_Eulerian_filter!(config::AbstractConfig)
+    filter_params = config.filter_params
+    combined_output_filename = config.combined_output_filename
+    var_names_to_filter = config.var_names_to_filter
+
+    # Open existing file
+    jldopen(combined_output_filename,"r+") do file
+        iterations = parse.(Int, keys(file["timeseries/t"]))
+        times = [file["timeseries/t/$iter"] for iter in iterations]
+        dt = times[2] - times[1] # Initialise time interval
+
+        # Loop over variables to filter
+        for var_name in var_names_to_filter
+            @info "Computing Eulerian filter for variable $var_name"
+
+            # Create group for filtered data
+            g_EF = Group(file, "timeseries/$(var_name * "_Eulerian_filtered")")
+
+            # Copy over serialized properties
+            g_EF_serialized = Group(file, "timeseries/$(var_name * "_Eulerian_filtered")/serialized") 
+            for property in keys(file["timeseries/$var_name/serialized"])
+                g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
+            end
+
+            # Loop over times to compute filtered field at each time
+            for (i, t) in enumerate(times)
+                @info "Computing Eulerian filter at time $t =  (index $i of $(length(times)))"
+                G = get_weight_function(times, t, filter_params)
+                mean_field = 0 .* file["timeseries/$(var_name)/$(iterations[1])"]
+                # Construct mean sequentially
+                for j in 1:length(times)
+                    field = file["timeseries/$(var_name)/$(iterations[j])"]
+                    dt = j < length(times) ? times[j+1] - times[j] : dt
+                    mean_field .+= G[j] * field * dt
+                end
+                g_EF["$(iterations[i])"] = mean_field
+            end
+        end
+    end
 end

@@ -20,7 +20,6 @@ which ends up at the location `ccc`.
     return c[i, j, k] * divᶜᶜᶜ(i, j, k, grid, U.u, U.v, U.w)
 end
 
-# This is also defined in Oceananigans.Advection.momentum_advection_operators, is this best practise?
 const ZeroU = NamedTuple{(:u, :v, :w), Tuple{ZeroField, ZeroField, ZeroField}}
 
 # Fallbacks for zero velocities, zero tracer and `nothing` advection

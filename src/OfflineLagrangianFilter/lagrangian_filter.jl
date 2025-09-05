@@ -46,7 +46,6 @@ end
           boundary_conditions::NamedTuple = NamedTuple(),
                                   tracers = (),
                               timestepper = :RungeKutta3,
-                                 buoyancy = nothing,
                                velocities = nothing,
                        diffusivity_fields = nothing,
                          auxiliary_fields = NamedTuple())
@@ -68,7 +67,6 @@ Keyword arguments
                preallocated `CenterField`s.
   - `timestepper`: A symbol that specifies the time-stepping method. Either `:QuasiAdamsBashforth2` or
                    `:RungeKutta3` (default).
-  - `buoyancy`: Defunct buoyancy, always nothing. Kept for integration with extensions. Default: `nothing`.
   - `velocities`: The model velocities. Default: `nothing`.
   - `diffusivity_fields`: Diffusivity fields. Default: `nothing`.
   - `auxiliary_fields`: `NamedTuple` of auxiliary fields. Default: `nothing`         
