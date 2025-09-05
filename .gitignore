@@ -65,4 +65,4 @@ statprof
 *.nsys-rep
 
 # Conda
-.CondaPkg
+/.CondaPkg
