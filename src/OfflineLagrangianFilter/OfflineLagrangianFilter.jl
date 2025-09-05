@@ -94,7 +94,8 @@ struct OfflineFilterConfig <: AbstractConfig
     delete_intermediate_files::Bool
     compute_Eulerian_filter::Bool
     output_netcdf::Bool
-    advection
+    output_original_data::Bool
+    advection::AbstractAdvectionScheme
     grid::AbstractGrid
 
 end
@@ -165,7 +166,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             architecture::AbstractArchitecture = CPU(),
                             T_out::Union{Real,Nothing} = nothing,
                             N::Union{Int, Nothing} = nothing,
-                            freq_c::Union{Int, Nothing} = nothing,
+                            freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             Δt::Union{Real,Nothing} = nothing,
                             backend::AbstractInMemoryBackend = InMemory(4),
@@ -246,7 +247,7 @@ function OfflineFilterConfig(; original_data_filename::String,
             error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
         end
 
-        @info "Filtering from T_start=$T_start to T_end=$T_end, duration T=$T"
+        @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
 
         # Now check T_out, set if necessary to same as input
         if isnothing(T_out)
@@ -332,6 +333,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             grid)
 
 end
+
 
 end # module OfflineLagrangianFilter
 

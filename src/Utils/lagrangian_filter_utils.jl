@@ -210,7 +210,7 @@ function load_data(config::AbstractConfig)
     
     velocity_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in velocity_names)
     var_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in var_names_to_filter)
-    input_data = (:velocity_data = velocity_timeseries, :var_data = var_timeseries)
+    input_data = (velocity_data = velocity_timeseries, var_data = var_timeseries)
     return input_data
 end
 
@@ -756,10 +756,10 @@ Arguments
   the original data for each variable.
 - `config`: An instance of `AbstractConfig` with the filter parameters.
 """
-function initialise_filtered_vars(model::AbstractModel, saved_original_vars::Tuple, config::AbstractConfig)
+function initialise_filtered_vars(model::AbstractModel, input_data::NamedTuple, config::AbstractConfig)
         filter_params = config.filter_params
-        
-    for original_var_fts in saved_original_vars
+
+    for original_var_fts in input_data.var_data
         var_name = original_var_fts.name
         if filter_params.N_coeffs == 0.5 # Special case of single exponential
             filtered_var_C = Symbol(var_name,"_C1",)

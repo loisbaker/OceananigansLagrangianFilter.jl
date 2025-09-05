@@ -33,11 +33,11 @@ function run_offline_Lagrangian_filter(config)
 
     # Create the original variables - these will be auxiliary fields in the model
     original_vars = create_original_vars(config)
-    @info "Created original variables: ", original_vars 
+    @info "Created original variables: $keys(original_vars)"
 
     # Create the filtered variables - these will be tracers in the model
     filtered_vars = create_filtered_vars(config)
-    @info "Created filtered variables: ", filtered_vars
+    @info "Created filtered variables: $filtered_vars"
 
     # Create forcing for these filtered variables
     forcing = create_forcing(filtered_vars, config)
@@ -49,7 +49,7 @@ function run_offline_Lagrangian_filter(config)
 
     # We can set initial values to improve the spinup, use the limit freq_c -> \infty
     # The map variables get automatically initialised to zero
-    initialise_filtered_vars(model, saved_original_vars, config)    
+    initialise_filtered_vars(model, input_data, config)    
     @info "Initialised filtered variables"
 
     # Define our outputs # 
