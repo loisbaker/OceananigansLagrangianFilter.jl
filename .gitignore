@@ -49,7 +49,7 @@ docs/Manifest.toml
 
 # Jupyter Lab stuff and old notebooks
 .ipynb_checkpoints
-/testing/old_tests/*
+/dev_testing
 
 # MacOS stuff
 *.DS_Store
