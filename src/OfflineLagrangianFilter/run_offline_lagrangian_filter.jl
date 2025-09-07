@@ -33,7 +33,7 @@ function run_offline_Lagrangian_filter(config)
 
     # Create the original variables - these will be auxiliary fields in the model
     original_vars = create_original_vars(config)
-    @info "Created original variables: $keys(original_vars)"
+    @info "Created original variables: $(keys(original_vars))"
 
     # Create the filtered variables - these will be tracers in the model
     filtered_vars = create_filtered_vars(config)

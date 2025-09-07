@@ -7,8 +7,10 @@ using NCDatasets
 # Python import to use the LinearNDInterpolator for regridding
 using PythonCall
 const scipy_interpolate = PythonCall.pynew()
+const numpy = PythonCall.pynew()
 function __init__()
     PythonCall.pycopy!(scipy_interpolate, pyimport("scipy.interpolate"))
+    PythonCall.pycopy!(numpy, pyimport("numpy"))
 end
 
 """
@@ -107,7 +109,56 @@ function _remove_halos(data::AbstractArray, grid::AbstractGrid)
     return data
 end
 
-function _create_coords(grid)
+"""
+    _fill_halos!(data::AbstractArray, grid::AbstractGrid, value::Real=0.0)
+
+Fills the halo regions of a 3D array `data` with a specified `value`.
+
+This function modifies the `data` array in-place. The dimensions of the halo regions
+are determined by the `Hx`, `Hy`, and `Hz` fields of the `grid` object. 
+
+# Arguments
+- `data::AbstractArray`: The 3D array whose halo regions will be filled.
+- `grid::AbstractGrid`: An object containing the dimensions of the halo regions (`Hx`, `Hy`, `Hz`).
+- `value::Real=0.0`: The scalar value to use for filling the halo regions. Defaults to `0.0`.
+
+# Returns
+- `nothing`: This function does not return a value. It modifies the input array directly.
+
+"""
+function _fill_halos!(data::AbstractArray, grid::AbstractGrid, value::Real=0.0)
+    Hx = grid.Hx
+    Hy = grid.Hy
+    Hz = grid.Hz
+    data[1:Hx,:,:] .= value
+    data[end-Hx+1:end,:,:] .= value
+    data[:,1:Hy,:] .= value
+    data[:,end-Hy+1:end,:] .= value
+    data[:,:,1:Hz] .= value
+    data[:,:,end-Hz+1:end] .= value
+    return nothing
+end
+
+"""
+    _create_coords(grid)
+
+Creates a dictionary of coordinate arrays and mesh grids for a given `grid` object.
+
+# Arguments
+- `grid`: A grid object that defines the spatial dimensions and halo sizes.
+  It must have fields `Nx`, `Ny`, `Nz`, `Hx`, `Hy`, and `Hz`.
+
+# Returns
+- `Dict`: A dictionary with the following keys:
+    - `"full_grid_size"`: A tuple representing the dimensions of the full grid
+      `(Nx + 2*Hx, Ny + 2*Hy, Nz + 2*Hz)`.
+    - `"x"`, `"y"`, `"z"`: 1D `AbstractArray`s containing the coordinates along each axis,
+      including halos.
+    - `"x_mesh"`, `"y_mesh"`, `"z_mesh"`: 3D `AbstractArray`s representing the coordinate
+      values at every point in the full grid. These are created by broadcasting the 1D
+      coordinates to the full grid size.
+"""
+function _create_coords(grid::AbstractGrid)
     full_grid_size = (grid.Nx + 2*grid.Hx, grid.Ny+ 2*grid.Hy, grid.Nz+ + 2*grid.Hz)
     x = xnodes(grid, Center(), with_halos = true)
     y = ynodes(grid, Center(), with_halos = true)
@@ -160,24 +211,42 @@ function regrid_to_mean_position!(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
     npad = config.npad 
-
     jldopen(combined_output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         grid = file["serialized/grid"]
         coord_dict = _create_coords(grid)
 
-        # Work out the periodic directions
+        # Check if it is an immersed boundary grid:
+        if isa(grid, ImmersedBoundaryGrid)
+            @warn "Grid is an ImmersedBoundaryGrid, regridding to mean position may not be sensible"
+            Immersed = true
+        else
+            Immersed = false
+        end
+
+        # Work out the periodic and bounded directions
         test_var = var_names_to_filter[1]
         BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
         periodic_dimensions = []
+        bounded_dimensions = []
         if BCs.west == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"x")
+        elseif Immersed == false && !isnothing(BCs.west)
+            # We only do the fixed boundary correction if we know there's no immersed boundary and this is a non singleton dimension
+            push!(bounded_dimensions,"x")
+            @info "Assuming velocities normal to x boundaries are zero"
         end
         if BCs.south == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"y")
+        elseif Immersed == false && !isnothing(BCs.south)   
+            push!(bounded_dimensions,"y")
+            @info "Assuming velocities normal to y boundaries are zero"
         end
         if BCs.top == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"z")
+        elseif Immersed == false && !isnothing(BCs.top)
+            push!(bounded_dimensions,"z")
+            @info "Assuming velocities normal to z boundaries are zero"
         end
         
         # First add the necessary serialized entry for each new variable
@@ -197,9 +266,11 @@ function regrid_to_mean_position!(config::AbstractConfig)
             Xi_list = []
             regular_coord_mesh = []
             n_true_dims = 0
+            true_dims = []
             for dim in ("x","y","z")
                 if dim in keys(coord_dict) # This limits to only the non-singleton dimensions
                     n_true_dims +=1
+                    push!(true_dims, dim)
                     push!(regular_coord_mesh, coord_dict["$(dim)_mesh"])
                     if (dim == "x") && ("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u/$iter"]
@@ -212,7 +283,10 @@ function regrid_to_mean_position!(config::AbstractConfig)
                             Xi_u .-= floor.((Xi_u .- grid.xᶠᵃᵃ[1])./grid.Lx) .* grid.Lx
                         end
                         push!(Xi_list,vec(Xi_u))
-
+                        # Accompany this vector with a vector of x-indices for this data
+                        # Get the size of the array
+                        indices_array = [I[1] for I in CartesianIndices(size(Xi_u))]
+                        push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "x") && !("u" in velocity_names)
                         Xi_u = coord_dict["x_mesh"]
@@ -220,6 +294,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         # Lose the halo regions 
                         Xi_u = _remove_halos(Xi_u,grid)
                         push!(Xi_list,vec(Xi_u))
+                        indices_array = [I[1] for I in CartesianIndices(size(Xi_u))]
+                        push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "y") && ("v" in velocity_names)
                         Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v/$iter"]
@@ -232,6 +308,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
                             Xi_v .-= floor.((Xi_v .- grid.yᵃᶠᵃ[1])./grid.Ly) .* grid.Ly
                         end
                         push!(Xi_list,vec(Xi_v))
+                        indices_array = [I[2] for I in CartesianIndices(size(Xi_v))]
+                        push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "y") && !("v" in velocity_names)
                         Xi_v = coord_dict["y_mesh"]
@@ -239,6 +317,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
                         push!(Xi_list,vec(Xi_v))
+                        indices_array = [I[2] for I in CartesianIndices(size(Xi_v))]
+                        push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "z") && ("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w/$iter"]
@@ -251,6 +331,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
                             Xi_w .-= floor.((Xi_w .- grid.z.cᵃᵃᶠ[1])./grid.Lz) .* grid.Lz
                         end
                         push!(Xi_list,vec(Xi_w))
+                        indices_array = [I[3] for I in CartesianIndices(size(Xi_w))]
+                        push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "z") && !("w" in velocity_names)
                         Xi_w = coord_dict["z_mesh"] .+ zeros(coord_dict["original_size"])
@@ -258,6 +340,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
                         push!(Xi_list,vec(Xi_w))
+                        indices_array = [I[3] for I in CartesianIndices(size(Xi_w))]
+                        push!(Xi_list,vec(indices_array))
 
                     else
                         error("Something's wrong with the dimensions of the regridding routine")
@@ -310,7 +394,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     data_array = vcat(data_array, extra_padding)
 
                     # Move along the rows to the next coordinate
-                    column_number += 1
+                    column_number += 2 # We added an extra column of indices, so skip these
 
                 elseif dim == "y"
                     max_y = grid.yᵃᶠᵃ[grid.Ny+1]
@@ -340,7 +424,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     data_array = vcat(data_array, extra_padding)
 
                     # Move along to the next coordinate
-                    column_number += 1
+                    column_number += 2 # We added an extra column of indices, so skip these
                 elseif dim == "z"
                     max_z = grid.z.cᵃᵃᶠ[grid.Nz+1]
                     min_z = grid.z.cᵃᵃᶠ[1]
@@ -365,18 +449,111 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     end
                     # Now join it on to the data array
                     data_array = vcat(data_array, extra_padding)
-
+                    
                 end
             end
             
-            coords = data_array[:,1:n_true_dims] # The first columns are the coordinates
-            var_data = data_array[:,(n_true_dims+1):end] # The rest is the data
+            coords = data_array[:,1:2:2*n_true_dims] # The first columns are the coordinates and indices, just take the coordinates
+            var_data = data_array[:,(2*n_true_dims+1):end] # The rest is the data
             
             for (ivar,var) in enumerate(var_names_to_filter)
                 
                 values = var_data[:,ivar]
                 interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
                 interp_data = pyconvert(Array,interpolator(regular_coord_mesh...))
+
+                # We also now edit the values of the interpolated field next to fixed boundaries.
+                # We already dealt with the periodic boundaries with padding, but we now make sure
+                # that the interpolation is accurate at fixed boundaries by doing an interpolation 
+                # at fixed coordinate normal to the boundary.
+                # Reuse the data array using the indices columns to pull out the data we need. 
+                for bounded_dim in bounded_dimensions # Just the non-singleton dimensions with fixed boundary
+                    @info "adjusting interpolation at bounded dimension $bounded_dim"
+                    true_dim_index = findfirst(isequal(bounded_dim), true_dims)
+                    halo_size = getproperty(grid, Symbol("H$bounded_dim"))
+                    for edge_index in (halo_size+1, getproperty(grid, Symbol("N$bounded_dim"))+halo_size) # The index of the first and last real grid point in this dimension
+
+                        # Filter to coordinates where the index in this dimension is edge_index
+                        data_array_cut = data_array[Int.(data_array[:,2*true_dim_index]) .== Int(edge_index),:] 
+                        
+                        # Now remove the columns with the bounded coordinate
+                        data_array_cut = hcat(data_array_cut[:, 1:2*true_dim_index-2], data_array_cut[:, 2*true_dim_index+1:end])
+                        
+                        # data_array_cut can now be used for interpolation in one fewer dimension
+                        coords = data_array_cut[:,1:2:2*(n_true_dims-1)] # The first columns are the coordinates and indices, just take the coordinates
+                        values = data_array_cut[:,2*(n_true_dims-1)+ivar] # The rest is the data
+                        
+                        if bounded_dim == "x"
+                            if n_true_dims == 2
+                                if "y" in true_dims
+                                    mesh = coord_dict["y_mesh"][edge_index,:,1]
+                                elseif "z" in true_dims
+                                    mesh = coord_dict["z_mesh"][edge_index,1,:]
+                                else
+                                    @info "Dimension combo $true_dims is not implemented"
+                                end
+                                interp_data[edge_index,:] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                            elseif n_true_dims == 3
+                                y_mesh = coord_dict["y_mesh"][edge_index,:,:]
+                                z_mesh = coord_dict["z_mesh"][edge_index,:,:]
+                                meshes = (y_mesh,z_mesh)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
+                                interp_data[halo_size+1,:,:] = pyconvert(Array,interpolator(meshes...))
+                            else
+                                @info "Number of dimensions $n_true_dims is not implemented"
+                            end
+            
+                        elseif bounded_dim =="y"
+                            if n_true_dims == 2
+                                if "x" in true_dims
+                                    mesh = coord_dict["x_mesh"][:,edge_index,1]
+                                elseif "z" in true_dims
+                                    mesh = coord_dict["z_mesh"][1,edge_index,:]
+                                else
+                                    @info "Dimension combo $true_dims is not implemented"
+                                end
+                                
+                                interp_data[:,edge_index] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                            elseif n_true_dims == 3
+                                x_mesh = coord_dict["x_mesh"][:,edge_index,:]
+                                z_mesh = coord_dict["z_mesh"][:,edge_index,:]
+                                meshes = (x_mesh,z_mesh)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
+                                interp_data[:,edge_index,:] = pyconvert(Array,interpolator(meshes...))
+                            else
+                                @info "Number of dimensions $n_true_dims is not implemented"
+                            end
+                        elseif bounded_dim == "z"
+                            if n_true_dims == 2
+                                if "x" in true_dims
+                                    mesh = coord_dict["x_mesh"][:,1,edge_index]
+                                elseif "y" in true_dims
+                                    mesh = coord_dict["y_mesh"][1,:,edge_index]
+                                else
+                                    @info "Dimension combo $true_dims is not implemented"
+                                end
+                                @show mesh
+                                @show coords
+                                @show values
+                                @show interp_data[:,edge_index]
+                                interp_data[:,edge_index] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                            elseif n_true_dims == 3
+                                x_mesh = coord_dict["x_mesh"][:,:,edge_index]
+                                y_mesh = coord_dict["y_mesh"][:,:,edge_index]
+                                meshes = (x_mesh,y_mesh)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
+                                interp_data[:,:,edge_index] = pyconvert(Array,interpolator(meshes...))
+                            else
+                                @info "Number of dimensions $n_true_dims is not implemented"
+                            end
+                        end
+                    end 
+
+                end
+                # Now we make sure the halo regions are filled with zeros again
+                _fill_halos!(interp_data, grid, 0.0)
+
+                # Finally write the data to a new variable in the file
                 new_var_loc = "timeseries/$var"*"_Lagrangian_filtered_at_mean/$iter"
                 if haskey(file, new_var_loc)
                     Base.delete!(file, new_var_loc) #incase we already tried to write this variable

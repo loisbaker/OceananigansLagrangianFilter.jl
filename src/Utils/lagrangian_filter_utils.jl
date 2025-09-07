@@ -629,7 +629,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     velocity_names = config.velocity_names
     filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
-    N_filtered_vars = length(model.tracers)
+    N_filtered_vars = Int(length(var_names_to_filter)*N_coeffs*2) + (config.map_to_mean ? length(velocity_names)*N_coeffs*2 : 0)  # Total number of filtered vars (tracers and possibly maps)
     outputs_dict = Dict()
 
     for var_name in var_names_to_filter
@@ -683,12 +683,13 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
         end
     end
 
-    # We can also add the saved vars for comparison
-    if config.output_original_data
+    # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
+    if hasproperty(config, :output_original_data) && config.output_original_data
         for var_name in var_names_to_filter
             outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
         end
     end
+ 
 
     return outputs_dict
 end

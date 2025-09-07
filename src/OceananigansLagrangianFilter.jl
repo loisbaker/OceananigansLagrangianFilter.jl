@@ -16,7 +16,7 @@ using .OfflineLagrangianFilter
 using .OnlineLagrangianFilter
 
 # User will have access to these functions directly
-export online_test_function
-export OfflineFilterConfig, run_offline_Lagrangian_filter
+#export online_test_function
+export OfflineFilterConfig, OnlineFilterConfig, run_offline_Lagrangian_filter
 
 end # module
