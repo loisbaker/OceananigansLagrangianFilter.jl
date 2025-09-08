@@ -38,7 +38,7 @@ Arguments
 function sum_forward_backward_contributions!(config::AbstractConfig)
     # Combine the forward and backward simulations by summing them into a single file
 
-    combined_output_filename = config.combined_output_filename
+    output_filename = config.output_filename
     forward_output_filename = config.forward_output_filename
     backward_output_filename = config.backward_output_filename
     T = config.T
@@ -48,7 +48,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     # List the names of the fields that we will combine
     filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_Lagrangian_filtered" for var in var_names_to_filter])
     
-    jldopen(combined_output_filename,"w") do combined_file
+    jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
 
             # First copy the forward file metadata and file structure
@@ -79,7 +79,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
             end
         end
     end
-    @info "Combined forward and backward contributions into $combined_output_filename"
+    @info "Combined forward and backward contributions into $output_filename"
 
 end
 
@@ -206,12 +206,14 @@ Arguments
 - `config`: An instance of `AbstractConfig` containing the file paths, variable
   names, and grid information.
 """
+#TODO split this function into smaller functions for readability
 function regrid_to_mean_position!(config::AbstractConfig)
-    combined_output_filename = config.combined_output_filename
+    output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
     npad = config.npad 
-    jldopen(combined_output_filename,"r+") do file
+    
+    jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         grid = file["serialized/grid"]
         coord_dict = _create_coords(grid)
@@ -458,20 +460,20 @@ function regrid_to_mean_position!(config::AbstractConfig)
             
             for (ivar,var) in enumerate(var_names_to_filter)
                 
+                # This is the main interpolation
                 values = var_data[:,ivar]
                 interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
                 interp_data = pyconvert(Array,interpolator(regular_coord_mesh...))
 
-                # We also now edit the values of the interpolated field next to fixed boundaries.
                 # We already dealt with the periodic boundaries with padding, but we now make sure
                 # that the interpolation is accurate at fixed boundaries by doing an interpolation 
                 # at fixed coordinate normal to the boundary.
                 # Reuse the data array using the indices columns to pull out the data we need. 
                 for bounded_dim in bounded_dimensions # Just the non-singleton dimensions with fixed boundary
-                    @info "adjusting interpolation at bounded dimension $bounded_dim"
-                    true_dim_index = findfirst(isequal(bounded_dim), true_dims)
                     halo_size = getproperty(grid, Symbol("H$bounded_dim"))
-                    for edge_index in (halo_size+1, getproperty(grid, Symbol("N$bounded_dim"))+halo_size) # The index of the first and last real grid point in this dimension
+                    true_dim_index = findfirst(isequal(bounded_dim), true_dims)
+                    for edge_index in (1, getproperty(grid, Symbol("N$bounded_dim"))) # The index of the first and last real grid points in this dimension - halos have already been trimmed before indices assigned
+                        edge_index_with_halos = edge_index + halo_size
 
                         # Filter to coordinates where the index in this dimension is edge_index
                         data_array_cut = data_array[Int.(data_array[:,2*true_dim_index]) .== Int(edge_index),:] 
@@ -479,26 +481,31 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         # Now remove the columns with the bounded coordinate
                         data_array_cut = hcat(data_array_cut[:, 1:2*true_dim_index-2], data_array_cut[:, 2*true_dim_index+1:end])
                         
+                        # Then sort data_array_cut by the first remaining coordinate - this is needed for 1D interpolation
+                        data_array_cut = sortslices(data_array_cut, dims=1, by=row -> row[1])
+
                         # data_array_cut can now be used for interpolation in one fewer dimension
-                        coords = data_array_cut[:,1:2:2*(n_true_dims-1)] # The first columns are the coordinates and indices, just take the coordinates
-                        values = data_array_cut[:,2*(n_true_dims-1)+ivar] # The rest is the data
+                        coords_cut = data_array_cut[:,1:2:2*(n_true_dims-1)] # The first columns are the coordinates and indices, just take the coordinates
+                        values_cut = data_array_cut[:,2*(n_true_dims-1)+ivar] # The rest is the data
                         
                         if bounded_dim == "x"
                             if n_true_dims == 2
                                 if "y" in true_dims
-                                    mesh = coord_dict["y_mesh"][edge_index,:,1]
+                                    mesh = coord_dict["y_mesh"][edge_index_with_halos,:,1]
+                                    interp_data[edge_index_with_halos,:,1] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
                                 elseif "z" in true_dims
-                                    mesh = coord_dict["z_mesh"][edge_index,1,:]
+                                    mesh = coord_dict["z_mesh"][edge_index_with_halos,1,:]
+                                    interp_data[edge_index_with_halos,1,:] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
                                 else
                                     @info "Dimension combo $true_dims is not implemented"
                                 end
-                                interp_data[edge_index,:] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                                
                             elseif n_true_dims == 3
-                                y_mesh = coord_dict["y_mesh"][edge_index,:,:]
-                                z_mesh = coord_dict["z_mesh"][edge_index,:,:]
+                                y_mesh = coord_dict["y_mesh"][edge_index_with_halos,:,:]
+                                z_mesh = coord_dict["z_mesh"][edge_index_with_halos,:,:]
                                 meshes = (y_mesh,z_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
-                                interp_data[halo_size+1,:,:] = pyconvert(Array,interpolator(meshes...))
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                interp_data[edge_index_with_halos,:,:] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
                             end
@@ -506,43 +513,43 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         elseif bounded_dim =="y"
                             if n_true_dims == 2
                                 if "x" in true_dims
-                                    mesh = coord_dict["x_mesh"][:,edge_index,1]
+                                    mesh = coord_dict["x_mesh"][:,edge_index_with_halos,1]
+                                    interp_data[:,edge_index_with_halos,1] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
                                 elseif "z" in true_dims
-                                    mesh = coord_dict["z_mesh"][1,edge_index,:]
+                                    mesh = coord_dict["z_mesh"][1,edge_index_with_halos,:]
+                                    interp_data[1,edge_index_with_halos,:] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
                                 else
                                     @info "Dimension combo $true_dims is not implemented"
                                 end
                                 
-                                interp_data[:,edge_index] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                                
                             elseif n_true_dims == 3
-                                x_mesh = coord_dict["x_mesh"][:,edge_index,:]
-                                z_mesh = coord_dict["z_mesh"][:,edge_index,:]
+                                x_mesh = coord_dict["x_mesh"][:,edge_index_with_halos,:]
+                                z_mesh = coord_dict["z_mesh"][:,edge_index_with_halos,:]
                                 meshes = (x_mesh,z_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
-                                interp_data[:,edge_index,:] = pyconvert(Array,interpolator(meshes...))
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                interp_data[:,edge_index_with_halos,:] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
                             end
                         elseif bounded_dim == "z"
                             if n_true_dims == 2
                                 if "x" in true_dims
-                                    mesh = coord_dict["x_mesh"][:,1,edge_index]
+                                    mesh = coord_dict["x_mesh"][:,1,edge_index_with_halos]
+                                    interp_data[:,1,edge_index_with_halos] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))                           
                                 elseif "y" in true_dims
-                                    mesh = coord_dict["y_mesh"][1,:,edge_index]
+                                    mesh = coord_dict["y_mesh"][1,:,edge_index_with_halos]
+                                    interp_data[1,:,edge_index_with_halos] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
                                 else
                                     @info "Dimension combo $true_dims is not implemented"
                                 end
-                                @show mesh
-                                @show coords
-                                @show values
-                                @show interp_data[:,edge_index]
-                                interp_data[:,edge_index] = pyconvert(Array,numpy.interp(mesh, coords, values))
+                                
                             elseif n_true_dims == 3
-                                x_mesh = coord_dict["x_mesh"][:,:,edge_index]
-                                y_mesh = coord_dict["y_mesh"][:,:,edge_index]
+                                x_mesh = coord_dict["x_mesh"][:,:,edge_index_with_halos]
+                                y_mesh = coord_dict["y_mesh"][:,:,edge_index_with_halos]
                                 meshes = (x_mesh,y_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
-                                interp_data[:,:,edge_index] = pyconvert(Array,interpolator(meshes...))
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                interp_data[:,:,edge_index_with_halos] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
                             end
@@ -550,9 +557,10 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     end 
 
                 end
+                
                 # Now we make sure the halo regions are filled with zeros again
                 _fill_halos!(interp_data, grid, 0.0)
-
+                
                 # Finally write the data to a new variable in the file
                 new_var_loc = "timeseries/$var"*"_Lagrangian_filtered_at_mean/$iter"
                 if haskey(file, new_var_loc)
@@ -563,7 +571,8 @@ function regrid_to_mean_position!(config::AbstractConfig)
             end
         end
     end
-    @info "Wrote regridded data to new variables with _at_mean suffix in file $combined_output_filename"
+    @info "Wrote regridded data to new variables with _at_mean suffix in file $output_filename"
+    
 end
 
 """
@@ -624,6 +633,16 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
             "long_name"                 => "Time",
         ))
         nctime[:] = times
+
+        # There might be a time shifted variable
+        if haskey(file["timeseries"], "t_shifted")
+            t_shifted = [file["timeseries/t_shifted/$iter"] for iter in iterations]
+            nctime = defVar(ds,"time_shifted", Float64, ("time",), attrib = OrderedDict(
+            "units"                     => "seconds",
+            "long_name"                 => "Time shifted to mean time",
+            ))
+            nctime[:] = t_shifted
+        end
 
         ncy_afa = defVar(ds,"y_afa", Float32, ("y_afa",), attrib = OrderedDict(
             "units"                     => "m",
@@ -768,8 +787,8 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
         
 
         for varname in keys(file["timeseries"])
-            if varname ∉ ("t","t_simulation") 
-                    
+            if varname ∉ ("t","t_shifted") 
+
                 # Create a variable in the NetCDF file
                 bc_string = sprint(show, file["timeseries/$varname/serialized/boundary_conditions"])
                 ncv = defVar(ds, varname, Float64, (location_map[file["timeseries/$varname/serialized/location"]]...,"time"), attrib = OrderedDict(
@@ -790,7 +809,7 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 end
 
 """
-    get_weight_function(t::AbstractArray, tref::Real, filter_params::NamedTuple)
+    get_weight_function(;t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::String = "both")
 
 Computes the weighting function for the offline filter. This function calculates
 the filter's impulse response, which determines how much each point in the
@@ -798,20 +817,24 @@ timeseries `t` contributes to the filtered value at a reference time `tref`.
 The weighting function is based on the provided `filter_params`, which contains
 the coefficients for the filter's impulse response.
 
-Arguments
+Keyword arguments
 =========
 - `t`: A collection of time points in the timeseries.
 - `tref`: The reference time at which the filter is being evaluated.
 - `filter_params`: A `NamedTuple` containing the coefficients (`a`, `b`, `c`,
   `d`) and the number of coefficient pairs (`N_coeffs`).
+- `direction`: A `String` indicating the direction of the filter. It can be
+  "both" (default), "forward", or "backward". This determines whether the
+  filter is applied symmetrically around `tref`, only to past times, or only
+  to future times.
 
 Returns
 =======
 - A vector of weights `G`, with the same dimensions as `t`, representing the
   value of the filter's impulse response at each time point relative to `tref`.
 """
-function get_weight_function(t::AbstractArray, tref::Real, filter_params::NamedTuple)
-    
+function get_weight_function(;t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::String = "both")
+
     G = 0*t
     N_coeffs = filter_params.N_coeffs
     for i in 1:N_coeffs
@@ -823,10 +846,17 @@ function get_weight_function(t::AbstractArray, tref::Real, filter_params::NamedT
 
         G += (a.*cos.(d.*abs.(t .- tref)) .+ b.*sin.(d.*abs.(t .- tref))).*exp.(-c.*abs.(t .- tref))
     end
-
+    if direction == "forward"
+        G[t .> tref] .= 0
+    elseif direction == "backward"
+        G[t .< tref] .= 0
+    elseif direction != "both"
+        error("Direction must be 'forward', 'backward' or 'both'")
+    end
     return G
 end
 
+#TODO do this for forward and backward only too
 """
     get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
 
@@ -892,11 +922,17 @@ Arguments
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
     filter_params = config.filter_params
-    combined_output_filename = config.combined_output_filename
+    output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
+    filter_mode = config.filter_mode
+    if filter_mode == "offline"
+        direction = "both"
+    elseif filter_mode == "online"
+        direction = "forward"
+    end
 
     # Open existing file
-    jldopen(combined_output_filename,"r+") do file
+    jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         times = [file["timeseries/t/$iter"] for iter in iterations]
         dt = times[2] - times[1] # Initialise time interval
@@ -917,16 +953,72 @@ function compute_Eulerian_filter!(config::AbstractConfig)
             # Loop over times to compute filtered field at each time
             for (i, t) in enumerate(times)
                 @info "Computing Eulerian filter at time $t =  (index $i of $(length(times)))"
-                G = get_weight_function(times, t, filter_params)
-                mean_field = 0 .* file["timeseries/$(var_name)/$(iterations[1])"]
+                G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
+                
+                # Could initialise better
+                mean_field = file["timeseries/$(var_name)/$(iterations[1])"]*0.0
+                
                 # Construct mean sequentially
                 for j in 1:length(times)
                     field = file["timeseries/$(var_name)/$(iterations[j])"]
                     dt = j < length(times) ? times[j+1] - times[j] : dt
-                    mean_field .+= G[j] * field * dt
+                    mean_field .+= G[j] .* field .* dt
                 end
                 g_EF["$(iterations[i])"] = mean_field
             end
         end
     end
+end
+
+"""
+    compute_time_shift!(config::AbstractConfig)
+
+Computes the time shift for an online filter based on its coefficients and writes
+the shifted time series to the output file.
+
+This function is only applicable for online filtering. The time shift is computed
+as the time delay introduced by the filter's transfer function. This new time series
+is stored in a new group called `timeseries/t_shifted` within the output JLD2 file.
+
+# Arguments
+- `config`: A configuration object of type `OfflineFilterConfig` which contains
+  the `filter_mode`, `output_filename`, and `filter_params` (filter coefficients).
+
+# Throws
+- `error`: If `config.filter_mode` is not `"online"`. The time shift for offline
+  (forward-backward) filtering is zero by definition due to an even weight function.
+
+"""
+function compute_time_shift!(config::AbstractConfig)
+    if config.filter_mode != "online"
+        error("Time shift computation is only relevant for online filtering. Offline forward-backward filtering
+        has an even weight function, so time shift is zero .")
+    end
+    output_filename = config.output_filename
+    filter_params = config.filter_params    
+    N_coeffs = filter_params.N_coeffs
+    time_shift = 0.0
+    if N_coeffs == 0.5 # exponential special case
+        time_shift = 1/filter_params.c1
+    else
+        for i in 1:N_coeffs
+            a = getproperty(filter_params, Symbol("a$i"))
+            b = getproperty(filter_params, Symbol("b$i"))
+            c = getproperty(filter_params, Symbol("c$i"))
+            d = getproperty(filter_params, Symbol("d$i"))
+            time_shift += (a*c^2 + 2*b*c*d - a*d^2)/(c^2 + d^2)^2
+        end
+    end
+    jldopen(output_filename,"r+") do file
+        iterations = parse.(Int, keys(file["timeseries/t"]))
+        times = [file["timeseries/t/$iter"] for iter in iterations]
+        t_shift_group = JLD2.Group(file, "timeseries/t_shifted")
+
+        for (i, t) in enumerate(times)
+            t_shift_group["$(iterations[i])"] = t - time_shift
+        end
+
+    end
+    @info "Wrote time shift data to new group timeseries/t_shifted in file $output_filename"
+
 end

@@ -14,23 +14,25 @@ A configuration object for online filtering.
 """
 struct OnlineFilterConfig <: AbstractConfig
     grid::AbstractGrid
+    output_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}} 
     filter_params::NamedTuple
     map_to_mean::Bool
     npad::Int
-    compute_Eulerian_filter::Bool
+    filter_mode::String
     
 end
 
 """
     OnlineFilterConfig(; grid::AbstractGrid,
+                            output_filename::String = "online_filtered_output",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
                             npad::Int = 5,
-                            compute_Eulerian_filter::Bool = false,
+                            filter_mode::String = "online"
                             )
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
@@ -40,20 +42,22 @@ before creating the `OfflineFilterConfig` object.
 Keyword arguments
 =================
   - `grid`: (required) The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
+  - `output_filename`: The filename for the output of the online filtered data. Default: `"online_filtered_output"`.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
+- `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
 """
 function OnlineFilterConfig(; grid::AbstractGrid,
+                            output_filename::String = "online_filtered_output",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
                             npad::Int = 5,
-                            compute_Eulerian_filter::Bool = false,
                             )
 
     # Make sure we have some filter parameters
@@ -117,13 +121,15 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         end
     end
 
+    filter_mode = "online"
     return OnlineFilterConfig(grid,
+                            output_filename,
                             var_names_to_filter,
                             velocity_names,
                             filter_params,
                             map_to_mean,
                             npad,
-                            compute_Eulerian_filter
+                            filter_mode
                             )
  
 end

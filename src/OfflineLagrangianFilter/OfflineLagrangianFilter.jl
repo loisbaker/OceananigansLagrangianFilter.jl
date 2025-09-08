@@ -89,7 +89,7 @@ struct OfflineFilterConfig <: AbstractConfig
     map_to_mean::Bool
     forward_output_filename::String
     backward_output_filename::String
-    combined_output_filename::String
+    output_filename::String
     npad::Int
     delete_intermediate_files::Bool
     compute_Eulerian_filter::Bool
@@ -97,6 +97,7 @@ struct OfflineFilterConfig <: AbstractConfig
     output_original_data::Bool
     advection::AbstractAdvectionScheme
     grid::AbstractGrid
+    filter_mode::String
 
 end
 
@@ -117,14 +118,15 @@ end
                         map_to_mean::Bool = true,
                         forward_output_filename::String = "forward_output.jld2",
                         backward_output_filename::String = "backward_output.jld2",
-                        combined_output_filename::String = "combined_output.jld2",
+                        output_filename::String = "filtered_output.jld2",
                         npad::Int = 5,
                         delete_intermediate_files::Bool = true,
                         compute_Eulerian_filter::Bool = false,
                         output_netcdf::Bool = false,
                         output_original_data::Bool = true
                         advection::AbstractAdvectionScheme = WENO(),
-                        grid::Union{AbstractGrid, Nothing} = nothing)
+                        grid::Union{AbstractGrid, Nothing} = nothing,
+                        filter_mode::String = "offline")
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -148,7 +150,7 @@ Keyword arguments
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
-  - `combined_output_filename`: The filename for the final combined and mapped output. Default: `"combined_output.jld2"`.
+  - `output_filename`: The filename for the final combined and mapped output. Default: `"filtered_output.jld2"`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
@@ -156,6 +158,7 @@ Keyword arguments
     - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
   - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
+  - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "offline". TODO use multiple dispatch for this instead.
 """
 function OfflineFilterConfig(; original_data_filename::String,
                             var_names_to_filter::Tuple{Vararg{String}},
@@ -173,7 +176,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             map_to_mean::Bool = true,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
-                            combined_output_filename::String = "combined_output.jld2",
+                            output_filename::String = "filtered_output.jld2",
                             npad::Int = 5,
                             delete_intermediate_files::Bool = true,
                             compute_Eulerian_filter::Bool = false,
@@ -324,6 +327,8 @@ function OfflineFilterConfig(; original_data_filename::String,
     example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
     grid = isnothing(grid) ? example_timeseries.grid : grid
 
+    filter_mode = "offline"  
+
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
                             velocity_names,
@@ -338,14 +343,15 @@ function OfflineFilterConfig(; original_data_filename::String,
                             map_to_mean,
                             forward_output_filename,
                             backward_output_filename,
-                            combined_output_filename,
+                            output_filename,
                             npad,
                             delete_intermediate_files,
                             compute_Eulerian_filter,
                             output_netcdf,
                             output_original_data,
                             advection,
-                            grid)
+                            grid,
+                            filter_mode)
 
 end
 

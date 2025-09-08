@@ -49,7 +49,7 @@ function run_offline_Lagrangian_filter(config)
 
     # We can set initial values to improve the spinup, use the limit freq_c -> \infty
     # The map variables get automatically initialised to zero
-    initialise_filtered_vars(model, input_data, config)    
+    initialise_filtered_vars_from_data(model, input_data, config)    
     @info "Initialised filtered variables"
 
     # Define our outputs # 

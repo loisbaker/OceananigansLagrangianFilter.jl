@@ -684,7 +684,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     end
 
     # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
-    if hasproperty(config, :output_original_data) && config.output_original_data
+    if config.filter_mode == "offline" && config.output_original_data
         for var_name in var_names_to_filter
             outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
         end
@@ -734,7 +734,7 @@ function update_input_data!(sim::Simulation, input_data::NamedTuple)
 end
 
 """
-    initialise_filtered_vars(model::AbstractModel, saved_original_vars::Tuple,
+    initialise_filtered_vars_from_data(model::AbstractModel, saved_original_vars::Tuple,
                              config::AbstractConfig)
 
 Initializes the model's tracer fields, which represent the components of the
@@ -757,8 +757,8 @@ Arguments
   the original data for each variable.
 - `config`: An instance of `AbstractConfig` with the filter parameters.
 """
-function initialise_filtered_vars(model::AbstractModel, input_data::NamedTuple, config::AbstractConfig)
-        filter_params = config.filter_params
+function initialise_filtered_vars_from_data(model::AbstractModel, input_data::NamedTuple, config::AbstractConfig)
+    filter_params = config.filter_params
 
     for original_var_fts in input_data.var_data
         var_name = original_var_fts.name
@@ -778,3 +778,106 @@ function initialise_filtered_vars(model::AbstractModel, input_data::NamedTuple, 
         end
     end
 end
+#TODO combine these functions using multiple dispatch
+"""
+    initialise_filtered_vars_from_model(model::AbstractModel,config::AbstractConfig)
+
+
+Initializes the model's filtered tracer fields using the actual tracer fields that are
+assumed to have been already set. This improves the "spin-up" of the filter simulation 
+by providing a good starting point.
+
+The initialization formula depends on the number of filter coefficients
+(`N_coeffs`):
+
+- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
+  tracer exists and is initialized.
+- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
+  tracers for each coefficient are initialized.
+
+Arguments
+=========
+- `model`: The `AbstractModel` whose tracers are to be initialized.
+- `config`: An instance of `AbstractConfig` with the filter parameters.
+"""
+function initialise_filtered_vars_from_model(model::AbstractModel, config::AbstractConfig)
+        filter_params = config.filter_params
+        var_names_to_filter = config.var_names_to_filter
+
+    for var_name in var_names_to_filter
+        if filter_params.N_coeffs == 0.5 # Special case of single exponential
+            filtered_var_C = Symbol(var_name,"_C1",)
+            c1 = filter_params.c1
+            set!(getproperty(model.tracers, filtered_var_C), 1/c1*getproperty(model.tracers,Symbol(var_name)))
+        else
+            for i in 1:filter_params.N_coeffs
+                filtered_var_C = Symbol(var_name,"_C",i)
+                filtered_var_S = Symbol(var_name,"_S",i)
+                ci = getproperty(filter_params,Symbol("c$i"))
+                di = getproperty(filter_params,Symbol("d$i"))
+                set!(getproperty(model.tracers, filtered_var_C), ci/(ci^2 + di^2)*getproperty(model.tracers,Symbol(var_name)))
+                set!(getproperty(model.tracers, filtered_var_S), di/(ci^2 + di^2)*getproperty(model.tracers,Symbol(var_name)))
+            end
+        end
+    end
+end
+
+"""
+    zero_closure_for_filtered_vars(config::AbstractConfig)
+
+
+Initializes the model's filtered tracer fields using the actual tracer fields that are
+assumed to have been already set. This improves the "spin-up" of the filter simulation 
+by providing a good starting point.
+
+The initialization formula depends on the number of filter coefficients
+(`N_coeffs`):
+
+- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
+  tracer exists and is initialized.
+- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
+  tracers for each coefficient are initialized.
+
+Arguments
+=========
+- `model`: The `AbstractModel` whose tracers are to be initialized.
+- `config`: An instance of `AbstractConfig` with the filter parameters.
+"""
+function zero_closure_for_filtered_vars(config::AbstractConfig)
+    var_names_to_filter = config.var_names_to_filter
+    N_coeffs = config.filter_params.N_coeffs
+    map_to_mean = config.map_to_mean
+    dict = Dict()
+    for var_name in var_names_to_filter
+        if N_coeffs == 0.5 # Special case of single exponential
+            filtered_var_C = Symbol(var_name,"_C1",)
+            dict[filtered_var_C] = 0.0
+        else
+            for i in 1:N_coeffs
+                filtered_var_C = Symbol(var_name,"_C",i)
+                filtered_var_S = Symbol(var_name,"_S",i)
+                dict[filtered_var_C] = 0.0
+                dict[filtered_var_S] = 0.0
+            end
+        end
+    end
+    if map_to_mean
+        velocity_names = config.velocity_names
+        for vel_name in velocity_names
+            if N_coeffs == 0.5 # Special case of single exponential
+                filtered_var_C = Symbol("xi_", vel_name,"_C1",)
+                dict[filtered_var_C] = 0.0
+            else
+                for i in 1:N_coeffs
+                    filtered_var_C = Symbol("xi_", vel_name,"_C",i)
+                    filtered_var_S = Symbol("xi_", vel_name,"_S",i)
+                    dict[filtered_var_C] = 0.0
+                    dict[filtered_var_S] = 0.0
+                end
+            end
+        end
+    end
+    filtered_closure = NamedTuple(dict)
+    return filtered_closure
+end
+
