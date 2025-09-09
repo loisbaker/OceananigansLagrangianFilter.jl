@@ -216,29 +216,31 @@ end
 
 
 """
-    set_offline_BW_filter_params(; N::Int=1, freq_c::Real=1)
+    set_offline_BW2_filter_params(; N::Int=1, freq_c::Real=1)
 
 Calculates the coefficients for a filter that has a frequency response given by a
-Butterworth filter with order `2^N` and cutoff frequency `freq_c`, squared. 
+Butterworth filter with order `N` and cutoff frequency `freq_c`, squared. 
 
-Uses `2^N` exponentials and `2^(N-1)` sets of coefficients (which come in pairs
-to ensure real equations).
+Uses `N` exponentials and `N/2` sets of coefficients (a,b,c,d). N should therefore be even,
+since exponentials come in pairs to ensure a real-valued filter.
 
-Frequency response: `Ghat(omega) = 1 / (1 + (omega / freq_c)^(2^(N+1)))`
-Real filter shape: `G(t) = sum_{i=1}^{2^(N-1)} exp(-c_i*abs(t))*(a_i*cos(d_i * abs(t)) + b_i*sin(d_i * abs(t)))`
+However, the special case N=1 is allowed, which gives a single (real) exponential filter.
+
+Frequency response: `Ghat(omega) = 1 / (1 + (omega / freq_c)^(2*N))`
+Real filter shape: `G(t) = sum_{i=1}^{N/2} exp(-c_i*abs(t))*(a_i*cos(d_i * abs(t)) + b_i*sin(d_i * abs(t)))`
 
 This function supports two types of filters:
-* A **single exponential filter** when `N=0`. This is a special case that
-  generates two coefficients. The unidirectional filter is a single exponential,
+* A **single exponential filter** when `N=1`. This is a special case that
+  generates two coefficients instead of 4. The unidirectional filter is a single exponential,
   and `N_coeffs = 0.5`. Only `a1` and `c1` are returned.
-* A **Butterworth squared filter** for `N>0`. This generates `4 * 2^(N-1)`
-  coefficients, arranged in pairs to represent a filter of order `2^N`. The
+* A **Butterworth squared filter** for `N>1`. This generates `N/2` sets of
+  coefficients (a,b,c,d), representing a filter of order `N`. The
   coefficients are computed based on the filter's order and cutoff frequency.
 
 Arguments
 =========
-- `N`: The order parameter for the filter. `N=0` for a single exponential.
-  For `N>0`, the filter's order is `2^N`. Must be a non-negative integer.
+- `N`: The order parameter for the filter. `N=1` for a single exponential.
+  For `N>1`, the filter's order is `N`. Must be a non-negative even integer.
 - `freq_c`: The cutoff frequency of the filter. Must be a real number.
 
 Returns
@@ -247,10 +249,15 @@ Returns
   of coefficient pairs.
 """
 function set_offline_BW_filter_params(;N::Int=1,freq_c::Real=1) 
-    if N != floor(N) || N < 0
-        error("N must be a non-negative integer.")
+    if N == 1
+        # Special case single exponential
+        N_coeffs = 0.5
+    elseif N/2 != floor(N/2) || N < 0 
+        error("N must be a non-negative even integer, or 1 for a single exponential.")
+    else
+        N_coeffs = int(N/2)
     end
-    N_coeffs = (N==0) ? 0.5 : 2^(N-1)
+
     freq_c = abs(freq_c) # Ensure freq_c is positive
     if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
         a1 = freq_c/2 
@@ -262,10 +269,88 @@ function set_offline_BW_filter_params(;N::Int=1,freq_c::Real=1)
         filter_params = NamedTuple()
         for i in 1:N_coeffs
             
-            a = (freq_c/2^N)*sin(pi/(2^(N+1))*(2*i-1))
-            b = (freq_c/2^N)*cos(pi/(2^(N+1))*(2*i-1))
-            c = freq_c*sin(pi/(2^(N+1))*(2*i-1))
-            d = freq_c*cos(pi/(2^(N+1))*(2*i-1))
+            a = (freq_c/N)*sin(pi/2/N*(2*i-1))
+            b = (freq_c/N)*cos(pi/2/N*(2*i-1))
+            c = freq_c*sin(pi/2/N*(2*i-1))
+            d = freq_c*cos(pi/2/N*(2*i-1))
+
+            temp_params = NamedTuple{(Symbol("a$i"), Symbol("b$i"),Symbol("c$i"),Symbol("d$i"))}([a,b,c,d])
+            filter_params = merge(filter_params,temp_params)
+        end
+
+        return merge(filter_params, (; N_coeffs = N_coeffs))
+    end
+end
+
+"""
+    set_online_BW_filter_params(; N::Int=1, freq_c::Real=1)
+
+Calculates the coefficients for a filter that has a frequency response given by a
+Butterworth filter with order `N` and cutoff frequency `freq_c`. Note that the frequency
+response is not squared, like in the offline forward-backward filter, and the frequency response
+is not real-valued, implying a nonlinear phase shift. 
+
+Uses `N` exponentials and `N/2` sets of coefficients (a,b,c,d). N should therefore be even,
+since exponentials come in pairs to ensure a real-valued filter.
+
+However, the special case N=1 is allowed, which gives a single (real) exponential filter.
+
+Frequency response: `abs(Ghat(omega)) = 1 / sqrt(1 + (omega / freq_c)^(2*N))`
+Real filter shape: `G(t) = sum_{i=1}^{N/2} exp(-c_i*t)* (a_i*cos(d_i * t) + b_i*sin(d_i * t))` 
+for t>=0, and 0 for t<0.
+
+This function supports two types of filters:
+* A **single exponential filter** when `N=1`. This is a special case that
+  generates two coefficients instead of 4. The unidirectional filter is a single exponential,
+  and `N_coeffs = 0.5`. Only `a1` and `c1` are returned.
+* A **Butterworth filter** for `N>1`. This generates `N/2` sets of
+  coefficients (a,b,c,d), representing a filter of order `N`. The
+  coefficients are computed based on the filter's order and cutoff frequency.
+
+Arguments
+=========
+- `N`: The order parameter for the filter. `N=1` for a single exponential.
+  For `N>1`, the filter's order is `N`. Must be a non-negative even integer.
+- `freq_c`: The cutoff frequency of the filter. Must be a real number.
+
+Returns
+=======
+- A `NamedTuple` containing the filter coefficients and `N_coeffs`, the number
+  of coefficient pairs.
+"""
+function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1) 
+    if N == 1
+        # Special case single exponential
+        N_coeffs = 0.5
+    elseif N/2 != floor(N/2) || N < 0 
+        error("N must be a non-negative even integer, or 1 for a single exponential.")
+    else
+        N_coeffs = Int(N/2)
+    end
+
+    freq_c = abs(freq_c) # Ensure freq_c is positive
+    if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
+        a1 = freq_c
+        c1 = freq_c
+        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
+        return filter_params
+
+    else
+        filter_params = NamedTuple()
+        for i in 1:N_coeffs
+            
+            c = freq_c*sin(pi/2/N*(2*i-1))
+            d = -freq_c*cos(pi/2/N*(2*i-1))
+            ri = exp(pi*im*(2*i-1)/ (2*N)) # ith of the 2N roots of -1
+            Ai = 1
+            for k in 1:N
+                if k != i
+                    rk = exp(pi*im*(2*k-1)/ (2*N))
+                    Ai *= 1/(ri - rk)
+                end
+            end
+            b = 2*freq_c*real(Ai*exp(-im*pi*N/2))
+            a = -2*freq_c*imag(Ai*exp(-im*pi*N/2))
 
             temp_params = NamedTuple{(Symbol("a$i"), Symbol("b$i"),Symbol("c$i"),Symbol("d$i"))}([a,b,c,d])
             filter_params = merge(filter_params,temp_params)

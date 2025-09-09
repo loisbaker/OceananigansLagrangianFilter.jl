@@ -29,6 +29,8 @@ end
                             output_filename::String = "online_filtered_output",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
+                            N::Union{Int, Nothing} = nothing,
+                            freq_c::Union{Int, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
                             npad::Int = 5,
@@ -45,6 +47,8 @@ Keyword arguments
   - `output_filename`: The filename for the output of the online filtered data. Default: `"online_filtered_output"`.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
+  - `N`, `freq_c`: Parameters for a Butterworth filter. `N` is the order of the filter, and `freq_c` is the cutoff frequency. 
+     These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
@@ -55,56 +59,55 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             output_filename::String = "online_filtered_output",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
+                            N::Union{Int, Nothing} = nothing,
+                            freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
                             npad::Int = 5,
                             )
 
     # Make sure we have some filter parameters
-    if isnothing(filter_params)
-        error("Must provide filter_params for online filtering.")
-    end
-    # if !isnothing(filter_params) && (!isnothing(N) || !isnothing(freq_c))
-    #     error("Specify either filter_params or N and freq_c, not both.")
-    # elseif isnothing(filter_params) && (isnothing(N) || isnothing(freq_c))
-    #     error("Must specify either filter_params or both N and freq_c.")
-    # elseif isnothing(filter_params) && !isnothing(N) && !isnothing(freq_c)
-    #     filter_params = set_offline_BW_filter_params(;N,freq_c)
-    #     @info "Setting filter parameters to use Butterworth squared, order $(2^N), cutoff frequency $freq_c"
-    # else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
-    #     # User has specified filter_params directly, but we should check it has the right fields
-    #     if haskey(filter_params, :N_coeffs)
-    #         if N_coeffs == 0.5 # Single exponential special case
-    #             if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
-    #                 error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
-    #             end
-    #         elseif floor(filter_params.N_coeffs) != filter_params.N_coeffs
-    #             error("N_coeffs must be a positive integer or 0.5")
-    #         else
-    #             if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
-    #                 error("For N_coeffs>0.5, filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
-    #             end
+    if !isnothing(filter_params) && (!isnothing(N) || !isnothing(freq_c))
+        error("Specify either filter_params or N and freq_c, not both.")
+    elseif isnothing(filter_params) && (isnothing(N) || isnothing(freq_c))
+        error("Must specify either filter_params or both N and freq_c.")
+    elseif isnothing(filter_params) && !isnothing(N) && !isnothing(freq_c)
+        filter_params = set_offline_BW2_filter_params(;N,freq_c)
+        @info "Setting filter parameters to use Butterworth order $N, cutoff frequency $freq_c"
+    else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
+        # User has specified filter_params directly, but we should check it has the right fields
+        if haskey(filter_params, :N_coeffs)
+            if N_coeffs == 0.5 # Single exponential special case
+                if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
+                    error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
+                end
+            elseif floor(filter_params.N_coeffs) != filter_params.N_coeffs
+                error("N_coeffs must be a positive integer or 0.5")
+            else
+                if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
+                    error("For N_coeffs>0.5, filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                end
             
-    #         end
-    #     else # N_coeffs isn't provided, but we might be able to infer it
-    #         if floor(length(filter_params)/4) == length(filter_params)/4
-    #             filter_params = merge(filter_params, (N_coeffs = length(filter_params)/4,))
-    #             # But we still have to check that the right entries are there:
-    #             if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
-    #                 error("filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
-    #             end
-    #         elseif length(filter_params) == 2
-    #             filter_params = merge(filter_params, (N_coeffs = 0.5,))
-    #             if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
-    #                 error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
-    #             end
-    #         else
-    #             error("filter_params must have either 2 entries (for single exponential) or 4*N entries (for Butterworth squared of order 2^N)")
+            end
+        else # N_coeffs isn't provided, but we might be able to infer it
+            if floor(length(filter_params)/4) == length(filter_params)/4
+                filter_params = merge(filter_params, (N_coeffs = length(filter_params)/4,))
+                # But we still have to check that the right entries are there:
+                if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
+                    error("filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                end
+            elseif length(filter_params) == 2
+                filter_params = merge(filter_params, (N_coeffs = 0.5,))
+                if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
+                    error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
+                end
+            else
+                error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
             
-    #         end
+            end
 
-    #     end
-    # end
+        end
+    end
 
     # Check normalisation of filter coefficients
     if filter_params.N_coeffs == 0.5

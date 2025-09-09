@@ -955,16 +955,17 @@ function compute_Eulerian_filter!(config::AbstractConfig)
                 @info "Computing Eulerian filter at time $t =  (index $i of $(length(times)))"
                 G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
                 
-                # Could initialise better
+                # Initialise with zeros
                 mean_field = file["timeseries/$(var_name)/$(iterations[1])"]*0.0
-                
+
+                normalisation = sum(G[2:end] .* diff(times))
                 # Construct mean sequentially
                 for j in 1:length(times)
                     field = file["timeseries/$(var_name)/$(iterations[j])"]
                     dt = j < length(times) ? times[j+1] - times[j] : dt
-                    mean_field .+= G[j] .* field .* dt
+                    mean_field .+= G[j] .* field .* dt 
                 end
-                g_EF["$(iterations[i])"] = mean_field
+                g_EF["$(iterations[i])"] = mean_field./normalisation
             end
         end
     end

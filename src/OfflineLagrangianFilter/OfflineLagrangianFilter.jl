@@ -143,7 +143,8 @@ Keyword arguments
   - `T`: Duration of the filtering. If not given, defaults to T_end - T_start (after T_start and T_end are given or computed).
   - `architecture`: The architecture (CPU or GPU) to be used for the filtering computation. Default: `CPU()`.
   - `T_out`: The output time step for the filtered data. If `nothing`, it defaults to the time step of the original data.
-  - `N`, `freq_c`: Parameters for a Butterworth squared filter. `2^N` is the order of the filter, and `freq_c` is the cutoff frequency. These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
+  - `N`, `freq_c`: Parameters for a Butterworth squared filter. `N` is the order of the filter, and `freq_c` is the cutoff frequency. 
+     These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
   - `backend`: The backend for loading `FieldTimeSeries` data. See `Oceananigans.Fields.FieldTimeSeries`. Default: `InMemory(4)`.
@@ -271,8 +272,8 @@ function OfflineFilterConfig(; original_data_filename::String,
     elseif isnothing(filter_params) && (isnothing(N) || isnothing(freq_c))
         error("Must specify either filter_params or both N and freq_c.")
     elseif isnothing(filter_params) && !isnothing(N) && !isnothing(freq_c)
-        filter_params = set_offline_BW_filter_params(;N,freq_c)
-        @info "Setting filter parameters to use Butterworth squared, order $(2^N), cutoff frequency $freq_c"
+        filter_params = set_offline_BW2_filter_params(;N,freq_c)
+        @info "Setting filter parameters to use Butterworth squared, order $N, cutoff frequency $freq_c"
     else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
         # User has specified filter_params directly, but we should check it has the right fields
         if haskey(filter_params, :N_coeffs)
@@ -301,7 +302,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                     error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
                 end
             else
-                error("filter_params must have either 2 entries (for single exponential) or 4*N entries (for Butterworth squared of order 2^N)")
+                error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
             
             end
 
