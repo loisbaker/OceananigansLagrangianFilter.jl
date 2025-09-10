@@ -59,7 +59,7 @@ using CUDA
 
 # Define the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename = "my_simulation.jld2", # Where the original simulation output is
-                                    output_filename = "my_filtered_simulation.jld2"
+                                    output_filename = "my_filtered_simulation.jld2" # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","v"), # Velocities to use for Lagrangian filtering
                                     architecture = GPU(), # CPU() or GPU()
@@ -76,11 +76,19 @@ run_offline_Lagrangian_filter(filter_config)
 
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
-You can find an example of a simple simulation of geostrophic adjustment in `/examples/periodic_geostrophic_adjustment.ipynb`. The filtering is then performed using `run_offline_filter.ipynb`.
+You can find an example of a simple simulation of geostrophic adjustment in `/examples/geostrophic_adjustment.ipynb`. The filtering is then performed using `/examples/offline_filter_geostrophic_adjustment.jl`.
 
 ### Online Filtering
 
-For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example in `/examples/periodic_geostrophic_adjustment_online_filter.ipynb`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
+For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example corresponding to the above online filtering in `/examples/online_filter_geostrophic_adjustment.jl`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
+
+---
+# The technical bit
+Questions to be answered here in the near future include
+* How does it work?
+* Why would I want to filter offline when I could filter online?
+* What kind of filters are implemented, and why?
+* When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)
 
 ---
 ## 💻 Contributing

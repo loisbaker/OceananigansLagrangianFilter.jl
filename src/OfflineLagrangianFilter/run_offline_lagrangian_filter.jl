@@ -127,7 +127,7 @@ function run_offline_Lagrangian_filter(config)
 
     # Option to output final netcdf
     if config.output_netcdf
-        jld2_to_netcdf(config.combined_output_filename, config.combined_output_filename[1:end-5] * ".nc")
+        jld2_to_netcdf(config.output_filename, config.output_filename[1:end-5] * ".nc")
     end
 
 end
