@@ -1,5 +1,5 @@
 
-# :ocean: OceananigansLagrangianFilter
+# :ocean: OceananigansLagrangianFilter.jl
 
 A package for offline and online filtering of simulation data from Oceananigans.jl. Still under development and testing - but please try it out and raise any issues, questions, or requests!
 
@@ -41,7 +41,7 @@ Offline filtering (whereby the data is processed after simulation time) allows f
 
 Here is a simple example of how to filter a pre-existing dataset.
 
-```
+```julia
 
 using OceananigansLagrangianFilter
 using Oceananigans.Units
@@ -66,10 +66,11 @@ run_offline_Lagrangian_filter(filter_config)
 
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
+You can find an example of a simple simulation of geostrophic adjustment in `/examples/periodic_geostrophic_adjustment.ipynb`. The filtering is then performed using `run_offline_filter.ipynb`.
 
 ### Online Filtering
 
-For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example in `/examples/periodic_geostrophic_adjustment.jl`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
+For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example in `/examples/periodic_geostrophic_adjustment_online_filter.ipynb`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
 
 ---
 ## 💻 Contributing
