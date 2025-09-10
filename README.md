@@ -1,5 +1,5 @@
 
-# OceananigansLagrangianFilter.jl
+# :ocean: OceananigansLagrangianFilter
 
 A package for offline and online filtering of simulation data from Oceananigans.jl. Still under development and testing - but please try it out and raise any issues, questions, or requests!
 
