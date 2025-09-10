@@ -17,7 +17,7 @@ A package for offline and online filtering of simulation data from Oceananigans.
 
 * **Online Filtering:** Integrate filters directly into `Oceananigans.jl` simulations.
 
-* **Multiple Filter Types:** Supports custom filter shapes, with 'optimal' default filters easily implemented.
+* **Multiple Filter Types:** Supports custom filter shapes, with 'optimal' default Butterworth-type filters easily implemented.
 
 * **Easy Integration:** Designed to work directly with `Oceananigans.jl` data formats.
 
@@ -35,11 +35,6 @@ or in julia:
 using Pkg
 Pkg.add(url = "https://github.com/loisbaker/OceananigansLagrangianFilter.jl.git")
 
-```
-You could then copy the examples to your current directory using 
-
-```julia
-cp(joinpath(pkgdir(OceananigansLagrangianFilter), "examples"), "./examples")
 ```
 
 ---
