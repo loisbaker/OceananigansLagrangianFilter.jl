@@ -248,14 +248,14 @@ Returns
 - A `NamedTuple` containing the filter coefficients and `N_coeffs`, the number
   of coefficient pairs.
 """
-function set_offline_BW_filter_params(;N::Int=1,freq_c::Real=1) 
+function set_offline_BW2_filter_params(;N::Int=1,freq_c::Real=1) 
     if N == 1
         # Special case single exponential
         N_coeffs = 0.5
     elseif N/2 != floor(N/2) || N < 0 
         error("N must be a non-negative even integer, or 1 for a single exponential.")
     else
-        N_coeffs = int(N/2)
+        N_coeffs = Int(N/2)
     end
 
     freq_c = abs(freq_c) # Ensure freq_c is positive

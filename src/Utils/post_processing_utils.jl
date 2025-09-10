@@ -958,7 +958,7 @@ function compute_Eulerian_filter!(config::AbstractConfig)
                 # Initialise with zeros
                 mean_field = file["timeseries/$(var_name)/$(iterations[1])"]*0.0
 
-                normalisation = sum(G[2:end] .* diff(times))
+                normalisation = sum(G[1:end-1] .* diff(times))
                 # Construct mean sequentially
                 for j in 1:length(times)
                     field = file["timeseries/$(var_name)/$(iterations[j])"]

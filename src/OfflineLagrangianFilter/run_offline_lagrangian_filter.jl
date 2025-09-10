@@ -109,23 +109,23 @@ function run_offline_Lagrangian_filter(config)
     # Delete the shifted input data file
     rm(config.original_data_filename[1:end-5] * "_filter_input.jld2")
 
-    # Delete the forward and backward output files if desired
+    # Option to delete the forward and backward output files
     if config.delete_intermediate_files
         rm(config.forward_output_filename)
         rm(config.backward_output_filename)
     end
 
-    # Regrid if desired
+    # Option to regrid to mean position
     if config.map_to_mean
         regrid_to_mean_position!(config)
     end
 
-    # Calculate Eulerian filter if desired
+    # Option to calculate Eulerian filter too
     if config.compute_Eulerian_filter
         compute_Eulerian_filter!(config)
     end
 
-    # Output netcdf if desired
+    # Option to output final netcdf
     if config.output_netcdf
         jld2_to_netcdf(config.combined_output_filename, config.combined_output_filename[1:end-5] * ".nc")
     end

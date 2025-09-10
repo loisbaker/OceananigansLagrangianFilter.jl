@@ -4,6 +4,8 @@ using ..OceananigansLagrangianFilter: AbstractConfig
 using Oceananigans.Grids: AbstractGrid
 using Oceananigans.Architectures
 
+using ..Utils
+
 export OnlineFilterConfig
 """
     OnlineFilterConfig(;
@@ -72,7 +74,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     elseif isnothing(filter_params) && (isnothing(N) || isnothing(freq_c))
         error("Must specify either filter_params or both N and freq_c.")
     elseif isnothing(filter_params) && !isnothing(N) && !isnothing(freq_c)
-        filter_params = set_offline_BW2_filter_params(;N,freq_c)
+        filter_params = set_online_BW_filter_params(;N,freq_c)
         @info "Setting filter parameters to use Butterworth order $N, cutoff frequency $freq_c"
     else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
         # User has specified filter_params directly, but we should check it has the right fields
@@ -111,7 +113,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
 
     # Check normalisation of filter coefficients
     if filter_params.N_coeffs == 0.5
-        if filter_params.a1 != filter_params.c1
+        if !(filter_params.a1 ≈ filter_params.c1)
             @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1)"
         end
     else
@@ -119,8 +121,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         b_coeffs = [filter_params[Symbol("b",i)] for i in 1:filter_params.N_coeffs]
         c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
-        if sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) != 1.0
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5"
+        if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1.0)
+            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1"
         end
     end
 
