@@ -84,7 +84,7 @@ Questions to be answered here in the very near future include
 * Why would I want to filter offline when I could filter online?
 * What kind of filters are implemented, and why?
 * When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)?
-* Does it work in 3D? (It should do but is as yet untested.)
+* Does it work in 2D and 3D? (Yes!)
 
 ---
 ## 💻 Contributing
