@@ -71,7 +71,7 @@ run_offline_Lagrangian_filter(filter_config)
 
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
-You can find an example of a simple simulation of geostrophic adjustment in `/examples/geostrophic_adjustment.ipynb`. The filtering is then performed using `/examples/offline_filter_geostrophic_adjustment.jl`.
+You can find an example of a simple simulation of geostrophic adjustment in `/examples/geostrophic_adjustment.jl`. The filtering is then performed using `/examples/offline_filter_geostrophic_adjustment.jl`.
 
 ### Online Filtering
 
@@ -83,7 +83,7 @@ Questions to be answered here in the near future include
 * How does it work?
 * Why would I want to filter offline when I could filter online?
 * What kind of filters are implemented, and why?
-* When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)
+* When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)?
 
 ---
 ## 💻 Contributing
