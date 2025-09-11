@@ -18,7 +18,7 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
 
 
 # Run the offline Lagrangian filter
-#run_offline_Lagrangian_filter(filter_config)
+run_offline_Lagrangian_filter(filter_config)
 
 # Animate the results, buoyancy first:
 timeseries1 = FieldTimeSeries(filter_config.output_filename, "b")

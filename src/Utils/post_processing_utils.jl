@@ -837,6 +837,10 @@ function get_weight_function(;t::AbstractArray, tref::Real, filter_params::Named
 
     G = 0*t
     N_coeffs = filter_params.N_coeffs
+    if N_coeffs == 0.5
+        a1 = filter_params.a1
+        c1 = filter_params.c1
+        G .= a1.*exp.(-c1.*abs.(t .- tref))
     for i in 1:N_coeffs
         
         a = getproperty(filter_params, Symbol("a$i"))
@@ -883,6 +887,7 @@ function get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
     
     Ghat = 0*freq
     N_coeffs = filter_params.N_coeffs
+ 
     for i in 1:N_coeffs
         
         a = getproperty(filter_params, Symbol("a$i"))
