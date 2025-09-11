@@ -841,14 +841,16 @@ function get_weight_function(;t::AbstractArray, tref::Real, filter_params::Named
         a1 = filter_params.a1
         c1 = filter_params.c1
         G .= a1.*exp.(-c1.*abs.(t .- tref))
-    for i in 1:N_coeffs
-        
-        a = getproperty(filter_params, Symbol("a$i"))
-        b = getproperty(filter_params, Symbol("b$i"))
-        c = getproperty(filter_params, Symbol("c$i"))
-        d = getproperty(filter_params, Symbol("d$i"))
+    else
+        for i in 1:N_coeffs
+            
+            a = getproperty(filter_params, Symbol("a$i"))
+            b = getproperty(filter_params, Symbol("b$i"))
+            c = getproperty(filter_params, Symbol("c$i"))
+            d = getproperty(filter_params, Symbol("d$i"))
 
-        G += (a.*cos.(d.*abs.(t .- tref)) .+ b.*sin.(d.*abs.(t .- tref))).*exp.(-c.*abs.(t .- tref))
+            G += (a.*cos.(d.*abs.(t .- tref)) .+ b.*sin.(d.*abs.(t .- tref))).*exp.(-c.*abs.(t .- tref))
+        end
     end
     if direction == "forward"
         G[t .> tref] .= 0
