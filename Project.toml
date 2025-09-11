@@ -18,4 +18,4 @@ PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [compat]
-CairoMakie = "15.0"
+CairoMakie = "0.14"
