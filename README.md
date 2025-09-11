@@ -79,11 +79,12 @@ For online filtering, you would integrate the filter directly into your `Oceanan
 
 ---
 # The technical bit
-Questions to be answered here in the near future include
+Questions to be answered here in the very near future include
 * How does it work?
 * Why would I want to filter offline when I could filter online?
 * What kind of filters are implemented, and why?
 * When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)?
+* Does it work in 3D? (It should do but is as yet untested.)
 
 ---
 ## 💻 Contributing
