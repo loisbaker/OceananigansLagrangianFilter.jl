@@ -1,7 +1,6 @@
 using Oceananigans 
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures
-using CUDA
 using CairoMakie 
 using NCDatasets
 using Printf
@@ -26,7 +25,7 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 
 filename_stem = "geostrophic_adjustment"
 
-grid = RectilinearGrid(GPU(),size = (Nx, Nz), 
+grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))

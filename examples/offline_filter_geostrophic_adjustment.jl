@@ -1,6 +1,5 @@
 using OceananigansLagrangianFilter
 using Oceananigans.Units
-using CUDA # If GPU available
 using CairoMakie
 
 # Set up the filter configuration
@@ -8,7 +7,7 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
                                     output_filename = "geostrophic_adjustment_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","w"), # Velocities to use for Lagrangian filtering
-                                    architecture = GPU(), # CPU() or GPU()
+                                    architecture = CPU(), # CPU() or GPU()
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data
                                     N = 2, # Order of Butterworth filter
