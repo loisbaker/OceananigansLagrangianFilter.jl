@@ -44,20 +44,32 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     T = config.T
     velocity_names = config.velocity_names
     var_names_to_filter = config.var_names_to_filter
-
-    # List the names of the fields that we will combine
-    filtered_var_names = vcat(["xi_" * vel for vel in velocity_names], [var * "_Lagrangian_filtered" for var in var_names_to_filter])
+    map_to_mean = config.map_to_mean
+    compute_mean_velocities = config.compute_mean_velocities
     
+    # List the names of the fields that we will combine
+    filtered_var_names = Tuple([var * "_Lagrangian_filtered" for var in var_names_to_filter])
+    if map_to_mean
+        filtered_var_names = (Tuple(["xi_" * vel for vel in velocity_names])..., filtered_var_names...)
+    end
+    filtered_vel_names = ()
+    vel_names_to_filter = ()
+    if compute_mean_velocities
+        filtered_vel_names = Tuple([vel * "_Lagrangian_filtered" for vel in velocity_names])
+        vel_names_to_filter = velocity_names
+    end
+
     jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
 
             # First copy the forward file metadata and file structure
-            copy_file_metadata!(forward_file, combined_file, (var_names_to_filter..., filtered_var_names...))
+            copy_file_metadata!(forward_file, combined_file, 
+            (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...))
 
             forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
 
             # Copy over the unfiltered field data
-            for var_name in (var_names_to_filter...,"t")
+            for var_name in (var_names_to_filter..., vel_names_to_filter..., "t")
                 for iter in forward_iterations
                     combined_file["timeseries/$var_name/$iter"] = forward_file["timeseries/$var_name/$iter"]
                 end
@@ -65,6 +77,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
 
             # Copy over the filtered data, combined with backward data
             for var_name in filtered_var_names
+                
                 # Open the backward data as a FieldTimeSeries, so we can interpolate to match times
                 fts_backward = FieldTimeSeries(backward_output_filename, var_name)
 
@@ -77,6 +90,23 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
                     combined_file["timeseries/$var_name/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data)
                 end
             end
+
+            # Mean velocities get subtracted instead
+            for vel_name in filtered_vel_names
+                
+                # Open the backward data as a FieldTimeSeries, so we can interpolate to match times
+                fts_backward = FieldTimeSeries(backward_output_filename, vel_name)
+
+                # Loop over forward times and add the backward data
+                for iter in forward_iterations
+                    forward_time = forward_file["timeseries/t/$iter"]
+                    forward_data = forward_file["timeseries/$vel_name/$iter"] # Load in data
+                    
+                    # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
+                    combined_file["timeseries/$vel_name/$iter"] = forward_data .- parent(fts_backward[Time(T-forward_time)].data)
+                end
+            end
+
         end
     end
     @info "Combined forward and backward contributions into $output_filename"
@@ -210,8 +240,14 @@ Arguments
 function regrid_to_mean_position!(config::AbstractConfig)
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
+    compute_mean_velocities = config.compute_mean_velocities
     velocity_names = config.velocity_names
     npad = config.npad 
+    var_names_to_regrid = var_names_to_filter
+
+    if compute_mean_velocities
+        var_names_to_regrid = (var_names_to_regrid..., velocity_names...)
+    end
     
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
@@ -227,7 +263,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
         end
 
         # Work out the periodic and bounded directions
-        test_var = var_names_to_filter[1]
+        test_var = var_names_to_regrid[1]
         BCs = file["timeseries/$test_var/serialized/boundary_conditions"]
         periodic_dimensions = []
         bounded_dimensions = []
@@ -252,14 +288,14 @@ function regrid_to_mean_position!(config::AbstractConfig)
         end
         
         # First add the necessary serialized entry for each new variable
-        for var in var_names_to_filter 
+        for var in var_names_to_regrid
             new_path = "timeseries/$var"*"_Lagrangian_filtered_at_mean/serialized"
             if haskey(file, new_path)
                 Base.delete!(file, new_path) #incase we already tried to write this
             end
             g = Group(file, new_path)
-            for property in keys(file["timeseries/$var/serialized"])
-                g[property] = file["timeseries/$var/serialized/$property"]
+            for property in keys(file["timeseries/$var"*"_Lagrangian_filtered/serialized"])
+                g[property] = file["timeseries/$var"*"_Lagrangian_filtered/serialized/$property"]
             end
         end
 
@@ -353,7 +389,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
             end
             # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
             # First construct a matrix that contains the coordinates and the fields to interpolate
-            for var in var_names_to_filter
+            for var in var_names_to_regrid
                 var_data = file["timeseries/$var"*"_Lagrangian_filtered/$iter"]
 
                 # Lose the halo regions 
@@ -458,7 +494,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
             coords = data_array[:,1:2:2*n_true_dims] # The first columns are the coordinates and indices, just take the coordinates
             var_data = data_array[:,(2*n_true_dims+1):end] # The rest is the data
             
-            for (ivar,var) in enumerate(var_names_to_filter)
+            for (ivar,var) in enumerate(var_names_to_regrid)    
                 
                 # This is the main interpolation
                 values = var_data[:,ivar]
@@ -787,6 +823,7 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
         
 
         for varname in keys(file["timeseries"])
+            
             if varname ∉ ("t","t_shifted") 
 
                 # Create a variable in the NetCDF file
@@ -794,6 +831,7 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
                 ncv = defVar(ds, varname, Float64, (location_map[file["timeseries/$varname/serialized/location"]]...,"time"), attrib = OrderedDict(
                     "boundary conditions"                     => bc_string,
                 ))
+                
                 for (it,iter) in enumerate(iterations)
                     # Assign data to the variable
                     ncv[:, :, :, it] = file["timeseries/$varname/$iter"]
@@ -931,6 +969,14 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     filter_params = config.filter_params
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
+    compute_mean_velocities = config.compute_mean_velocities
+    velocity_names = config.velocity_names
+
+    var_names_to_Eulerian_filter = var_names_to_filter
+    if compute_mean_velocities
+        var_names_to_Eulerian_filter = (var_names_to_Eulerian_filter..., velocity_names...)
+    end
+
     filter_mode = config.filter_mode
     if filter_mode == "offline"
         direction = "both"
@@ -945,7 +991,7 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         dt = times[2] - times[1] # Initialise time interval
 
         # Loop over variables to filter
-        for var_name in var_names_to_filter
+        for var_name in var_names_to_Eulerian_filter
             @info "Computing Eulerian filter for variable $var_name"
 
             # Create group for filtered data

@@ -400,14 +400,15 @@ variables.
   names for each coefficient, suffixed with `_C#` and `_S#`, where `#` is the
   coefficient index.
 
-If `map_to_mean` is enabled in the configuration, additional symbols are created
-for the spatial mapping variables corresponding to each velocity component,
-prefixed with `xi_` and suffixed with the corresponding coefficient names.
+If `map_to_mean` or `compute_mean_velocities` is enabled in the configuration,
+additional symbols are created for the spatial mapping variables corresponding
+to each velocity component, prefixed with `xi_` and suffixed with the corresponding
+coefficient names.
 
 Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the names of the variables
-  to filter, the filter parameters, and the `map_to_mean` boolean.
+  to filter, the filter parameters, and the `map_to_mean` and `compute_mean_velocities` booleans.
 
 Returns
 =======
@@ -420,6 +421,7 @@ function create_filtered_vars(config::AbstractConfig)
     velocity_names = config.velocity_names
     filter_params = config.filter_params
     map_to_mean = config.map_to_mean
+    compute_mean_velocities = config.compute_mean_velocities
     N_coeffs = filter_params.N_coeffs
 
     if N_coeffs == 0.5 # special case, single exponential only has a cosine component
@@ -428,7 +430,7 @@ function create_filtered_vars(config::AbstractConfig)
             push!(gC_symbols, Symbol(var_name, "_C1"))
         end
         # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
-        if map_to_mean
+        if map_to_mean || compute_mean_velocities
             for vel_name in velocity_names
                 push!(gC_symbols, Symbol("xi_", vel_name, "_C1", ))
             end
@@ -448,7 +450,7 @@ function create_filtered_vars(config::AbstractConfig)
         end
 
         # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
-        if map_to_mean
+        if map_to_mean || compute_mean_velocities
             for vel_name in velocity_names
                 for i in 1:N_coeffs
                     push!(gC_symbols, Symbol("xi_", vel_name, "_C", i))
@@ -568,7 +570,7 @@ The function handles two cases: a single-exponential filter
 
 * For standard filtered variables, the forcing is a combination of terms
   derived from the filter's coefficients and a term from the original data.
-* For spatial mapping variables (if `map_to_mean` is true), the forcing
+* For spatial mapping variables (if `map_to_mean` or `compute_mean_velocities` is true), the forcing
   includes terms derived from the filter's coefficients and a term from the
   original velocity data.
 
@@ -691,7 +693,9 @@ fields. This function performs the following steps:
 2.  **Reconstructs spatial mapping fields**: If spatial mapping is enabled,
     the function also reconstructs the `xi_` fields that represent the filtered
     position.
-3.  **Includes original data**: The original data is added to the output
+3.  **Builds mean velocities**: If `compute_mean_velocities` is true, the function
+    reconstructs the mean velocity fields using the `xi_` fields.
+4.  **Includes original data**: The original data is added to the output
     dictionary for comparison and analysis if `config.output_original_data`
     is true.
 
@@ -714,7 +718,8 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     velocity_names = config.velocity_names
     filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
-    N_filtered_vars = Int(length(var_names_to_filter)*N_coeffs*2) + (config.map_to_mean ? length(velocity_names)*N_coeffs*2 : 0)  # Total number of filtered vars (tracers and possibly maps)
+    map_to_mean = config.map_to_mean
+    compute_mean_velocities = config.compute_mean_velocities
     outputs_dict = Dict()
 
     for var_name in var_names_to_filter
@@ -741,8 +746,8 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
         end
     end
 
-    # Reconstruct the maps, if they exist
-    if N_filtered_vars > N_coeffs*length(var_names_to_filter)*2
+    # Reconstruct the maps, if we map to mean
+    if map_to_mean
         for vel_name in velocity_names
             if N_coeffs == 0.5
                 # Special case, single exponential only has a cosine component
@@ -768,10 +773,43 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
         end
     end
 
+    # Reconstruct the mean velocities
+    if compute_mean_velocities
+        for vel_name in velocity_names
+            if N_coeffs == 0.5
+                # Special case, single exponential only has a cosine component
+                xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
+                g_total = - filter_params.a1 * filter_params.c1 * xiC1
+                outputs_dict[vel_name * "_Lagrangian_filtered"] = g_total
+            else
+                # Start with the first coefficient
+                xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
+                xiS1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_S1"))
+                g_total = ((-filter_params.a1 *filter_params.c1 + filter_params.b1 * filter_params.d1) * xiC1 
+                + (-filter_params.a1 * filter_params.d1 - filter_params.b1 * filter_params.c1) * xiS1)
+
+                # Then add the other coefficients
+                for i in 2:N_coeffs
+                    a = getproperty(filter_params,Symbol("a$i"))
+                    b = getproperty(filter_params,Symbol("b$i"))
+                    c = getproperty(filter_params,Symbol("c$i"))
+                    d = getproperty(filter_params,Symbol("d$i"))
+                    xiCi = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C$i"))
+                    xiSi = getproperty(model.tracers,Symbol("xi_" * vel_name * "_S$i"))
+                    g_total += (-a * c + b * d) * xiCi + (-a * d - b * c) * xiSi
+                end
+                outputs_dict[vel_name * "_Lagrangian_filtered"] = g_total
+            end
+        end
+    end
+
     # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
     if config.filter_mode == "offline" && config.output_original_data
         for var_name in var_names_to_filter
             outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
+        end
+        for vel_name in velocity_names
+            outputs_dict[vel_name] = getproperty(model.velocities, Symbol(vel_name))
         end
     end
  
@@ -932,6 +970,7 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     N_coeffs = config.filter_params.N_coeffs
     map_to_mean = config.map_to_mean
+    compute_mean_velocities = config.compute_mean_velocities
     dict = Dict()
     for var_name in var_names_to_filter
         if N_coeffs == 0.5 # Special case of single exponential
@@ -946,7 +985,7 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
             end
         end
     end
-    if map_to_mean
+    if map_to_mean || compute_mean_velocities
         velocity_names = config.velocity_names
         for vel_name in velocity_names
             if N_coeffs == 0.5 # Special case of single exponential

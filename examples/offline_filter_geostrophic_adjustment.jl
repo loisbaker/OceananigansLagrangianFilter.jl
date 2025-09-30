@@ -12,6 +12,7 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
                                     T_out = 1hour, # How often to output filtered data
                                     N = 2, # Order of Butterworth filter
                                     freq_c = 1e-4/2, # Cut-off frequency of Butterworth filter
+                                    compute_mean_velocities = true, # Whether to compute the mean velocities
                                     output_netcdf = true, # Whether to output filtered data to a netcdf file in addition to .jld2
                                     delete_intermediate_files = true, # Delete the individual output of the forward and backward passes
                                     compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison

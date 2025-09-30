@@ -91,6 +91,7 @@ struct OfflineFilterConfig <: AbstractConfig
     backward_output_filename::String
     output_filename::String
     npad::Int
+    compute_mean_velocities::Bool
     delete_intermediate_files::Bool
     compute_Eulerian_filter::Bool
     output_netcdf::Bool
@@ -120,6 +121,7 @@ end
                         backward_output_filename::String = "backward_output.jld2",
                         output_filename::String = "filtered_output.jld2",
                         npad::Int = 5,
+                        compute_mean_velocities::Bool = true,
                         delete_intermediate_files::Bool = true,
                         compute_Eulerian_filter::Bool = false,
                         output_netcdf::Bool = false,
@@ -153,6 +155,7 @@ Keyword arguments
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
   - `output_filename`: The filename for the final combined and mapped output. Default: `"filtered_output.jld2"`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
+  - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
   - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `output_netcdf`: A `Bool` indicating whether to also convert the final JLD2 output file to a NetCDF file. Default: `false`.
@@ -179,6 +182,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             backward_output_filename::String = "backward_output.jld2",
                             output_filename::String = "filtered_output.jld2",
                             npad::Int = 5,
+                            compute_mean_velocities::Bool = true,
                             delete_intermediate_files::Bool = true,
                             compute_Eulerian_filter::Bool = false,
                             output_netcdf::Bool = false,
@@ -323,7 +327,7 @@ function OfflineFilterConfig(; original_data_filename::String,
             @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5"
         end
     end
-    
+
     # Finally, we can define the grid, if not given (as is typical)
     example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
     grid = isnothing(grid) ? example_timeseries.grid : grid
@@ -346,6 +350,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             backward_output_filename,
                             output_filename,
                             npad,
+                            compute_mean_velocities,
                             delete_intermediate_files,
                             compute_Eulerian_filter,
                             output_netcdf,

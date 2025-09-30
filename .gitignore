@@ -66,3 +66,4 @@ statprof
 
 # Conda
 /.CondaPkg
+docs/.CondaPkg

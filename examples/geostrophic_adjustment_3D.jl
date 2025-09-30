@@ -10,9 +10,9 @@ using CUDA
 # in a domain that is horizontally periodic.
 
 # Model parameters
-Nx = 300
-Nz = 80
-Ny = 4 # Just a few points in y to make it 3D, but not too expensive
+Nx = 120
+Nz = 40
+Ny = 10 # Just a few points in y to make it 3D, but not too expensive
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
@@ -51,7 +51,7 @@ model =  NonhydrostaticModel(; grid,
 
 # Initialise the buoyancy and tracer (velocities start at rest by default)
 bᵢ(x, y, z) = Δb*sin(2*pi/L_front * x)
-Tᵢ(x, y, z) = exp(-(x/(L_front/50)).^2)
+Tᵢ(x, y, z) = exp(-x.^2/(L_front/50).^2)
 set!(model, b= bᵢ, T= Tᵢ) 
 
 # Define the simulation

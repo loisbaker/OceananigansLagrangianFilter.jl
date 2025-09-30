@@ -21,6 +21,7 @@ struct OnlineFilterConfig <: AbstractConfig
     velocity_names::Tuple{Vararg{String}} 
     filter_params::NamedTuple
     map_to_mean::Bool
+    compute_mean_velocities::Bool
     npad::Int
     filter_mode::String
     
@@ -35,6 +36,7 @@ end
                             freq_c::Union{Int, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
+                            compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             filter_mode::String = "online"
                             )
@@ -53,6 +55,7 @@ Keyword arguments
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
+  - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
 - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
@@ -65,6 +68,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean::Bool = true,
+                            compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             )
 
@@ -133,6 +137,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             velocity_names,
                             filter_params,
                             map_to_mean,
+                            compute_mean_velocities,
                             npad,
                             filter_mode
                             )
