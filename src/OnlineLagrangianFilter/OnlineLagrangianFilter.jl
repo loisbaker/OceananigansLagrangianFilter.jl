@@ -130,6 +130,11 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         end
     end
 
+    # Give a warning if the grid has an immersed boundary
+    if grid isa ImmersedBoundaryGrid
+        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
+    end
+    
     filter_mode = "online"
     return OnlineFilterConfig(grid,
                             output_filename,

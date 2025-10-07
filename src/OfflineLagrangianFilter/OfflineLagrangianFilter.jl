@@ -332,6 +332,11 @@ function OfflineFilterConfig(; original_data_filename::String,
     example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
     grid = isnothing(grid) ? example_timeseries.grid : grid
 
+    # Give a warning if the grid has an immersed boundary
+    if grid isa ImmersedBoundaryGrid
+        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
+    end
+    
     filter_mode = "offline"  
 
     return OfflineFilterConfig(original_data_filename,
