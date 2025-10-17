@@ -67,3 +67,6 @@ statprof
 # Conda
 /.CondaPkg
 docs/.CondaPkg
+
+# Docs
+docs/local_compile.sh

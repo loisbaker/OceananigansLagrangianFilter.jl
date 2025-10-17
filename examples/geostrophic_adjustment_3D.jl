@@ -7,7 +7,7 @@ using Printf
 using CUDA
 
 # We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
-# in a domain that is horizontally periodic.
+# in a domain that is horizontally periodic. Credit to Tom Cummings for work on this example. 
 
 # Model parameters
 Nx = 120

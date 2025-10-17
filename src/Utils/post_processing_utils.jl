@@ -236,8 +236,8 @@ Arguments
 - `config`: An instance of `AbstractConfig` containing the file paths, variable
   names, and grid information.
 """
-#TODO split this function into smaller functions for readability
 function regrid_to_mean_position!(config::AbstractConfig)
+    #TODO split this function into smaller functions for readability
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
     compute_mean_velocities = config.compute_mean_velocities

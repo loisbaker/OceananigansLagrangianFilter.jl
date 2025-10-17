@@ -7,7 +7,8 @@ using NCDatasets
 using Printf
 
 # We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
-# in a domain that is horizontally periodic, and Lagrangian filter it as we go.
+# in a domain that is horizontally periodic, and Lagrangian filter it as we go. 
+# Credit to Tom Cummings for work on this example. 
 
 # Model parameters
 Nx = 300
@@ -124,7 +125,7 @@ outputs["w"] = model.velocities.w
 
 # Outout a jld2 file
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, outputs, filename=filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, outputs, filename=filter_config.output_filename, schedule=TimeInterval(1hour), overwrite_existing=true)
 
 
 # Could also output a netcdf file
