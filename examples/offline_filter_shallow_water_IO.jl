@@ -1,18 +1,114 @@
-using OceananigansLagrangianFilter
-using Oceananigans.Units
-using CUDA # If GPU available
+# # Shallow water intertial oscillations with offline Lagrangian filtering
+
+# This example demonstrates how to perform offline filtering on a shallow water simulation to
+# remove the effect of inertial oscillations on a tracer field.
+
+# We could also filter a shallow water simulation online, but would have to use the 
+# VectorInvariantFormulation() in order to have direct access to the model velocities. 
+# This example uses the ConservativeFormulation() instead, and filtering is performed 
+# offline using the saved velocities after they have been calculated from uh and vh.
+
+# ## Install dependencies
+
+using Oceananigans
+using Oceananigans.Models: ShallowWaterModel
+using Printf
+using NCDatasets
 using CairoMakie
+
+filename_stem = "SW_IO_with_tracer"
+
+# ## Grid
+
+grid = RectilinearGrid(CPU(), size = (10, 10),
+                       x = (0, 2*pi),
+                       y = (0, 2*pi),
+                       topology = (Periodic, Periodic, Flat))
+
+# ## Parameters
+# Building a `ShallowWaterModel`. We non-dimensionalise as in Kafiabad & Vanneste 2023.
+Fr = 0.1 # Froude number
+Ro = 1 # fRossby number
+
+gravitational_acceleration = 1/Fr^2
+coriolis = FPlane(f=1/Ro)
+
+# ## Model
+model = ShallowWaterModel(; grid, coriolis, gravitational_acceleration,
+                            timestepper = :RungeKutta3,
+                            tracers= (:T,),
+                            momentum_advection = WENO())
+
+
+# ## Initial conditions
+
+# Velocity and height initial conditions - uniform velocity perturbation, initial height is 1 (unperturbed)
+displacement = 2*pi/10
+u_i = displacement/Ro   
+h_i = 1
+uh_i = u_i*h_i
+
+# Initialise a tracer as a blob in the middle of the domain
+width = 2*pi/15
+T_i(x, y) = exp(-(((x - pi)^2 + (y - pi)^2)/width).^2)
+
+set!(model, uh = uh_i, h= h_i, T = T_i )
+
+uh, vh, h = model.solution
+
+u = Field(uh / h)
+v = Field(vh / h)
+T = model.tracers.T
+
+# ## Simulation
+simulation = Simulation(model, Δt = 1e-2, stop_time = 20)
+
+function progress(sim)
+    model = sim.model
+    uh, vh, h = model.solution
+    @info @sprintf("Simulation time: %s, max(|uh|, |vh|, |h|): %.2e, %.2e, %.2e \n", 
+                   prettytime(sim.model.clock.time), 
+                   maximum(abs, uh), maximum(abs, vh), 
+                   maximum(abs, h))
+
+    return nothing
+end
+
+simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))
+
+# Build the `output_writer` for the two-dimensional fields to be output.
+
+# For Lagrangian filtering
+simulation.output_writers[:fields_jld2] = JLD2Writer(model, (; u,v,T),
+                                                        filename = filename_stem * ".jld2",
+                                                        schedule = TimeInterval(0.1),
+                                                        overwrite_existing = true)
+# NetCDF can be useful too for visualisation
+rm(filename_stem * ".nc",force=true)
+simulation.output_writers[:fields_nc] = NetCDFWriter(model, (; u,v,T ),
+                                                        filename = filename_stem * ".nc",
+                                                        schedule = TimeInterval(0.1),
+                                                        overwrite_existing = true)
+# And finally run the simulation.
+run!(simulation)
+
+# ## Lagrangian filtering
+# Now we set up and run the offline Lagrangian filter on the output of the above simulation.
+# This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)
+
+using OceananigansLagrangianFilter
 
 # Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jld2", # Where the original simulation output is
                                     output_filename = "SW_IO_with_tracer_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T",), # Which variables to filter
                                     velocity_names = ("u","v"), # Velocities to use for Lagrangian filtering
-                                    architecture = GPU(), # CPU() or GPU() if available
+                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 1e-2, # Time step of filtering simulation
                                     T_out=0.1, # How often to output filtered data
                                     N=4, # Order of Butterworth filter
                                     freq_c = 0.5, # Cut-off frequency of Butterworth filter
+                                    compute_mean_velocities= true, # Whether to compute mean velocities
                                     output_netcdf = true, # Whether to output filtered data to a netcdf file in addition to .jld2
                                     delete_intermediate_files = true, # Delete the individual output of the forward and backward passes
                                     compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison
@@ -21,7 +117,8 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
 # Run the offline Lagrangian filter
 run_offline_Lagrangian_filter(filter_config)
 
-# Animate the results
+# ## Visualisation
+# Now we animate the results
 timeseries1 = FieldTimeSeries(filter_config.output_filename, "T")
 timeseries2 = FieldTimeSeries(filter_config.output_filename, "T_Eulerian_filtered")
 timeseries3 = FieldTimeSeries(filter_config.output_filename, "T_Lagrangian_filtered")
@@ -69,3 +166,11 @@ frames = 1:length(times)
 CairoMakie.record(fig, "IO_filtered_tracer_movie_offline.mp4", frames, framerate=24) do i
     n[] = i
 end
+
+nothing #hide
+
+# ![](IO_filtered_tracer_movie_offline.mp4)
+
+# We see that the Eulerian filter smudges the tracer field as it is advected by the 
+# inertial oscillations, while the Lagrangian filter is able to effectively remove 
+# the oscillations while preserving the tracer structures.

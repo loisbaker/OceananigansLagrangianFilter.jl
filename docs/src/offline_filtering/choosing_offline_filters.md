@@ -1,13 +1,12 @@
-# Filter construction
+# Choosing offline filters
 
+## General form
 
-1. Here's my test
+## Exponential
 
-    ```julia 
-    x=y
-    ```
-1. Next bullet
+## Butterworth (squared)
 
+## Define your own
 
 The filter coefficients are chosen as
 ```math

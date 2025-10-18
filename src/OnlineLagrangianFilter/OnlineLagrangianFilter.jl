@@ -3,6 +3,8 @@ module OnlineLagrangianFilter
 using ..OceananigansLagrangianFilter: AbstractConfig
 using Oceananigans.Grids: AbstractGrid
 using Oceananigans.Architectures
+using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
+
 
 using ..Utils
 

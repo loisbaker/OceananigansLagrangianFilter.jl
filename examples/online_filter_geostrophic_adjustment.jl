@@ -1,24 +1,34 @@
+# # Geostrophic adjustment in 3D with online Lagrangian filtering
+
+# We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
+# in a domain that is horizontally periodic. 
+
+# An initially unbalanced two-dimensional
+# front oscillates with the inertial frequency around a state of geostrophic balance,
+# and we illustrate that we can remove the oscillations to find the mean state.
+# Credit to Tom Cummings for work on this example. 
+
+# In this example, the filtering is performed online during the simulation.
+
+# ## Load dependencies
 using OceananigansLagrangianFilter
-using OceananigansLagrangianFilter.Utils # contains some utility functions
+using OceananigansLagrangianFilter.Utils # load utility functions for the online filter
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures
 using CairoMakie 
 using NCDatasets
 using Printf
 
-# We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
-# in a domain that is horizontally periodic, and Lagrangian filter it as we go. 
-# Credit to Tom Cummings for work on this example. 
 
-# Model parameters
-Nx = 300
-Nz = 80
+# ## Model parameters
+Nx = 50
+Nz = 20
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
 Ro = 0.1                # Rossby number (defines M^2)
 
-# Derived parameters
+
 H = L_front/aspect_ratio  # Depth
 M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 Δb = M²*L_front # Buoyancy difference across the front
@@ -27,18 +37,19 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 
 filename_stem = "geostrophic_adjustment"
 
+# ## Grid
 grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))
 
-# Define tracers
+# ## Model tracers
 tracers = (:b,:T)
 
-# Define any forcing
+# ## Model forcing
 forcing = NamedTuple()
 
-# Define filter configuration
+# ## Define filter configuration
 filter_config = OnlineFilterConfig( grid = grid,
                                     output_filename = filename_stem * ".jld2",
                                     var_names_to_filter = ("b","T"), 
@@ -256,3 +267,12 @@ frames = 1:length(times)
 CairoMakie.record(fig, "geostrophic_adjustment_filtered_tracer_movie_online.mp4", frames, framerate=24) do i
     n[] = i
 end
+nothing #hide
+
+# ![](geostrophic_adjustment_filtered_tracer_movie_online.mp4)
+
+# We see that the Eulerian filter smudges the tracer field as it is advected by the 
+# inertial oscillations, while the Lagrangian filter is able to effectively remove 
+# the oscillations while preserving the tracer structures. In comparison to the offline
+# filtering example, the online filter does a slightly better job removing the oscillations
+# in the 'Lagrangian filtered at mean' case, since the filter is a more optimal low-pass.

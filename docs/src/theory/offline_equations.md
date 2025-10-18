@@ -1,4 +1,25 @@
-# Offline Filtering
+# Offline Lagrangian filtering equations
+
+This page describes the Lagrangian filtering equations for the 'offline' configuration of *OceananigansLagrangianFilter.jl*. The offline scheme runs a forward pass very similar to the [online configuration](@ref "Online Lagrangian filtering equations"), before running a backward pass through the offline data and combinging the backward and forward outputs. 
+
+We compute the Lagrangian mean of some scalar ``f`` as
+```math
+\begin{equation}\label{fstardef}
+    f^*(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^\infty G(t-s)f(\vb*{\varphi}(\vb*{a},s),s) \, \mathrm{d} s\,,
+\end{equation}
+```
+and optionally compute
+```math
+\begin{equation}\label{Xidefonline}
+\vb*{\Xi}(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^\infty \alpha e^{-\alpha(t-s)}\vb*{\varphi}(\vb*{a},s)\,\mathrm{d} s\,,
+\end{equation}
+```
+so that the generalised Lagrangian mean ``\bar{f}^{\mathrm{L}}`` (see definition in [Lagrangian averaging](@ref "Lagrangian averaging")) can be recovered by a post-processing interpolation step using
+```math
+\begin{equation}
+\bar{f}^{\mathrm{L}}(\vb*{\Xi}(\vb*{x},t),t) = f^*(\vb*{x},t)\,.
+\end{equation}
+```
 We consider even filter kernels composed of sums of exponentials of the absolute value of ``t``:
 ```math
 \begin{equation}
@@ -84,20 +105,3 @@ The perturbation map equations are then given by
 \end{align}
 ```
 Backward-pass equations of the same form are solved by time-reversing the velocity and field data, and changing the sign of the velocity. The final filtered field is then reconstructed by summing the forwards and backwards pass outputs at each time. 
-
-The filter coefficients are chosen as
-```math
-\begin{align}
-    a_n &= \frac{\omega_c}{N}\sin{\frac{\pi}{2N}(2n-1)}\,, \\
-    b_n &= \frac{\omega_c}{N}\cos{\frac{\pi}{2N}(2n-1)}\,, \\
-    c_n &= \omega_c\sin{\frac{\pi}{2N}(2n-1)}\,, \\
-    d_n &= \omega_c\cos{\frac{\pi}{2N}(2n-1)}\,.
-\end{align}
-```
-This choice gives a weight function ``G(t)`` with frequency response 
-```math
-\begin{equation}
-    \hat{G}(\omega) = \frac{1}{1 + \left(\omega/\omega_c\right)^{2N}}\,,
-\end{equation}
-```
-which approaches a low-pass cutoff filter as ``N \rightarrow \infty``. 

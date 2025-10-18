@@ -1,13 +1,130 @@
-using OceananigansLagrangianFilter
+# # Geostrophic adjustment in 3D with offline Lagrangian filtering
+
+# We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
+# in a domain that is horizontally periodic. 
+
+# An initially unbalanced two-dimensional
+# front oscillates with the inertial frequency around a state of geostrophic balance,
+# and we illustrate that we can remove the oscillations to find the mean state.
+# Credit to Tom Cummings for work on this example. 
+
+# In this example, the filtering is performed offline after the simulation.
+
+# ## Install dependencies
+
+using Oceananigans 
 using Oceananigans.Units
-using CairoMakie
+using Oceananigans.TurbulenceClosures
+using CairoMakie 
+using NCDatasets
+using Printf
+
+# We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
+# in a domain that is horizontally periodic. Credit to Tom Cummings for work on this example. 
+
+# ## Model parameters
+Nx = 50
+Nz = 20
+f = 1e-4                # Coriolis frequency [s⁻¹]
+L_front = 10kilometers  # Initial front width [m]
+aspect_ratio = 100      # L_front/H
+Ro = 0.1                # Rossby number (defines M^2)
+
+H = L_front/aspect_ratio  # Depth
+M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
+Δb = M²*L_front # Buoyancy difference across the front
+κh = 1e-4 # Horizontal diffusivity
+κv = 1e-4 # Vertical diffusivity
+
+filename_stem = "geostrophic_adjustment"
+
+# ## Grid
+
+grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
+                       x = (-L_front/2, L_front/2),
+                       z = (-H, 0),
+                       topology = (Periodic, Flat, Bounded))
+
+# ## Closures                     
+horizontal_closure = HorizontalScalarDiffusivity(ν=κh, κ=κh )
+vertical_closure = VerticalScalarDiffusivity(ν=κv , κ=κv )
+closure = (horizontal_closure, vertical_closure)
+
+# ## Tracers
+tracers = (:b,:T)
+
+# ## Model
+model =  NonhydrostaticModel(; grid,
+                coriolis = FPlane(f = f),
+                buoyancy = BuoyancyTracer(),
+                tracers = tracers,
+                advection = WENO(),
+                closure = closure)
+
+# ## Initialisation
+# Initialise the buoyancy and tracer (velocities start at rest by default)
+bᵢ(x, z) = Δb*sin(2*pi/L_front * x)
+Tᵢ(x, z) = exp(-(x/(L_front/50)).^2)
+set!(model, b= bᵢ, T= Tᵢ) 
+
+# Define the simulation
+simulation = Simulation(model, Δt=20minutes, stop_time=3days)
+
+# Set an adaptive timestep
+conjure_time_step_wizard!(simulation, IterationInterval(20), cfl=0.2, max_Δt=20minutes)
+
+# Add a progress callback
+
+wall_clock = Ref(time_ns())
+
+function print_progress(sim)
+    u, v, w = model.velocities
+    progress = 100 * (time(sim) / sim.stop_time)
+    elapsed = (time_ns() - wall_clock[]) / 1e9
+
+    @printf("[%05.2f%%] i: %d, t: %s, wall time: %s, max(u): (%6.3e, %6.3e, %6.3e) m/s, next Δt: %s\n",
+            progress, iteration(sim), prettytime(sim), prettytime(elapsed),
+            maximum(abs, u), maximum(abs, v), maximum(abs, w), prettytime(sim.Δt))
+
+    wall_clock[] = time_ns()
+
+    return nothing
+end
+
+add_callback!(simulation, print_progress, IterationInterval(50))
+
+# Set up the output 
+u, v, w = model.velocities
+b = model.tracers.b
+T = model.tracers.T
+
+# Fields to be filtered must be specified at cell centers, so we can interpolate before 
+# output if necessary. 
+wc = Field(@at (Center, Center, Center) model.velocities.w) 
+
+# Output a jld2 file for Lagrangian filtering
+simulation.output_writers[:jld2fields] = JLD2Writer(
+    model, (; b, u, v, w, wc, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+
+# ## Run simulation
+@info "Running the simulation..."
+
+run!(simulation)
+
+@info "Simulation completed in " * prettytime(simulation.run_wall_time)
+
+# ## Lagrangian filtering 
+# Now we set up and run the offline Lagrangian filter on the output of the above simulation.
+# This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)
+
+using OceananigansLagrangianFilter
 
 # Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustment.jld2", # Where the original simulation output is
                                     output_filename = "geostrophic_adjustment_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","w"), # Velocities to use for Lagrangian filtering
-                                    architecture = CPU(), # CPU() or GPU()
+                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data
                                     N = 2, # Order of Butterworth filter
@@ -21,3 +138,110 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
 # Run the offline Lagrangian filter
 run_offline_Lagrangian_filter(filter_config)
 
+# ## Visualisation
+# Now we animate the results. First, the buoyancy:
+timeseries1 = FieldTimeSeries(filter_config.output_filename, "b")
+timeseries2 = FieldTimeSeries(filter_config.output_filename, "b_Eulerian_filtered")
+timeseries3 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_filtered")
+timeseries4 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_filtered_at_mean")
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = "x",
+               ylabel = "z",
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = "Raw", axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = "Eulerian filtered", axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = "Lagrangian filtered", axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = "Lagrangian filtered at mean", axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax2, var2; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax3, var3; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax4, var4; colormap = :balance, colorrange = (-1e-4, 1e-4))
+
+
+title = @lift "Buoyancy, time = " * string(round(times[$n], digits=2))
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info "Making an animation"
+
+CairoMakie.record(fig, "geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4", frames, framerate=24) do i
+    n[] = i
+end
+
+
+# Then the tracer:
+# Animate
+timeseries1 = FieldTimeSeries(filter_config.output_filename, "T")
+timeseries2 = FieldTimeSeries(filter_config.output_filename, "T_Eulerian_filtered")
+timeseries3 = FieldTimeSeries(filter_config.output_filename, "T_Lagrangian_filtered")
+timeseries4 = FieldTimeSeries(filter_config.output_filename, "T_Lagrangian_filtered_at_mean")
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = "x",
+               ylabel = "z",
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = "Raw", axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = "Eulerian filtered", axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = "Lagrangian filtered", axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = "Lagrangian filtered at mean", axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax2, var2; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax3, var3; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax4, var4; colormap = :Spectral, colorrange = (0, 1))
+
+
+title = @lift "Tracer concentration, time = " * string(round(times[$n], digits=2))
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info "Making an animation"
+
+CairoMakie.record(fig, "geostrophic_adjustment_filtered_tracer_movie_offline.mp4", frames, framerate=24) do i
+    n[] = i
+end
+nothing #hide
+
+# ![](geostrophic_adjustment_filtered_tracer_movie_offline.mp4)
+
+# We see that the Eulerian filter smudges the tracer field as it is advected by the 
+# inertial oscillations, while the Lagrangian filter is able to effectively remove 
+# the oscillations while preserving the tracer structures.

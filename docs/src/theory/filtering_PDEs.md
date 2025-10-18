@@ -8,7 +8,7 @@ Lagrangian means are usually found by seeding virtual particles in numerical sim
 1. How important is the filter shape - can we get away with a less strict low-pass?
 1. How often do we need to find the Lagrangian mean? Once per averaging interval, or at every time? 
 
-These considerations will determine how the Lagrangian average should be performed, and how *OceananigansLagrangianFilter.jl* is used. 
+These considerations will determine how the Lagrangian average should be performed, and how OceananigansLagrangianFilter is used. 
 
 Before describing how to find Lagrangian averages with PDEs, we first describe the simpler case of finding Eulerian averages with ODEs. 
 
@@ -53,7 +53,7 @@ holds at all times so ``\bar{f}`` describes the exponential mean at all times (a
     \dot{\bar{f}}(t) = \alpha(f(t) - \bar{f}(t))\,.
 \end{equation}
 ```
-Therefore, when the weight function ``G(t)`` is exponential (or composed of a small number of exponentials, as will be descibed later) equation \eqref{exponentialODE} can be solved alongside the governing equation for ``f(t)`` and the exponential mean found 'on-the-fly'. The methods that are currently implemented in *OceananigansLagrangianFilter.jl* are based on sums of exponential weight functions.
+Therefore, when the weight function ``G(t)`` is exponential (or composed of a small number of exponentials, as will be descibed later) equation \eqref{exponentialODE} can be solved alongside the governing equation for ``f(t)`` and the exponential mean found 'on-the-fly'. The methods that are currently implemented in OceananigansLagrangianFilter are based on sums of exponential weight functions.
 
 ### Temporal averaging with fixed arbitrary weight functions 
 In this case, the weight function ``G(s)`` doesn't shift with the simulation time ``t``, so the low pass variable
@@ -83,10 +83,10 @@ where ``\bar{f}(t^* + T/2,t^*)`` is our desired output, ``G(t)`` is only non-zer
 ```
 We can think of ``t^*_i = T/2 + iT``, where ``T`` is the averaging interval, and ``i \in \{0,1,2,....\}`` as defining a coarse time, and solve for the mean at each ``t^*_i`` by reinitialising ``\bar{f}`` after each time ``T`` so that ``\bar{f}(iT,t^*_i) = 0``.
 
-Methods for filtering with arbitrary weight functions in this way are described in [bakerLagrangianFilteringWave2025](@citet). These are not yet implemented in *OceananigansLagrangianFilter.jl*, but raise an issue on our [github](https://github.com/loisbaker/OceananigansLagrangianFilter.jl) if you're interested in using these methods. 
+Methods for filtering with arbitrary weight functions in this way are described in [bakerLagrangianFilteringWave2025](@citet). These are not yet implemented in OceananigansLagrangianFilter, but raise an issue on our [github](https://github.com/loisbaker/OceananigansLagrangianFilter.jl) if you're interested in using these methods. 
 
 ## Online exponential Lagrangian filtering 
-Here, we demonstrate the how the (single) exponential Lagrangian mean can be found online. This is the basic idea behind *OceananigansLagrangianFilter.jl*, and is a simplified version of the exponential Lagrangian averaging described in [minzEfficientLagrangianAveraging2025](@citep). We define (see [Lagrangian averaging](@ref "Lagrangian averaging") for general definitions):
+Here, we demonstrate the how the (single) exponential Lagrangian mean can be found online. This is the basic idea behind OceananigansLagrangianFilter, and is a simplified version of the exponential Lagrangian averaging described in [minzEfficientLagrangianAveraging2025](@citep). We define (see [Lagrangian averaging](@ref "Lagrangian averaging") for general definitions):
 ```math
 \begin{equation}\label{singleexpfstar}
     f^*(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^t \alpha e^{-\alpha(t-s)}f(\vb*{\varphi}(\vb*{a},s),s)\,\mathrm{d} s\,,
@@ -146,9 +146,9 @@ The goal is to find
 ```
 where ``G(t)`` is even such that ``G(t) \equiv G(|t|)``. 
 
-This property means that the weight function will be centred on the reference time ``t``, and the frequency response of this filter will be real. Such filters have *linear phase shift* (or, in this case, *zero phase shift*,* since ``G`` is symmetric about ``t=0``). This means that the phases of frequencies in the pass-band are not modified, in contrast to filters like the single sided exponential used in [Online exponential Lagrangian filtering](@ref "Online exponential Lagrangian filtering"). See [Filter construction](@ref "Filter construction") for more explanation of weight functions.
+This property means that the weight function will be centred on the reference time ``t``, and the frequency response of this filter will be real. Such filters have *linear phase shift* (or, in this case, *zero phase shift*,* since ``G`` is symmetric about ``t=0``). This means that the phases of frequencies in the pass-band are not modified, in contrast to filters like the single sided exponential used in [Online Lagrangian filtering](@ref "Online Lagrangian filtering equations"). See [Choosing online filters](@ref "Choosing online filters") for more explanation of weight functions.
 
-For a single exponential (as opposed to sums of exponentials, to be introduced in [Offline filtering](@ref "Offline Filtering")),
+For a single exponential (as opposed to sums of exponentials, to be introduced in [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations") and [Offline Lagrangian filtering equations](@ref "Offline Lagrangian filtering equations")),
 ```math
 \begin{equation}
 G(t-s) = \frac{\alpha}{2} e^{-\alpha|t-s|}\,,
