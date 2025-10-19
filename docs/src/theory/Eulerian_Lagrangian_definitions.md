@@ -31,7 +31,7 @@ where the flow map  ``\vb*{\varphi}(\vb*{a},t)`` is the position at time ``t`` o
 \end{equation}
 ```
 
-The definition \eqref{fbardef} ensures that ``\bar{f}^{\mathrm{L}}`` is the true generalised Lagrangian mean, in that (for strict band-pass filters) applying the same averaging procedure to the mean flow itself leaves it unchanged \citep{bakerLagrangianFilteringWave2025}. However, we also define an alternative Lagrangian mean, which is a rearrangement of ``\bar{f}^{\mathrm{L}}``:
+The definition \eqref{fbardef} ensures that ``\bar{f}^{\mathrm{L}}`` is the true generalised Lagrangian mean, in that (for strict band-pass filters) applying the same averaging procedure to the mean flow itself leaves it unchanged [bakerLagrangianFilteringWave2025](@citep). However, we also define an alternative Lagrangian mean, which is a rearrangement of ``\bar{f}^{\mathrm{L}}``:
 ```math
 \begin{equation}\label{fstardef}
     f^*(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^{\infty} G(t-s)f(\vb*{\varphi}(\vb*{a},s),s) \, \mathrm{d} s\,.

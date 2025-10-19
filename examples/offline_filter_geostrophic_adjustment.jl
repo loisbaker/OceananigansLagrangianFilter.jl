@@ -1,28 +1,24 @@
-# # Geostrophic adjustment in 3D with offline Lagrangian filtering
+# # Geostrophic adjustment with offline Lagrangian filtering
 
 # We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
 # in a domain that is horizontally periodic. 
 
-# An initially unbalanced two-dimensional
-# front oscillates with the inertial frequency around a state of geostrophic balance,
-# and we illustrate that we can remove the oscillations to find the mean state.
+# An initially unbalanced two-dimensional front oscillates with the inertial 
+# frequency around a state of geostrophic balance, and we illustrate that we 
+# can remove the oscillations to find the mean state.
 # Credit to Tom Cummings for work on this example. 
 
 # In this example, the filtering is performed offline after the simulation.
 
-# ## Install dependencies
+# ### Install dependencies
 
 using Oceananigans 
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures
-using CairoMakie 
 using NCDatasets
 using Printf
 
-# We set up a geostrophic adjustment problem similar to Blumen (2000), JPO
-# in a domain that is horizontally periodic. Credit to Tom Cummings for work on this example. 
-
-# ## Model parameters
+# ### Model parameters
 Nx = 50
 Nz = 20
 f = 1e-4                # Coriolis frequency [s⁻¹]
@@ -36,24 +32,24 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 κh = 1e-4 # Horizontal diffusivity
 κv = 1e-4 # Vertical diffusivity
 
-filename_stem = "geostrophic_adjustment"
+filename_stem = "geostrophic_adjustment";
 
-# ## Grid
+# ### Define the grid
 
 grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))
 
-# ## Closures                     
+# ### Closures                     
 horizontal_closure = HorizontalScalarDiffusivity(ν=κh, κ=κh )
 vertical_closure = VerticalScalarDiffusivity(ν=κv , κ=κv )
-closure = (horizontal_closure, vertical_closure)
+closure = (horizontal_closure, vertical_closure);
 
-# ## Tracers
+# ### Tracers
 tracers = (:b,:T)
 
-# ## Model
+# ### Define the model
 model =  NonhydrostaticModel(; grid,
                 coriolis = FPlane(f = f),
                 buoyancy = BuoyancyTracer(),
@@ -61,13 +57,13 @@ model =  NonhydrostaticModel(; grid,
                 advection = WENO(),
                 closure = closure)
 
-# ## Initialisation
-# Initialise the buoyancy and tracer (velocities start at rest by default)
+
+# ### Initialise the buoyancy and tracer 
 bᵢ(x, z) = Δb*sin(2*pi/L_front * x)
 Tᵢ(x, z) = exp(-(x/(L_front/50)).^2)
 set!(model, b= bᵢ, T= Tᵢ) 
 
-# Define the simulation
+# ### Define the simulation
 simulation = Simulation(model, Δt=20minutes, stop_time=3days)
 
 # Set an adaptive timestep
@@ -93,7 +89,7 @@ end
 
 add_callback!(simulation, print_progress, IterationInterval(50))
 
-# Set up the output 
+# ### Set up the output 
 u, v, w = model.velocities
 b = model.tracers.b
 T = model.tracers.T
@@ -106,20 +102,20 @@ wc = Field(@at (Center, Center, Center) model.velocities.w)
 simulation.output_writers[:jld2fields] = JLD2Writer(
     model, (; b, u, v, w, wc, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
 
-# ## Run simulation
+# ### Run simulation
 @info "Running the simulation..."
 
 run!(simulation)
 
 @info "Simulation completed in " * prettytime(simulation.run_wall_time)
 
-# ## Lagrangian filtering 
+# ### Lagrangian filtering 
 # Now we set up and run the offline Lagrangian filter on the output of the above simulation.
 # This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)
 
 using OceananigansLagrangianFilter
 
-# Set up the filter configuration
+# ### Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustment.jld2", # Where the original simulation output is
                                     output_filename = "geostrophic_adjustment_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
@@ -135,10 +131,13 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
                                     compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison
 
 
-# Run the offline Lagrangian filter
+# ### Run the offline Lagrangian filter
 run_offline_Lagrangian_filter(filter_config)
 
-# ## Visualisation
+# ### Visualisation
+
+using CairoMakie 
+
 # Now we animate the results. First, the buoyancy:
 timeseries1 = FieldTimeSeries(filter_config.output_filename, "b")
 timeseries2 = FieldTimeSeries(filter_config.output_filename, "b_Eulerian_filtered")
@@ -187,10 +186,10 @@ frames = 1:length(times)
 CairoMakie.record(fig, "geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4", frames, framerate=24) do i
     n[] = i
 end
+# ![](geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4)
 
 
 # Then the tracer:
-# Animate
 timeseries1 = FieldTimeSeries(filter_config.output_filename, "T")
 timeseries2 = FieldTimeSeries(filter_config.output_filename, "T_Eulerian_filtered")
 timeseries3 = FieldTimeSeries(filter_config.output_filename, "T_Lagrangian_filtered")
@@ -238,8 +237,6 @@ frames = 1:length(times)
 CairoMakie.record(fig, "geostrophic_adjustment_filtered_tracer_movie_offline.mp4", frames, framerate=24) do i
     n[] = i
 end
-nothing #hide
-
 # ![](geostrophic_adjustment_filtered_tracer_movie_offline.mp4)
 
 # We see that the Eulerian filter smudges the tracer field as it is advected by the 

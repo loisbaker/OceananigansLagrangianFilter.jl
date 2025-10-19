@@ -1005,7 +1005,6 @@ function compute_Eulerian_filter!(config::AbstractConfig)
 
             # Loop over times to compute filtered field at each time
             for (i, t) in enumerate(times)
-                @info "Computing Eulerian filter at time $t =  (index $i of $(length(times)))"
                 G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
                 
                 # Initialise with zeros

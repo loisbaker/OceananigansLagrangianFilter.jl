@@ -1,8 +1,8 @@
-# Implementation of online filtering
+# Online filtering implementation
 
 The online Lagrangian filter equations, which find Lagrangian filtered tracer(s) ``f^*`` (see [Lagrangian averaging](@ref "Lagrangian averaging") for a definition) are solved at the same time as the governing equations of your simulation, in which the original tracer ``f`` is being found. Filtered velocities can also be found. This means that equations for the filtered tracers, and optionally the maps (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")) need to be passed to your `model`. 
 
-OceananigansLagrangianFilter provides helper functions to define these extra fields and their forcings, and an example is given in [geostrophic_adjustment.jl](https://github.com/loisbaker/OceananigansLagrangianFilter.jl/blob/main/examples/online_filter_geostrophic_adjustment.jl). 
+OceananigansLagrangianFilter provides helper functions to define these extra fields and their forcings, and an example is given in [online_filter_geostrophic_adjustment.jl](https://github.com/loisbaker/OceananigansLagrangianFilter.jl/blob/main/examples/online_filter_geostrophic_adjustment.jl). 
 
 Other helper functions are provided to initialise the filtered variables, define output fields that compute ``f^*``, regrid ``f^*`` to ``\bar{f}^{\mathrm{L}}`` (see [Lagrangian averaging](@ref "Lagrangian averaging")), compute the Eulerian filter for comparison, compute a shifted time variable, and output a final NetCDF file. 
 

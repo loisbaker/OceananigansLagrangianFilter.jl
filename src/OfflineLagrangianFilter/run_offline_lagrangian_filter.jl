@@ -70,7 +70,7 @@ function run_offline_Lagrangian_filter(config)
         return nothing
     end
 
-    simulation.callbacks[:progress] = Callback(progress,TimeInterval(config.T_out))
+    simulation.callbacks[:progress] = Callback(progress,TimeInterval(config.T/10))
 
     #Write outputs
     simulation.output_writers[:vars] = JLD2Writer(model, filtered_outputs,

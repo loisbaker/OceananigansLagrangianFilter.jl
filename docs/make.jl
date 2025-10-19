@@ -24,7 +24,7 @@ example_scripts = [
 ]
 
 
-@info string("Executing the examples")
+# @info string("Executing the examples")
 
 for n in 1:length(example_scripts)
     example = example_scripts[n]
@@ -82,7 +82,6 @@ offline_pages = [
 ]
 pages = [
     "Home" => "index.md",
-    "Quick start" => "quick_start.md",
     "Quick start" => "quick_start.md",
     "Theory" => theory_pages,
     "Online filtering" => online_pages,

@@ -1,13 +1,15 @@
 # Choosing offline filters
+To be added. 
+
+TLDR; set `N` and `freq_c` in [`OfflineFilterConfig`](@ref "OfflineFilterConfig") to get a filter with squared amplitude of a Butterworth order `N` filter with cutoff frequency `freq_c`.
+
+If `N=1` then a double sided exponential filter is found. Otherwise, `N` should be even.
 
 ## General form
 
 ## Exponential
 
 ## Butterworth (squared)
-
-## Define your own
-
 The filter coefficients are chosen as
 ```math
 \begin{align}
@@ -24,3 +26,7 @@ This choice gives a weight function ``G(t)`` with frequency response
 \end{equation}
 ```
 which approaches a low-pass cutoff filter as ``N \rightarrow \infty``. 
+
+## Define your own
+
+

@@ -1,1 +1,2 @@
 # How it works
+To be added (see [`run_offline_lagrangian_filter.jl`](https://github.com/loisbaker/OceananigansLagrangianFilter.jl/blob/main/src/OfflineLagrangianFilter/run_offline_lagrangian_filter.jl))
