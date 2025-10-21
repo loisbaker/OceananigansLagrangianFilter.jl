@@ -1,6 +1,8 @@
 
 # :ocean: OceananigansLagrangianFilter.jl
 
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://loisbaker.github.io/OceananigansLagrangianFilter.jl/dev)
+
 A package for offline and online filtering of simulation data from Oceananigans.jl. 
 
 ---
@@ -78,13 +80,8 @@ You can find an example of a simple simulation of geostrophic adjustment in `/ex
 For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example corresponding to the above online filtering in `/examples/online_filter_geostrophic_adjustment.jl`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
 
 ---
-# The technical bit
-Questions to be answered here in the very near future include
-* How does it work?
-* Why would I want to filter offline when I could filter online?
-* What kind of filters are implemented, and why?
-* When is Lagrangian filtering (in the frame of the flow) better than Eulerian filtering (at a fixed spatial location)?
-* Does it work in 2D and 3D? (Yes!)
+# Learn more
+There's lots of documentation, examples, and explanation of the methods available in our [documentation](https://loisbaker.github.io/OceananigansLagrangianFilter.jl)
 
 ---
 ## 💻 Contributing

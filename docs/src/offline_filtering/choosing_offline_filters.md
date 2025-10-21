@@ -1,7 +1,7 @@
 # Choosing offline filters
 To be added. 
 
-TLDR; set `N` and `freq_c` in [`OfflineFilterConfig`](@ref "OfflineFilterConfig") to get a filter with squared amplitude of a Butterworth order `N` filter with cutoff frequency `freq_c`.
+Quick version: set `N` and `freq_c` in [`OfflineFilterConfig`](@ref "OfflineFilterConfig") to get a filter with squared amplitude of a Butterworth order `N` filter with cutoff frequency `freq_c`.
 
 If `N=1` then a double sided exponential filter is found. Otherwise, `N` should be even.
 
