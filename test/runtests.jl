@@ -2,11 +2,7 @@
 using Test
 #using OceananigansLagrangianFilter
 using Oceananigans.Units
-@info ENV["JULIA_CONDAPKG_BACKEND"]
-#ENV["JULIA_CONDAPKG_BACKEND"] = "Null" # this seems to bypass condapkg
-# using PythonCall
-# pyversion = pyconvert(String, pyimport("sys").version)
-# @info "Running tests with Python version $pyversion"
+ENV["JULIA_CONDAPKG_BACKEND"] = "Null" 
 using OceananigansLagrangianFilter
 
 # TODO add more granular tests of individual functions and other configurations

@@ -60,7 +60,7 @@ format = Documenter.HTML(collapselevel = 1,
 example_pages = [
     "Geostrophic adjustment online"        => "literated/online_filter_geostrophic_adjustment.md",
     "Geostrophic adjustment offline"        => "literated/offline_filter_geostrophic_adjustment.md",
-    "Shallow water inertial oscillation offline"       => "literated/offline_filter_shallow_water_IO.md",
+#    "Shallow water inertial oscillation offline"       => "literated/offline_filter_shallow_water_IO.md",
 ]
 
 theory_pages = [
