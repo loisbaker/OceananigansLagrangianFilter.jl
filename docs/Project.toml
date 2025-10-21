@@ -7,3 +7,5 @@ NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 OceananigansLagrangianFilter = "3a2ee588-b56c-4451-ba19-103f511bcf00"
 
+[compat]
+Documenter = "1.14"

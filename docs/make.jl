@@ -102,4 +102,7 @@ makedocs(; sitename="OceananigansLagrangianFilter.jl",
            pages=pages,
            warnonly = [:missing_docs], # Recommended to avoid build failure if docstrings are missing
     )
-           
+      
+deploydocs(
+    repo = "github.com/loisbaker/OceananigansLagrangianFilter.jl.git",
+)

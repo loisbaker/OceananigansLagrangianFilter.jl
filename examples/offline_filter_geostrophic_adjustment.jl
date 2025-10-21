@@ -19,10 +19,10 @@ using NCDatasets
 using Printf
 
 # ### Model parameters
-# Nx = 200
-# Nz = 120
-Nx = 10
-Nz = 10
+Nx = 200
+Nz = 120
+# Nx = 10
+# Nz = 10
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
