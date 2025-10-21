@@ -20,7 +20,7 @@ const OUTPUT_DIR   = joinpath(@__DIR__, "src/literated")
 example_scripts = [
     "online_filter_geostrophic_adjustment.jl",
     "offline_filter_geostrophic_adjustment.jl",
-  #  "offline_filter_shallow_water_IO.jl",
+#    "offline_filter_shallow_water_IO.jl",
 ]
 
 
@@ -39,9 +39,7 @@ for n in 1:length(example_scripts)
 end
 
 
-# Set up DocTests (TODO)
-
-# Set up math rendering need to fix this
+# Set up math rendering 
 mathengine = MathJax3(Dict(
     :loader => Dict("load" => ["[tex]/physics"]),
     :tex => Dict(
@@ -62,7 +60,7 @@ format = Documenter.HTML(collapselevel = 1,
 example_pages = [
     "Geostrophic adjustment online"        => "literated/online_filter_geostrophic_adjustment.md",
     "Geostrophic adjustment offline"        => "literated/offline_filter_geostrophic_adjustment.md",
-    "Shallow water inertial oscillation offline"       => "literated/offline_filter_shallow_water_IO.md",
+  #  "Shallow water inertial oscillation offline"       => "literated/offline_filter_shallow_water_IO.md",
 ]
 
 theory_pages = [
