@@ -61,6 +61,41 @@ Keyword arguments
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
 - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
+
+# Example:
+
+```jldoctest online config
+using OceananigansLagrangianFilter
+using Oceananigans.Units
+
+Nx = 50
+Nz = 20
+L = 10kilometers 
+H = 100meters 
+
+grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
+                       x = (-L/2, L/2),
+                       z = (-H, 0),
+                       topology = (Periodic, Flat, Bounded))
+
+filter_config = OnlineFilterConfig( grid = grid,
+                                    output_filename = "test_filter.jld2",
+                                    var_names_to_filter = ("b","T"), 
+                                    velocity_names = ("u","w"),
+                                    N = 2,
+                                    freq_c = 1e-4/2)
+
+# output
+
+[ Info: Setting filter parameters to use Butterworth order 2, cutoff frequency 5.0e-5
+OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
+├── Flat y                         
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "online")
+
+```
+
+
 """
 function OnlineFilterConfig(; grid::AbstractGrid,
                             output_filename::String = "online_filtered_output",

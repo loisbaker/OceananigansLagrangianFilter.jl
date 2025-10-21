@@ -20,11 +20,11 @@ const OUTPUT_DIR   = joinpath(@__DIR__, "src/literated")
 example_scripts = [
     "online_filter_geostrophic_adjustment.jl",
     "offline_filter_geostrophic_adjustment.jl",
-    "offline_filter_shallow_water_IO.jl",
+  #  "offline_filter_shallow_water_IO.jl",
 ]
 
 
-# @info string("Executing the examples")
+@info string("Executing the examples")
 
 for n in 1:length(example_scripts)
     example = example_scripts[n]
@@ -82,6 +82,7 @@ offline_pages = [
 ]
 pages = [
     "Home" => "index.md",
+    "Installation" => "installation.md",
     "Quick start" => "quick_start.md",
     "Theory" => theory_pages,
     "Online filtering" => online_pages,
@@ -97,6 +98,7 @@ makedocs(; sitename="OceananigansLagrangianFilter.jl",
            format=format,
            plugins = [bib],
            authors="Lois Baker",
+           doctest = true,
            pages=pages,
            warnonly = [:missing_docs], # Recommended to avoid build failure if docstrings are missing
     )

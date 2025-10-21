@@ -85,9 +85,6 @@ function run_offline_Lagrangian_filter(config)
     # Now, run it backwards. Switch the data direction on disk
     create_input_data_on_disk(config; direction = "backward")
 
-    # Reload the saved data
-    saved_velocities, saved_original_vars = load_data(config)
-
     # Tracers are initialised with their existing values 
   
     # Reset time

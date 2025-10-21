@@ -13,8 +13,6 @@
 
 using Oceananigans 
 using Oceananigans.Units
-using Oceananigans.TurbulenceClosures
-using CairoMakie 
 using NCDatasets
 using Printf
 

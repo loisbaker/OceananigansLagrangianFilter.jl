@@ -10,17 +10,19 @@
 
 # In this example, the filtering is performed offline after the simulation.
 
+# ## Run the simulation
 # ### Install dependencies
 
 using Oceananigans 
 using Oceananigans.Units
-using Oceananigans.TurbulenceClosures
 using NCDatasets
 using Printf
 
 # ### Model parameters
-Nx = 50
-Nz = 20
+# Nx = 200
+# Nz = 120
+Nx = 10
+Nz = 10
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
@@ -29,8 +31,8 @@ Ro = 0.1                # Rossby number (defines M^2)
 H = L_front/aspect_ratio  # Depth
 M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 Δb = M²*L_front # Buoyancy difference across the front
-κh = 1e-4 # Horizontal diffusivity
-κv = 1e-4 # Vertical diffusivity
+κh = 1e-6 # Horizontal diffusivity
+κv = 1e-6 # Vertical diffusivity
 
 filename_stem = "geostrophic_adjustment";
 
@@ -109,7 +111,7 @@ run!(simulation)
 
 @info "Simulation completed in " * prettytime(simulation.run_wall_time)
 
-# ### Lagrangian filtering 
+# ## Perform Lagrangian filtering
 # Now we set up and run the offline Lagrangian filter on the output of the above simulation.
 # This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)
 
@@ -174,7 +176,7 @@ heatmap!(ax3, var3; colormap = :balance, colorrange = (-1e-4, 1e-4))
 heatmap!(ax4, var4; colormap = :balance, colorrange = (-1e-4, 1e-4))
 
 
-title = @lift "Buoyancy, time = " * string(round(times[$n], digits=2))
+title = @lift "Buoyancy, time = " * string(round(times[$n]./3600., digits=2)) * " hours"
 Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
 
 fig
@@ -208,7 +210,7 @@ axis_kwargs = (xlabel = "x",
 ax1 = Axis(fig[2, 1]; title = "Raw", axis_kwargs...)
 ax2 = Axis(fig[2, 2]; title = "Eulerian filtered", axis_kwargs...)
 ax3 = Axis(fig[2, 3]; title = "Lagrangian filtered", axis_kwargs...)
-ax4 = Axis(fig[2, 4]; title = "Lagrangian filtered at mean", axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = "Lagrangian filtered \n at mean position", axis_kwargs...)
 
 
 n = Observable(1)
@@ -225,7 +227,7 @@ heatmap!(ax3, var3; colormap = :Spectral, colorrange = (0, 1))
 heatmap!(ax4, var4; colormap = :Spectral, colorrange = (0, 1))
 
 
-title = @lift "Tracer concentration, time = " * string(round(times[$n], digits=2))
+title = @lift "Tracer concentration, time = " * string(round(times[$n]./3600., digits=2)) * " hours"
 Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
 
 fig

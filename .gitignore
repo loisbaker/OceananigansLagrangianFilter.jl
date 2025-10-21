@@ -70,3 +70,9 @@ docs/.CondaPkg
 
 # Docs
 docs/local_compile.sh
+
+# Testing
+!test/data/reference_sim.jld2
+!test/data/reference_offline_output.jld2
+!test/data/reference_online_output.jld2 
+

@@ -63,9 +63,8 @@ Return a flattened `NamedTuple` of the prognostic fields associated with `Lagran
 """
 prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.tracers)
 
-#####
+
 ##### Define a config structure
-#####
 
 """
     OfflineFilterConfig(;
@@ -163,6 +162,40 @@ Keyword arguments
   - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "offline". TODO use multiple dispatch for this instead.
+
+# Example:
+
+```jldoctest offline config
+using OceananigansLagrangianFilter
+using Oceananigans.Units
+path_to_sim = "../test/data/reference_sim.jld2"
+filter_config = OfflineFilterConfig(original_data_filename=path_to_sim, 
+                                    output_filename = "output_file.jld2", 
+                                    var_names_to_filter = ("b",), 
+                                    velocity_names = ("u","w"), 
+                                    architecture = CPU(), 
+                                    Δt = 20minutes, 
+                                    T_out = 1hour, 
+                                    N = 2, 
+                                    freq_c = 1e-4/2, 
+                                    compute_mean_velocities = true, 
+                                    output_netcdf = true, 
+                                    delete_intermediate_files = true, 
+                                    compute_Eulerian_filter = true) 
+
+# output
+
+[ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
+[ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Float32}(order=5)
+├── buffer_scheme: WENO{2, Float64, Float32}(order=3)
+└── advection_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
+├── Flat y                         
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "offline")
+
+```
+
 """
 function OfflineFilterConfig(; original_data_filename::String,
                             var_names_to_filter::Tuple{Vararg{String}},

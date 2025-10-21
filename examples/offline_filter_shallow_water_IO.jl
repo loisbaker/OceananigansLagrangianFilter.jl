@@ -8,19 +8,18 @@
 # This example uses the ConservativeFormulation() instead, and filtering is performed 
 # offline using the saved velocities after they have been calculated from uh and vh.
 
+# ## Run the simulation 
 # ### Install dependencies
 
 using Oceananigans
-using Oceananigans.Models: ShallowWaterModel
 using Printf
 using NCDatasets
-using CairoMakie
 
 filename_stem = "SW_IO_with_tracer";
 
 # ### Define the grid
 
-grid = RectilinearGrid(CPU(), size = (10, 10),
+grid = RectilinearGrid(CPU(), size = (100, 100),
                        x = (0, 2*pi),
                        y = (0, 2*pi),
                        topology = (Periodic, Periodic, Flat))
@@ -86,13 +85,13 @@ simulation.output_writers[:fields_jld2] = JLD2Writer(model, (; u,v,T),
 # ### And finally run the simulation.
 run!(simulation)
 
-# ## Lagrangian filtering
+# ## Perform Lagrangian filtering
 # Now we set up and run the offline Lagrangian filter on the output of the above simulation.
 # This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)
 
 using OceananigansLagrangianFilter
 
-# ## Set up the filter configuration
+# ### Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jld2", # Where the original simulation output is
                                     output_filename = "SW_IO_with_tracer_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T",), # Which variables to filter
@@ -108,11 +107,14 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
                                     compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison
 
 
-# ## Run the offline Lagrangian filter
+# ### Run the offline Lagrangian filter
 run_offline_Lagrangian_filter(filter_config)
 
-# ## Visualisation
-# Now we animate the results
+# ### Visualisation
+
+using CairoMakie 
+
+# Now we animate the results. 
 timeseries1 = FieldTimeSeries(filter_config.output_filename, "T")
 timeseries2 = FieldTimeSeries(filter_config.output_filename, "T_Eulerian_filtered")
 timeseries3 = FieldTimeSeries(filter_config.output_filename, "T_Lagrangian_filtered")

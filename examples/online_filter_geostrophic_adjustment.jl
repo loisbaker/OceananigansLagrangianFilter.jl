@@ -11,18 +11,16 @@
 # In this example, the filtering is performed online during the simulation.
 
 # ### Load dependencies
-using OceananigansLagrangianFilter
-using OceananigansLagrangianFilter.Utils # load utility functions for the online filter
+using OceananigansLagrangianFilter # Gives access to all Oceananigans functions too
 using Oceananigans.Units
-using Oceananigans.TurbulenceClosures
 using NCDatasets
 using Printf
-nothing #hide
-
 
 # ### Model parameters
-Nx = 50
-Nz = 20
+# Nx = 100
+# Nz = 80
+Nx = 10
+Nz = 10
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
@@ -32,8 +30,8 @@ Ro = 0.1                # Rossby number (defines M^2)
 H = L_front/aspect_ratio  # Depth
 M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 Δb = M²*L_front # Buoyancy difference across the front
-κh = 1e-4 # Horizontal diffusivity
-κv = 1e-4 # Vertical diffusivity
+κh = 1e-6 # Horizontal diffusivity
+κv = 1e-6 # Vertical diffusivity
 
 filename_stem = "geostrophic_adjustment";
 
@@ -72,8 +70,8 @@ forcing = merge(forcing, filter_forcing);
 # ### Define closures
 # If the model uses a closure, we use a helper function to set filtered variable closures to zero (unless we set filtered variable closures to zero, the default closure will apply to all tracers).
 zero_filtered_var_closure = zero_closure_for_filtered_vars(filter_config)
-horizontal_closure = HorizontalScalarDiffusivity(ν=1e-6, κ=merge((T=1e-6, b= 1e-6),zero_filtered_var_closure) )
-vertical_closure = VerticalScalarDiffusivity(ν=1e-6 , κ=merge((T=1e-6, b= 1e-6),zero_filtered_var_closure) )
+horizontal_closure = HorizontalScalarDiffusivity(ν=κh, κ=merge((T=κh, b= κh),zero_filtered_var_closure) )
+vertical_closure = VerticalScalarDiffusivity(ν=κv , κ=merge((T=κv, b= κv),zero_filtered_var_closure) )
 closure = (horizontal_closure, vertical_closure);
 nothing #hide
 
@@ -200,7 +198,7 @@ heatmap!(ax3, var3; colormap = :balance, colorrange = (-1e-4, 1e-4))
 heatmap!(ax4, var4; colormap = :balance, colorrange = (-1e-4, 1e-4))
 
 
-title = @lift "Buoyancy, time = " * string(round(times[$n], digits=2))
+title = @lift "Buoyancy, time = " * string(round(times[$n]./3600., digits=2)) * " hours"
 Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
 
 fig
@@ -252,7 +250,7 @@ heatmap!(ax3, var3; colormap = :Spectral, colorrange = (0, 1))
 heatmap!(ax4, var4; colormap = :Spectral, colorrange = (0, 1))
 
 
-title = @lift "Tracer concentration, time = " * string(round(times[$n], digits=2))
+title = @lift "Tracer concentration, time = " * string(round(times[$n]./3600., digits=2)) * " hours"
 Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
 
 fig
