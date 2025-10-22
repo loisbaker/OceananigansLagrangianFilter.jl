@@ -19,7 +19,7 @@ filename_stem = "SW_IO_with_tracer";
 
 # ### Define the grid
 
-grid = RectilinearGrid(CPU(), size = (10, 10),
+grid = RectilinearGrid(CPU(), size = (50, 50),
                        x = (0, 2*pi),
                        y = (0, 2*pi),
                        topology = (Periodic, Periodic, Flat))

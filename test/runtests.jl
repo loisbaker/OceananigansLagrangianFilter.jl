@@ -1,8 +1,8 @@
 # Some basic tests for OceananigansLagrangianFilter
 using Test
-#using OceananigansLagrangianFilter
 using Oceananigans.Units
-ENV["JULIA_CONDAPKG_BACKEND"] = "Null" 
+
+#ENV["JULIA_CONDAPKG_BACKEND"] = "Null" # Can force this to run a different python locally
 using OceananigansLagrangianFilter
 
 # TODO add more granular tests of individual functions and other configurations

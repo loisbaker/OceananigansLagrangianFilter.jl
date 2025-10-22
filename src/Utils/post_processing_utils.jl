@@ -5,6 +5,7 @@ using NCDatasets
 
 
 # Python import to use the LinearNDInterpolator for regridding
+using CondaPkg
 using PythonCall
 const scipy_interpolate = PythonCall.pynew()
 const numpy = PythonCall.pynew()
