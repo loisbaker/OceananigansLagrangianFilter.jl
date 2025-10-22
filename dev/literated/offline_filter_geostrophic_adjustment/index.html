@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Geostrophic adjustment offline · OceananigansLagrangianFilter.jl</title><meta name="title" content="Geostrophic adjustment offline · OceananigansLagrangianFilter.jl"/><meta property="og:title" content="Geostrophic adjustment offline · OceananigansLagrangianFilter.jl"/><meta property="twitter:title" content="Geostrophic adjustment offline · OceananigansLagrangianFilter.jl"/><meta name="description" content="Documentation for OceananigansLagrangianFilter.jl."/><meta property="og:description" content="Documentation for OceananigansLagrangianFilter.jl."/><meta property="twitter:description" content="Documentation for OceananigansLagrangianFilter.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">OceananigansLagrangianFilter.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../installation/">Installation</a></li><li><a class="tocitem" href="../../quick_start/">Quick start</a></li><li><input class="collapse-toggle" id="menuitem-4" type="checkbox"/><label class="tocitem" for="menuitem-4"><span class="docs-label">Theory</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../../theory/Eulerian_Lagrangian_definitions/">Eulerian and Lagrangian averaging</a></li><li><a class="tocitem" href="../../theory/filtering_PDEs/">Background: PDEs for Lagrangian filtering</a></li><li><a class="tocitem" href="../../theory/online_equations/">Online Lagrangian filtering equations</a></li><li><a class="tocitem" href="../../theory/offline_equations/">Offline Lagrangian filtering equations</a></li></ul></li><li><input class="collapse-toggle" id="menuitem-5" type="checkbox"/><label class="tocitem" for="menuitem-5"><span class="docs-label">Online filtering</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../../online_filtering/online_implementation/">Online filtering implementation</a></li><li><a class="tocitem" href="../../online_filtering/choosing_online_filters/">Choosing online filters</a></li></ul></li><li><input class="collapse-toggle" id="menuitem-6" type="checkbox"/><label class="tocitem" for="menuitem-6"><span class="docs-label">Offline filtering</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../../offline_filtering/offline_implementation/">Offline filtering implementation</a></li><li><a class="tocitem" href="../../offline_filtering/choosing_offline_filters/">Choosing offline filters</a></li><li><a class="tocitem" href="../../offline_filtering/offline_how_it_works/">How it works</a></li></ul></li><li><input class="collapse-toggle" id="menuitem-7" type="checkbox" checked/><label class="tocitem" for="menuitem-7"><span class="docs-label">Examples</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../online_filter_geostrophic_adjustment/">Geostrophic adjustment online</a></li><li class="is-active"><a class="tocitem" href>Geostrophic adjustment offline</a><ul class="internal"><li><a class="tocitem" href="#Run-the-simulation"><span>Run the simulation</span></a></li><li><a class="tocitem" href="#Perform-Lagrangian-filtering"><span>Perform Lagrangian filtering</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../references/">References</a></li><li><a class="tocitem" href="../../library/">Library</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Geostrophic adjustment offline</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Geostrophic adjustment offline</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://loisbaker.github.io/OceananigansLagrangianFilter.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Geostrophic-adjustment-with-offline-Lagrangian-filtering"><a class="docs-heading-anchor" href="#Geostrophic-adjustment-with-offline-Lagrangian-filtering">Geostrophic adjustment with offline Lagrangian filtering</a><a id="Geostrophic-adjustment-with-offline-Lagrangian-filtering-1"></a><a class="docs-heading-anchor-permalink" href="#Geostrophic-adjustment-with-offline-Lagrangian-filtering" title="Permalink"></a></h1><p>We set up a geostrophic adjustment problem similar to Blumen (2000), JPO in a domain that is horizontally periodic.</p><p>An initially unbalanced two-dimensional front oscillates with the inertial frequency around a state of geostrophic balance, and we illustrate that we can remove the oscillations to find the mean state. Credit to Tom Cummings for work on this example.</p><p>In this example, the filtering is performed offline after the simulation.</p><h2 id="Run-the-simulation"><a class="docs-heading-anchor" href="#Run-the-simulation">Run the simulation</a><a id="Run-the-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-simulation" title="Permalink"></a></h2><h3 id="Install-dependencies"><a class="docs-heading-anchor" href="#Install-dependencies">Install dependencies</a><a id="Install-dependencies-1"></a><a class="docs-heading-anchor-permalink" href="#Install-dependencies" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Oceananigans
+using Oceananigans.Units
+using NCDatasets
+using Printf</code></pre><h3 id="Model-parameters"><a class="docs-heading-anchor" href="#Model-parameters">Model parameters</a><a id="Model-parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Model-parameters" title="Permalink"></a></h3><pre><code class="language-julia hljs">Nx = 20#400
+Nz = 10#80
+f = 1e-4                # Coriolis frequency [s⁻¹]
+L_front = 10kilometers  # Initial front width [m]
+aspect_ratio = 100      # L_front/H
+Ro = 0.1                # Rossby number (defines M^2)
+
+H = L_front/aspect_ratio  # Depth
+M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
+Δb = M²*L_front # Buoyancy difference across the front
+κh = 1e-6 # Horizontal diffusivity
+κv = 1e-6 # Vertical diffusivity
+
+filename_stem = &quot;geostrophic_adjustment&quot;;</code></pre><h3 id="Define-the-grid"><a class="docs-heading-anchor" href="#Define-the-grid">Define the grid</a><a id="Define-the-grid-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-grid" title="Permalink"></a></h3><pre><code class="language-julia hljs">grid = RectilinearGrid(CPU(),size = (Nx, Nz),
+                       x = (-L_front/2, L_front/2),
+                       z = (-H, 0),
+                       topology = (Periodic, Flat, Bounded))</code></pre><pre><code class="nohighlight hljs">20×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=500.0
+├── Flat y                         
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0</code></pre><h3 id="Closures"><a class="docs-heading-anchor" href="#Closures">Closures</a><a id="Closures-1"></a><a class="docs-heading-anchor-permalink" href="#Closures" title="Permalink"></a></h3><pre><code class="language-julia hljs">horizontal_closure = HorizontalScalarDiffusivity(ν=κh, κ=κh )
+vertical_closure = VerticalScalarDiffusivity(ν=κv , κ=κv )
+closure = (horizontal_closure, vertical_closure);</code></pre><h3 id="Tracers"><a class="docs-heading-anchor" href="#Tracers">Tracers</a><a id="Tracers-1"></a><a class="docs-heading-anchor-permalink" href="#Tracers" title="Permalink"></a></h3><pre><code class="language-julia hljs">tracers = (:b,:T)</code></pre><pre><code class="nohighlight hljs">(:b, :T)</code></pre><h3 id="Define-the-model"><a class="docs-heading-anchor" href="#Define-the-model">Define the model</a><a id="Define-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-model" title="Permalink"></a></h3><pre><code class="language-julia hljs">model =  NonhydrostaticModel(; grid,
+                coriolis = FPlane(f = f),
+                buoyancy = BuoyancyTracer(),
+                tracers = tracers,
+                advection = WENO(),
+                closure = closure)</code></pre><pre><code class="nohighlight hljs">NonhydrostaticModel{CPU, RectilinearGrid}(time = 0 seconds, iteration = 0)
+├── grid: 20×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── timestepper: RungeKutta3TimeStepper
+├── advection scheme: WENO{3, Float64, Float32}(order=5)
+├── tracers: (b, T)
+├── closure: Tuple with 2 closures:
+│   ├── HorizontalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b=1.0e-6, T=1.0e-6))
+│   └── VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b=1.0e-6, T=1.0e-6))
+├── buoyancy: BuoyancyTracer with ĝ = NegativeZDirection()
+└── coriolis: FPlane{Float64}(f=0.0001)</code></pre><h3 id="Initialise-the-buoyancy-and-tracer"><a class="docs-heading-anchor" href="#Initialise-the-buoyancy-and-tracer">Initialise the buoyancy and tracer</a><a id="Initialise-the-buoyancy-and-tracer-1"></a><a class="docs-heading-anchor-permalink" href="#Initialise-the-buoyancy-and-tracer" title="Permalink"></a></h3><pre><code class="language-julia hljs">bᵢ(x, z) = Δb*sin(2*pi/L_front * x)
+Tᵢ(x, z) = exp(-(x/(L_front/50)).^2)
+set!(model, b= bᵢ, T= Tᵢ)</code></pre><h3 id="Define-the-simulation"><a class="docs-heading-anchor" href="#Define-the-simulation">Define the simulation</a><a id="Define-the-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-simulation" title="Permalink"></a></h3><pre><code class="language-julia hljs">simulation = Simulation(model, Δt=20minutes, stop_time=3days)</code></pre><pre><code class="nohighlight hljs">Simulation of NonhydrostaticModel{CPU, RectilinearGrid}(time = 0 seconds, iteration = 0)
+├── Next time step: 20 minutes
+├── Elapsed wall time: 0 seconds
+├── Wall time per iteration: NaN days
+├── Stop time: 3 days
+├── Stop iteration: Inf
+├── Wall time limit: Inf
+├── Minimum relative step: 0.0
+├── Callbacks: OrderedDict with 4 entries:
+│   ├── stop_time_exceeded =&gt; 4
+│   ├── stop_iteration_exceeded =&gt; -
+│   ├── wall_time_limit_exceeded =&gt; e
+│   └── nan_checker =&gt; }
+├── Output writers: OrderedDict with no entries
+└── Diagnostics: OrderedDict with no entries</code></pre><p>Set an adaptive timestep</p><pre><code class="language-julia hljs">conjure_time_step_wizard!(simulation, IterationInterval(20), cfl=0.2, max_Δt=20minutes)</code></pre><p>Add a progress callback</p><pre><code class="language-julia hljs">wall_clock = Ref(time_ns())
+
+function print_progress(sim)
+    u, v, w = model.velocities
+    progress = 100 * (time(sim) / sim.stop_time)
+    elapsed = (time_ns() - wall_clock[]) / 1e9
+
+    @printf(&quot;[%05.2f%%] i: %d, t: %s, wall time: %s, max(u): (%6.3e, %6.3e, %6.3e) m/s, next Δt: %s\n&quot;,
+            progress, iteration(sim), prettytime(sim), prettytime(elapsed),
+            maximum(abs, u), maximum(abs, v), maximum(abs, w), prettytime(sim.Δt))
+
+    wall_clock[] = time_ns()
+
+    return nothing
+end
+
+add_callback!(simulation, print_progress, IterationInterval(50))</code></pre><h3 id="Set-up-the-output"><a class="docs-heading-anchor" href="#Set-up-the-output">Set up the output</a><a id="Set-up-the-output-1"></a><a class="docs-heading-anchor-permalink" href="#Set-up-the-output" title="Permalink"></a></h3><pre><code class="language-julia hljs">u, v, w = model.velocities
+b = model.tracers.b
+T = model.tracers.T</code></pre><pre><code class="nohighlight hljs">20×1×10 Field{Center, Center, Center} on RectilinearGrid on CPU
+├── grid: 20×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── boundary conditions: FieldBoundaryConditions
+│   └── west: Periodic, east: Periodic, south: Nothing, north: Nothing, bottom: ZeroFlux, top: ZeroFlux, immersed: Nothing
+└── data: 26×1×16 OffsetArray(::Array{Float64, 3}, -2:23, 1:1, -2:13) with eltype Float64 with indices -2:23×1:1×-2:13
+    └── max=0.209611, min=1.07342e-245, mean=0.0209612</code></pre><p>Fields to be filtered must be specified at cell centers, so we can interpolate before output if necessary.</p><pre><code class="language-julia hljs">wc = Field(@at (Center, Center, Center) model.velocities.w)</code></pre><pre><code class="nohighlight hljs">20×1×10 Field{Center, Center, Center} on RectilinearGrid on CPU
+├── grid: 20×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── boundary conditions: FieldBoundaryConditions
+│   └── west: Periodic, east: Periodic, south: Nothing, north: Nothing, bottom: ZeroFlux, top: ZeroFlux, immersed: Nothing
+├── operand: UnaryOperation at (Center, Center, Center)
+├── status: time=0.0
+└── data: 26×1×16 OffsetArray(::Array{Float64, 3}, -2:23, 1:1, -2:13) with eltype Float64 with indices -2:23×1:1×-2:13
+    └── max=0.0, min=0.0, mean=0.0</code></pre><p>Output a jld2 file for Lagrangian filtering</p><pre><code class="language-julia hljs">simulation.output_writers[:jld2fields] = JLD2Writer(
+    model, (; b, u, v, w, wc, T), filename = filename_stem * &quot;.jld2&quot;, schedule=TimeInterval(1hour), overwrite_existing=true)</code></pre><pre><code class="nohighlight hljs">JLD2Writer scheduled on TimeInterval(1 hour):
+├── filepath: geostrophic_adjustment.jld2
+├── 6 outputs: (b, u, v, w, wc, T)
+├── array_type: Array{Float32}
+├── including: [:grid, :coriolis, :buoyancy, :closure]
+├── file_splitting: NoFileSplitting
+└── file size: 49.1 KiB</code></pre><h3 id="Run-simulation"><a class="docs-heading-anchor" href="#Run-simulation">Run simulation</a><a id="Run-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Run-simulation" title="Permalink"></a></h3><pre><code class="language-julia hljs">@info &quot;Running the simulation...&quot;
+
+run!(simulation)
+
+@info &quot;Simulation completed in &quot; * prettytime(simulation.run_wall_time)</code></pre><pre><code class="nohighlight hljs">[ Info: Running the simulation...
+[ Info: Initializing simulation...
+[00.00%] i: 0, t: 0 seconds, wall time: 10.592 seconds, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
+[ Info:     ... simulation initialization complete (4.489 seconds)
+[ Info: Executing initial time step...
+[ Info:     ... initial time step complete (2.563 seconds).
+[23.15%] i: 50, t: 16.667 hours, wall time: 3.684 seconds, max(u): (1.093e-02, 3.163e-03, 1.899e-04) m/s, next Δt: 20 minutes
+[46.30%] i: 100, t: 1.389 days, wall time: 113.278 ms, max(u): (1.917e-02, 9.565e-03, 4.127e-04) m/s, next Δt: 20 minutes
+[69.44%] i: 150, t: 2.083 days, wall time: 107.707 ms, max(u): (2.394e-02, 1.743e-02, 5.791e-04) m/s, next Δt: 20 minutes
+[92.59%] i: 200, t: 2.778 days, wall time: 120.066 ms, max(u): (2.662e-02, 2.636e-02, 5.823e-04) m/s, next Δt: 20 minutes
+[ Info: Simulation is stopping after running for 7.549 seconds.
+[ Info: Simulation time 3 days equals or exceeds stop time 3 days.
+[ Info: Simulation completed in 7.553 seconds
+</code></pre><h2 id="Perform-Lagrangian-filtering"><a class="docs-heading-anchor" href="#Perform-Lagrangian-filtering">Perform Lagrangian filtering</a><a id="Perform-Lagrangian-filtering-1"></a><a class="docs-heading-anchor-permalink" href="#Perform-Lagrangian-filtering" title="Permalink"></a></h2><p>Now we set up and run the offline Lagrangian filter on the output of the above simulation. This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)</p><pre><code class="language-julia hljs">using OceananigansLagrangianFilter</code></pre><h3 id="Set-up-the-filter-configuration"><a class="docs-heading-anchor" href="#Set-up-the-filter-configuration">Set up the filter configuration</a><a id="Set-up-the-filter-configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Set-up-the-filter-configuration" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_config = OfflineFilterConfig(original_data_filename=&quot;geostrophic_adjustment.jld2&quot;, # Where the original simulation output is
+                                    output_filename = &quot;geostrophic_adjustment_filtered.jld2&quot;, # Where to save the filtered output
+                                    var_names_to_filter = (&quot;T&quot;, &quot;b&quot;), # Which variables to filter
+                                    velocity_names = (&quot;u&quot;,&quot;w&quot;), # Velocities to use for Lagrangian filtering
+                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    Δt = 20minutes, # Time step of filtering simulation
+                                    T_out = 1hour, # How often to output filtered data
+                                    N = 2, # Order of Butterworth filter
+                                    freq_c = 1e-4/2, # Cut-off frequency of Butterworth filter
+                                    compute_mean_velocities = true, # Whether to compute the mean velocities
+                                    output_netcdf = true, # Whether to output filtered data to a netcdf file in addition to .jld2
+                                    delete_intermediate_files = true, # Delete the individual output of the forward and backward passes
+                                    compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison</code></pre><pre><code class="nohighlight hljs">OfflineFilterConfig(&quot;geostrophic_adjustment.jld2&quot;, (&quot;T&quot;, &quot;b&quot;), (&quot;u&quot;, &quot;w&quot;), 0.0, 259200.0, 259200.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, &quot;forward_output.jld2&quot;, &quot;backward_output.jld2&quot;, &quot;geostrophic_adjustment_filtered.jld2&quot;, 5, true, true, true, true, true, WENO{3, Float64, Float32}(order=5)
+├── buffer_scheme: WENO{2, Float64, Float32}(order=3)
+└── advection_velocity_scheme: Centered(order=4), 20×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=500.0
+├── Flat y                         
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, &quot;offline&quot;)</code></pre><h3 id="Run-the-offline-Lagrangian-filter"><a class="docs-heading-anchor" href="#Run-the-offline-Lagrangian-filter">Run the offline Lagrangian filter</a><a id="Run-the-offline-Lagrangian-filter-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-offline-Lagrangian-filter" title="Permalink"></a></h3><pre><code class="language-julia hljs">run_offline_Lagrangian_filter(filter_config)</code></pre><pre><code class="nohighlight hljs">[ Info: Loaded data from geostrophic_adjustment.jld2
+[ Info: Created original variables: (:T, :b)
+[ Info: Created filtered variables: (:T_C1, :b_C1, :xi_u_C1, :xi_w_C1, :T_S1, :b_S1, :xi_u_S1, :xi_w_S1)
+[ Info: Created forcing for filtered variables
+[ Info: Created model
+[ Info: Initialised filtered variables
+[ Info: Defined outputs
+[ Info: Defined simulation
+[ Info: Initializing simulation...
+[ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (24.979 seconds)
+[ Info: Executing initial time step...
+[ Info:     ... initial time step complete (16.024 seconds).
+[ Info: Simulation time: 7.200 hours
+[ Info: Simulation time: 14.400 hours
+[ Info: Simulation time: 21.600 hours
+[ Info: Simulation time: 1.200 days
+[ Info: Simulation time: 1.500 days
+[ Info: Simulation time: 1.800 days
+[ Info: Simulation time: 2.100 days
+[ Info: Simulation time: 2.400 days
+[ Info: Simulation time: 2.700 days
+[ Info: Simulation is stopping after running for 1.172 minutes.
+[ Info: Simulation time 3 days equals or exceeds stop time 3 days.
+[ Info: Simulation time: 3 days
+[ Info: Initializing simulation...
+[ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (25.488 ms)
+[ Info: Executing initial time step...
+[ Info:     ... initial time step complete (21.898 ms).
+[ Info: Simulation time: 7.200 hours
+[ Info: Simulation time: 14.400 hours
+[ Info: Simulation time: 21.600 hours
+[ Info: Simulation time: 1.200 days
+[ Info: Simulation time: 1.500 days
+[ Info: Simulation time: 1.800 days
+[ Info: Simulation time: 2.100 days
+[ Info: Simulation time: 2.400 days
+[ Info: Simulation time: 2.700 days
+[ Info: Simulation is stopping after running for 4.395 seconds.
+[ Info: Simulation time 3 days equals or exceeds stop time 3 days.
+[ Info: Simulation time: 3 days
+[ Info: Combined forward and backward contributions into geostrophic_adjustment_filtered.jld2
+[ Info: Assuming velocities normal to z boundaries are zero
+[ Info: Wrote regridded data to new variables with _at_mean suffix in file geostrophic_adjustment_filtered.jld2
+[ Info: Computing Eulerian filter for variable T
+[ Info: Computing Eulerian filter for variable b
+[ Info: Computing Eulerian filter for variable u
+[ Info: Computing Eulerian filter for variable w
+[ Info: Wrote NetCDF file to geostrophic_adjustment_filtered.nc
+</code></pre><h3 id="Visualisation"><a class="docs-heading-anchor" href="#Visualisation">Visualisation</a><a id="Visualisation-1"></a><a class="docs-heading-anchor-permalink" href="#Visualisation" title="Permalink"></a></h3><pre><code class="language-julia hljs">using CairoMakie</code></pre><p>Now we animate the results. First, the buoyancy:</p><pre><code class="language-julia hljs">timeseries1 = FieldTimeSeries(filter_config.output_filename, &quot;b&quot;)
+timeseries2 = FieldTimeSeries(filter_config.output_filename, &quot;b_Eulerian_filtered&quot;)
+timeseries3 = FieldTimeSeries(filter_config.output_filename, &quot;b_Lagrangian_filtered&quot;)
+timeseries4 = FieldTimeSeries(filter_config.output_filename, &quot;b_Lagrangian_filtered_at_mean&quot;)
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = &quot;x&quot;,
+               ylabel = &quot;z&quot;,
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = &quot;Raw&quot;, axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = &quot;Eulerian filtered&quot;, axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = &quot;Lagrangian filtered&quot;, axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = &quot;Lagrangian filtered at mean&quot;, axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax2, var2; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax3, var3; colormap = :balance, colorrange = (-1e-4, 1e-4))
+heatmap!(ax4, var4; colormap = :balance, colorrange = (-1e-4, 1e-4))
+
+
+title = @lift &quot;Buoyancy, time = &quot; * string(round(times[$n]./3600., digits=2)) * &quot; hours&quot;
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info &quot;Making an animation&quot;
+
+CairoMakie.record(fig, &quot;geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4&quot;, frames, framerate=24) do i
+    n[] = i
+end</code></pre><pre><code class="nohighlight hljs">&quot;geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4&quot;</code></pre><p><video src="../geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4" controls="true" title><a href="../geostrophic_adjustment_filtered_buoyancy_movie_offline.mp4"></a></video></p><p>Then the tracer:</p><pre><code class="language-julia hljs">timeseries1 = FieldTimeSeries(filter_config.output_filename, &quot;T&quot;)
+timeseries2 = FieldTimeSeries(filter_config.output_filename, &quot;T_Eulerian_filtered&quot;)
+timeseries3 = FieldTimeSeries(filter_config.output_filename, &quot;T_Lagrangian_filtered&quot;)
+timeseries4 = FieldTimeSeries(filter_config.output_filename, &quot;T_Lagrangian_filtered_at_mean&quot;)
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = &quot;x&quot;,
+               ylabel = &quot;z&quot;,
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = &quot;Raw&quot;, axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = &quot;Eulerian filtered&quot;, axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = &quot;Lagrangian filtered&quot;, axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = &quot;Lagrangian filtered \n at mean position&quot;, axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax2, var2; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax3, var3; colormap = :Spectral, colorrange = (0, 1))
+heatmap!(ax4, var4; colormap = :Spectral, colorrange = (0, 1))
+
+
+title = @lift &quot;Tracer concentration, time = &quot; * string(round(times[$n]./3600., digits=2)) * &quot; hours&quot;
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info &quot;Making an animation&quot;
+
+CairoMakie.record(fig, &quot;geostrophic_adjustment_filtered_tracer_movie_offline.mp4&quot;, frames, framerate=24) do i
+    n[] = i
+end</code></pre><pre><code class="nohighlight hljs">&quot;geostrophic_adjustment_filtered_tracer_movie_offline.mp4&quot;</code></pre><p><video src="../geostrophic_adjustment_filtered_tracer_movie_offline.mp4" controls="true" title><a href="../geostrophic_adjustment_filtered_tracer_movie_offline.mp4"></a></video></p><p>We see that the Eulerian filter smudges the tracer field as it is advected by the inertial oscillations, while the Lagrangian filter is able to effectively remove the oscillations while preserving the tracer structures.</p><pre><code class="language-julia hljs"># We remove these files to keep things tidy, keep them for analysis if desired
+rm(filename_stem * &quot;.jld2&quot;)
+rm(filter_config.output_filename)
+rm(filter_config.output_filename[1:end-5] * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../online_filter_geostrophic_adjustment/">« Geostrophic adjustment online</a><a class="docs-footer-nextpage" href="../../references/">References »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Wednesday 22 October 2025 06:46">Wednesday 22 October 2025</span>. Using Julia version 1.10.10.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
