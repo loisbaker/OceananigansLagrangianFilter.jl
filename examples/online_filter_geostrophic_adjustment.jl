@@ -271,7 +271,7 @@ nothing #hide
 # fields. However, when we remap to a mean reference position, we see the value of the
 # Lagrangian filter in effectively removing the oscillations while preserving the tracer
 # structures. In comparison to the offline filtering example, the online filter does a 
-# slightly better job removing the oscillations in the 'Lagrangian filtered at mean' field,
+# slightly worse job removing the oscillations in the 'Lagrangian filtered at mean' field,
 # since the filter is a more optimal low-pass.
 
 # We remove these files to keep things tidy, keep them for analysis if desired
