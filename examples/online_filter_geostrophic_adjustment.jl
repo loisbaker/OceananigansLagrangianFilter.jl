@@ -266,10 +266,13 @@ nothing #hide
 
 
 # We see that the Eulerian filter smudges the tracer field as it is advected by the 
-# inertial oscillations, while the Lagrangian filter is able to effectively remove 
-# the oscillations while preserving the tracer structures. In comparison to the offline
-# filtering example, the online filter does a slightly better job removing the oscillations
-# in the 'Lagrangian filtered at mean' case, since the filter is a more optimal low-pass.
+# inertial oscillations. The Lagrangian means directly calculated by this method are 
+# identical to the raw fields for the tracer and buoyancy shown, as they are conservative  
+# fields. However, when we remap to a mean reference position, we see the value of the
+# Lagrangian filter in effectively removing the oscillations while preserving the tracer
+# structures. In comparison to the offline filtering example, the online filter does a 
+# slightly better job removing the oscillations in the 'Lagrangian filtered at mean' field,
+# since the filter is a more optimal low-pass.
 
 # We remove these files to keep things tidy, keep them for analysis if desired
 rm(filename_stem * ".jld2")
