@@ -19,7 +19,7 @@ using Printf
 # ### Model parameters
 # Nx = 100
 # Nz = 80
-Nx = 10
+Nx = 20
 Nz = 10
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
@@ -266,8 +266,13 @@ nothing #hide
 
 # ![](geostrophic_adjustment_filtered_tracer_movie_online.mp4)
 
+
 # We see that the Eulerian filter smudges the tracer field as it is advected by the 
 # inertial oscillations, while the Lagrangian filter is able to effectively remove 
 # the oscillations while preserving the tracer structures. In comparison to the offline
 # filtering example, the online filter does a slightly better job removing the oscillations
 # in the 'Lagrangian filtered at mean' case, since the filter is a more optimal low-pass.
+
+# We remove these files to keep things tidy, keep them for analysis if desired
+rm(filename_stem * ".jld2")
+rm(filename_stem * ".nc")

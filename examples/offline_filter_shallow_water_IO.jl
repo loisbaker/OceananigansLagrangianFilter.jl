@@ -19,7 +19,7 @@ filename_stem = "SW_IO_with_tracer";
 
 # ### Define the grid
 
-grid = RectilinearGrid(CPU(), size = (100, 100),
+grid = RectilinearGrid(CPU(), size = (10, 10),
                        x = (0, 2*pi),
                        y = (0, 2*pi),
                        topology = (Periodic, Periodic, Flat))
@@ -99,7 +99,7 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
                                     architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 1e-2, # Time step of filtering simulation
                                     T_out=0.1, # How often to output filtered data
-                                    N=4, # Order of Butterworth filter
+                                    N=2, # Order of Butterworth filter
                                     freq_c = 0.5, # Cut-off frequency of Butterworth filter
                                     compute_mean_velocities= true, # Whether to compute mean velocities
                                     output_netcdf = true, # Whether to output filtered data to a netcdf file in addition to .jld2
@@ -168,3 +168,8 @@ end
 # We see that the Eulerian filter smudges the tracer field as it is advected by the 
 # inertial oscillations, while the Lagrangian filter is able to effectively remove 
 # the oscillations while preserving the tracer structures.
+
+# We remove these files to keep things tidy, keep them for analysis if desired
+rm(filename_stem * ".jld2")
+rm(filter_config.output_filename)
+rm(filter_config.output_filename[1:end-5] * ".nc")

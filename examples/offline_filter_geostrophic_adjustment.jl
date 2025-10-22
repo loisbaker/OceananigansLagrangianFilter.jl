@@ -19,8 +19,8 @@ using NCDatasets
 using Printf
 
 # ### Model parameters
-Nx = 400
-Nz = 80
+Nx = 20#400
+Nz = 10#80
 f = 1e-4                # Coriolis frequency [s⁻¹]
 L_front = 10kilometers  # Initial front width [m]
 aspect_ratio = 100      # L_front/H
@@ -242,3 +242,8 @@ end
 # We see that the Eulerian filter smudges the tracer field as it is advected by the 
 # inertial oscillations, while the Lagrangian filter is able to effectively remove 
 # the oscillations while preserving the tracer structures.
+
+# We remove these files to keep things tidy, keep them for analysis if desired
+rm(filename_stem * ".jld2")
+rm(filter_config.output_filename)
+rm(filter_config.output_filename[1:end-5] * ".nc")
