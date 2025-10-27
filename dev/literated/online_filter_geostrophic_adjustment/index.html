@@ -16,7 +16,7 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 κh = 1e-6 # Horizontal diffusivity
 κv = 1e-6 # Vertical diffusivity
 
-filename_stem = &quot;geostrophic_adjustment&quot;;</code></pre><h3 id="Grid"><a class="docs-heading-anchor" href="#Grid">Grid</a><a id="Grid-1"></a><a class="docs-heading-anchor-permalink" href="#Grid" title="Permalink"></a></h3><pre><code class="language-julia hljs">grid = RectilinearGrid(CPU(),size = (Nx, Nz),
+filename_stem = &quot;geostrophic_adjustment_online_filtered&quot;;</code></pre><h3 id="Grid"><a class="docs-heading-anchor" href="#Grid">Grid</a><a id="Grid-1"></a><a class="docs-heading-anchor-permalink" href="#Grid" title="Permalink"></a></h3><pre><code class="language-julia hljs">grid = RectilinearGrid(CPU(),size = (Nx, Nz),
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))</code></pre><pre><code class="nohighlight hljs">400×1×80 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -25,12 +25,12 @@ filename_stem = &quot;geostrophic_adjustment&quot;;</code></pre><h3 id="Grid"><a
 └── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=1.25</code></pre><h3 id="Define-model-tracers"><a class="docs-heading-anchor" href="#Define-model-tracers">Define model tracers</a><a id="Define-model-tracers-1"></a><a class="docs-heading-anchor-permalink" href="#Define-model-tracers" title="Permalink"></a></h3><pre><code class="language-julia hljs">tracers = (:b,:T);</code></pre><h3 id="Define-model-forcing"><a class="docs-heading-anchor" href="#Define-model-forcing">Define model forcing</a><a id="Define-model-forcing-1"></a><a class="docs-heading-anchor-permalink" href="#Define-model-forcing" title="Permalink"></a></h3><pre><code class="language-julia hljs">forcing = NamedTuple();</code></pre><h3 id="Define-filter-configuration"><a class="docs-heading-anchor" href="#Define-filter-configuration">Define filter configuration</a><a id="Define-filter-configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Define-filter-configuration" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_config = OnlineFilterConfig( grid = grid,
                                     output_filename = filename_stem * &quot;.jld2&quot;,
                                     var_names_to_filter = (&quot;b&quot;,&quot;T&quot;),
-                                    velocity_names = (&quot;u&quot;,&quot;w&quot;),
+                                    velocity_names = (&quot;u&quot;,&quot;w&quot;,&quot;v&quot;),
                                     N = 2,
                                     freq_c = f/2)</code></pre><pre><code class="nohighlight hljs">OnlineFilterConfig(400×1×80 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=25.0
 ├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=1.25, &quot;geostrophic_adjustment.jld2&quot;, (&quot;b&quot;, &quot;T&quot;), (&quot;u&quot;, &quot;w&quot;), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, &quot;online&quot;)</code></pre><h3 id="Create-the-filtered-variables-these-will-be-tracers-in-the-model"><a class="docs-heading-anchor" href="#Create-the-filtered-variables-these-will-be-tracers-in-the-model">Create the filtered variables - these will be tracers in the model</a><a id="Create-the-filtered-variables-these-will-be-tracers-in-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Create-the-filtered-variables-these-will-be-tracers-in-the-model" title="Permalink"></a></h3><pre><code class="language-julia hljs">filtered_vars = create_filtered_vars(filter_config)</code></pre><pre><code class="nohighlight hljs">(:b_C1, :T_C1, :xi_u_C1, :xi_w_C1, :b_S1, :T_S1, :xi_u_S1, :xi_w_S1)</code></pre><h3 id="Add-to-the-existing-tracers"><a class="docs-heading-anchor" href="#Add-to-the-existing-tracers">Add to the existing tracers</a><a id="Add-to-the-existing-tracers-1"></a><a class="docs-heading-anchor-permalink" href="#Add-to-the-existing-tracers" title="Permalink"></a></h3><pre><code class="language-julia hljs">tracers = (filtered_vars..., tracers...)</code></pre><pre><code class="nohighlight hljs">(:b_C1, :T_C1, :xi_u_C1, :xi_w_C1, :b_S1, :T_S1, :xi_u_S1, :xi_w_S1, :b, :T)</code></pre><h3 id="Create-forcing-for-these-filtered-variables"><a class="docs-heading-anchor" href="#Create-forcing-for-these-filtered-variables">Create forcing for these filtered variables</a><a id="Create-forcing-for-these-filtered-variables-1"></a><a class="docs-heading-anchor-permalink" href="#Create-forcing-for-these-filtered-variables" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_forcing = create_forcing(filtered_vars, filter_config);</code></pre><h3 id="Add-these-to-the-existing-forcing"><a class="docs-heading-anchor" href="#Add-these-to-the-existing-forcing">Add these to the existing forcing</a><a id="Add-these-to-the-existing-forcing-1"></a><a class="docs-heading-anchor-permalink" href="#Add-these-to-the-existing-forcing" title="Permalink"></a></h3><pre><code class="language-julia hljs">forcing = merge(forcing, filter_forcing);</code></pre><h3 id="Define-closures"><a class="docs-heading-anchor" href="#Define-closures">Define closures</a><a id="Define-closures-1"></a><a class="docs-heading-anchor-permalink" href="#Define-closures" title="Permalink"></a></h3><p>If the model uses a closure, we use a helper function to set filtered variable closures to zero (unless we set filtered variable closures to zero, the default closure will apply to all tracers).</p><pre><code class="language-julia hljs">zero_filtered_var_closure = zero_closure_for_filtered_vars(filter_config)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=1.25, &quot;geostrophic_adjustment_online_filtered.jld2&quot;, (&quot;b&quot;, &quot;T&quot;), (&quot;u&quot;, &quot;w&quot;, &quot;v&quot;), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, &quot;online&quot;)</code></pre><h3 id="Create-the-filtered-variables-these-will-be-tracers-in-the-model"><a class="docs-heading-anchor" href="#Create-the-filtered-variables-these-will-be-tracers-in-the-model">Create the filtered variables - these will be tracers in the model</a><a id="Create-the-filtered-variables-these-will-be-tracers-in-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Create-the-filtered-variables-these-will-be-tracers-in-the-model" title="Permalink"></a></h3><pre><code class="language-julia hljs">filtered_vars = create_filtered_vars(filter_config)</code></pre><pre><code class="nohighlight hljs">(:b_C1, :T_C1, :xi_u_C1, :xi_w_C1, :xi_v_C1, :b_S1, :T_S1, :xi_u_S1, :xi_w_S1, :xi_v_S1)</code></pre><h3 id="Add-to-the-existing-tracers"><a class="docs-heading-anchor" href="#Add-to-the-existing-tracers">Add to the existing tracers</a><a id="Add-to-the-existing-tracers-1"></a><a class="docs-heading-anchor-permalink" href="#Add-to-the-existing-tracers" title="Permalink"></a></h3><pre><code class="language-julia hljs">tracers = (filtered_vars..., tracers...)</code></pre><pre><code class="nohighlight hljs">(:b_C1, :T_C1, :xi_u_C1, :xi_w_C1, :xi_v_C1, :b_S1, :T_S1, :xi_u_S1, :xi_w_S1, :xi_v_S1, :b, :T)</code></pre><h3 id="Create-forcing-for-these-filtered-variables"><a class="docs-heading-anchor" href="#Create-forcing-for-these-filtered-variables">Create forcing for these filtered variables</a><a id="Create-forcing-for-these-filtered-variables-1"></a><a class="docs-heading-anchor-permalink" href="#Create-forcing-for-these-filtered-variables" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_forcing = create_forcing(filtered_vars, filter_config);</code></pre><h3 id="Add-these-to-the-existing-forcing"><a class="docs-heading-anchor" href="#Add-these-to-the-existing-forcing">Add these to the existing forcing</a><a id="Add-these-to-the-existing-forcing-1"></a><a class="docs-heading-anchor-permalink" href="#Add-these-to-the-existing-forcing" title="Permalink"></a></h3><pre><code class="language-julia hljs">forcing = merge(forcing, filter_forcing);</code></pre><h3 id="Define-closures"><a class="docs-heading-anchor" href="#Define-closures">Define closures</a><a id="Define-closures-1"></a><a class="docs-heading-anchor-permalink" href="#Define-closures" title="Permalink"></a></h3><p>If the model uses a closure, we use a helper function to set filtered variable closures to zero (unless we set filtered variable closures to zero, the default closure will apply to all tracers).</p><pre><code class="language-julia hljs">zero_filtered_var_closure = zero_closure_for_filtered_vars(filter_config)
 horizontal_closure = HorizontalScalarDiffusivity(ν=κh, κ=merge((T=κh, b= κh),zero_filtered_var_closure) )
 vertical_closure = VerticalScalarDiffusivity(ν=κv , κ=merge((T=κv, b= κv),zero_filtered_var_closure) )
 closure = (horizontal_closure, vertical_closure);</code></pre><h3 id="Define-the-model"><a class="docs-heading-anchor" href="#Define-the-model">Define the model</a><a id="Define-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-model" title="Permalink"></a></h3><pre><code class="language-julia hljs">model =  NonhydrostaticModel(; grid,
@@ -43,10 +43,10 @@ closure = (horizontal_closure, vertical_closure);</code></pre><h3 id="Define-the
 ├── grid: 400×1×80 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── timestepper: RungeKutta3TimeStepper
 ├── advection scheme: WENO{3, Float64, Float32}(order=5)
-├── tracers: (b_C1, T_C1, xi_u_C1, xi_w_C1, b_S1, T_S1, xi_u_S1, xi_w_S1, b, T)
+├── tracers: (b_C1, T_C1, xi_u_C1, xi_w_C1, xi_v_C1, b_S1, T_S1, xi_u_S1, xi_w_S1, xi_v_S1, b, T)
 ├── closure: Tuple with 2 closures:
-│   ├── HorizontalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b_C1=0.0, T_C1=0.0, xi_u_C1=0.0, xi_w_C1=0.0, b_S1=0.0, T_S1=0.0, xi_u_S1=0.0, xi_w_S1=0.0, b=1.0e-6, T=1.0e-6))
-│   └── VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b_C1=0.0, T_C1=0.0, xi_u_C1=0.0, xi_w_C1=0.0, b_S1=0.0, T_S1=0.0, xi_u_S1=0.0, xi_w_S1=0.0, b=1.0e-6, T=1.0e-6))
+│   ├── HorizontalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b_C1=0.0, T_C1=0.0, xi_u_C1=0.0, xi_w_C1=0.0, xi_v_C1=0.0, b_S1=0.0, T_S1=0.0, xi_u_S1=0.0, xi_w_S1=0.0, xi_v_S1=0.0, b=1.0e-6, T=1.0e-6))
+│   └── VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=1.0e-6, κ=(b_C1=0.0, T_C1=0.0, xi_u_C1=0.0, xi_w_C1=0.0, xi_v_C1=0.0, b_S1=0.0, T_S1=0.0, xi_u_S1=0.0, xi_w_S1=0.0, xi_v_S1=0.0, b=1.0e-6, T=1.0e-6))
 ├── buoyancy: BuoyancyTracer with ĝ = NegativeZDirection()
 └── coriolis: FPlane{Float64}(f=0.0001)</code></pre><h3 id="Initialise-tracers"><a class="docs-heading-anchor" href="#Initialise-tracers">Initialise tracers</a><a id="Initialise-tracers-1"></a><a class="docs-heading-anchor-permalink" href="#Initialise-tracers" title="Permalink"></a></h3><p>Model buoyancy and tracers</p><pre><code class="language-julia hljs">bᵢ(x, z) = Δb*sin(2*pi/L_front * x)
 Tᵢ(x, z) = exp(-(x/(L_front/50)).^2)
@@ -86,57 +86,58 @@ outputs[&quot;u&quot;] = model.velocities.u;
 outputs[&quot;v&quot;] = model.velocities.v;
 outputs[&quot;w&quot;] = model.velocities.w;</code></pre><p>Output a .jld2 file:</p><pre><code class="language-julia hljs">simulation.output_writers[:jld2fields] = JLD2Writer(
     model, outputs, filename=filter_config.output_filename, schedule=TimeInterval(1hour), overwrite_existing=true)</code></pre><pre><code class="nohighlight hljs">JLD2Writer scheduled on TimeInterval(1 hour):
-├── filepath: geostrophic_adjustment.jld2
-├── 11 outputs: (xi_u, T, b, b_Lagrangian_filtered, xi_w, v, w, w_Lagrangian_filtered, T_Lagrangian_filtered, u, u_Lagrangian_filtered)
+├── filepath: geostrophic_adjustment_online_filtered.jld2
+├── 13 outputs: (xi_u, T, b, b_Lagrangian_filtered, xi_v, xi_w, v, w, v_Lagrangian_filtered, w_Lagrangian_filtered, T_Lagrangian_filtered, u, u_Lagrangian_filtered)
 ├── array_type: Array{Float32}
 ├── including: [:grid, :coriolis, :buoyancy, :closure]
 ├── file_splitting: NoFileSplitting
-└── file size: 82.9 KiB</code></pre><h3 id="Run-the-simulation"><a class="docs-heading-anchor" href="#Run-the-simulation">Run the simulation</a><a id="Run-the-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-simulation" title="Permalink"></a></h3><pre><code class="language-julia hljs">@info &quot;Running the simulation...&quot;
+└── file size: 92.7 KiB</code></pre><h3 id="Run-the-simulation"><a class="docs-heading-anchor" href="#Run-the-simulation">Run the simulation</a><a id="Run-the-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-simulation" title="Permalink"></a></h3><pre><code class="language-julia hljs">@info &quot;Running the simulation...&quot;
 
 run!(simulation)
 
 @info &quot;Simulation completed in &quot; * prettytime(simulation.run_wall_time)</code></pre><pre><code class="nohighlight hljs">[ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, wall time: 2.925 minutes, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
-[ Info:     ... simulation initialization complete (33.450 seconds)
+[00.00%] i: 0, t: 0 seconds, wall time: 6.662 minutes, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
+[ Info:     ... simulation initialization complete (44.377 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (16.069 seconds).
-[15.28%] i: 50, t: 11 hours, wall time: 2.439 minutes, max(u): (2.202e-02, 5.270e-02, 3.914e-04) m/s, next Δt: 6.203 minutes
-[19.31%] i: 100, t: 13.906 hours, wall time: 2.074 minutes, max(u): (2.976e-02, 2.367e-02, 5.020e-04) m/s, next Δt: 2.799 minutes
-[22.61%] i: 150, t: 16.282 hours, wall time: 2.140 minutes, max(u): (1.443e-02, 3.788e-03, 1.988e-04) m/s, next Δt: 3.387 minutes
-[26.86%] i: 200, t: 19.342 hours, wall time: 2.133 minutes, max(u): (1.883e-02, 6.605e-03, 3.550e-04) m/s, next Δt: 4.424 minutes
-[30.87%] i: 250, t: 22.226 hours, wall time: 2.156 minutes, max(u): (3.045e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.715 minutes
-[34.20%] i: 300, t: 1.026 days, wall time: 2.129 minutes, max(u): (1.758e-02, 5.627e-02, 3.551e-04) m/s, next Δt: 3.427 minutes
-[38.36%] i: 350, t: 1.151 days, wall time: 2.126 minutes, max(u): (1.557e-02, 5.846e-02, 3.039e-04) m/s, next Δt: 4.146 minutes
-[42.42%] i: 400, t: 1.272 days, wall time: 2.021 minutes, max(u): (3.047e-02, 3.393e-02, 6.365e-04) m/s, next Δt: 2.734 minutes
-[45.61%] i: 450, t: 1.368 days, wall time: 2.002 minutes, max(u): (2.293e-02, 1.084e-02, 3.965e-04) m/s, next Δt: 3.087 minutes
-[49.48%] i: 500, t: 1.484 days, wall time: 1.975 minutes, max(u): (9.185e-03, 3.523e-03, 2.614e-04) m/s, next Δt: 4.108 minutes
-[53.85%] i: 550, t: 1.616 days, wall time: 1.961 minutes, max(u): (2.970e-02, 2.389e-02, 6.375e-04) m/s, next Δt: 2.974 minutes
-[57.01%] i: 600, t: 1.710 days, wall time: 1.903 minutes, max(u): (2.567e-02, 4.759e-02, 5.999e-04) m/s, next Δt: 3.103 minutes
-[60.83%] i: 650, t: 1.825 days, wall time: 1.934 minutes, max(u): (5.828e-03, 6.138e-02, 1.666e-04) m/s, next Δt: 3.754 minutes
-[65.28%] i: 700, t: 1.958 days, wall time: 1.985 minutes, max(u): (2.768e-02, 4.460e-02, 7.864e-04) m/s, next Δt: 3.010 minutes
-[68.51%] i: 750, t: 2.055 days, wall time: 1.937 minutes, max(u): (2.822e-02, 2.022e-02, 7.022e-04) m/s, next Δt: 2.826 minutes
-[72.10%] i: 800, t: 2.163 days, wall time: 1.965 minutes, max(u): (9.659e-03, 5.762e-03, 1.406e-04) m/s, next Δt: 3.761 minutes
-[76.58%] i: 850, t: 2.298 days, wall time: 1.925 minutes, max(u): (2.420e-02, 1.224e-02, 7.337e-04) m/s, next Δt: 4.214 minutes
-[80.12%] i: 900, t: 2.404 days, wall time: 1.961 minutes, max(u): (2.928e-02, 3.852e-02, 8.380e-04) m/s, next Δt: 2.846 minutes
-[83.57%] i: 950, t: 2.507 days, wall time: 1.898 minutes, max(u): (1.280e-02, 5.846e-02, 5.937e-04) m/s, next Δt: 3.444 minutes
-[87.89%] i: 1000, t: 2.637 days, wall time: 1.946 minutes, max(u): (2.032e-02, 5.448e-02, 7.655e-04) m/s, next Δt: 4.100 minutes
-[91.73%] i: 1050, t: 2.752 days, wall time: 1.887 minutes, max(u): (2.994e-02, 2.808e-02, 1.101e-03) m/s, next Δt: 2.773 minutes
-[95.10%] i: 1100, t: 2.853 days, wall time: 1.888 minutes, max(u): (1.699e-02, 8.050e-03, 4.067e-04) m/s, next Δt: 3.472 minutes
-[99.29%] i: 1150, t: 2.979 days, wall time: 1.912 minutes, max(u): (1.553e-02, 8.440e-03, 8.098e-04) m/s, next Δt: 4.202 minutes
-[ Info: Simulation is stopping after running for 47.007 minutes.
+[ Info:     ... initial time step complete (18.108 seconds).
+[15.28%] i: 50, t: 11 hours, wall time: 3.174 minutes, max(u): (2.202e-02, 5.270e-02, 3.914e-04) m/s, next Δt: 6.203 minutes
+[19.31%] i: 100, t: 13.906 hours, wall time: 2.754 minutes, max(u): (2.976e-02, 2.367e-02, 5.020e-04) m/s, next Δt: 2.799 minutes
+[22.61%] i: 150, t: 16.282 hours, wall time: 2.743 minutes, max(u): (1.443e-02, 3.788e-03, 1.988e-04) m/s, next Δt: 3.387 minutes
+[26.86%] i: 200, t: 19.342 hours, wall time: 2.632 minutes, max(u): (1.883e-02, 6.605e-03, 3.550e-04) m/s, next Δt: 4.424 minutes
+[30.87%] i: 250, t: 22.226 hours, wall time: 2.613 minutes, max(u): (3.045e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.715 minutes
+[34.20%] i: 300, t: 1.026 days, wall time: 2.678 minutes, max(u): (1.758e-02, 5.627e-02, 3.551e-04) m/s, next Δt: 3.427 minutes
+[38.36%] i: 350, t: 1.151 days, wall time: 2.701 minutes, max(u): (1.557e-02, 5.846e-02, 3.039e-04) m/s, next Δt: 4.146 minutes
+[42.42%] i: 400, t: 1.272 days, wall time: 2.623 minutes, max(u): (3.047e-02, 3.393e-02, 6.365e-04) m/s, next Δt: 2.734 minutes
+[45.61%] i: 450, t: 1.368 days, wall time: 2.577 minutes, max(u): (2.293e-02, 1.084e-02, 3.965e-04) m/s, next Δt: 3.087 minutes
+[49.48%] i: 500, t: 1.484 days, wall time: 2.559 minutes, max(u): (9.185e-03, 3.523e-03, 2.614e-04) m/s, next Δt: 4.108 minutes
+[53.85%] i: 550, t: 1.616 days, wall time: 2.536 minutes, max(u): (2.970e-02, 2.389e-02, 6.375e-04) m/s, next Δt: 2.974 minutes
+[57.01%] i: 600, t: 1.710 days, wall time: 2.613 minutes, max(u): (2.567e-02, 4.759e-02, 5.999e-04) m/s, next Δt: 3.103 minutes
+[60.83%] i: 650, t: 1.825 days, wall time: 2.738 minutes, max(u): (5.828e-03, 6.138e-02, 1.666e-04) m/s, next Δt: 3.754 minutes
+[65.28%] i: 700, t: 1.958 days, wall time: 2.683 minutes, max(u): (2.768e-02, 4.460e-02, 7.864e-04) m/s, next Δt: 3.010 minutes
+[68.51%] i: 750, t: 2.055 days, wall time: 2.744 minutes, max(u): (2.822e-02, 2.022e-02, 7.022e-04) m/s, next Δt: 2.826 minutes
+[72.10%] i: 800, t: 2.163 days, wall time: 2.625 minutes, max(u): (9.659e-03, 5.762e-03, 1.406e-04) m/s, next Δt: 3.761 minutes
+[76.58%] i: 850, t: 2.298 days, wall time: 2.708 minutes, max(u): (2.420e-02, 1.224e-02, 7.337e-04) m/s, next Δt: 4.214 minutes
+[80.12%] i: 900, t: 2.404 days, wall time: 2.679 minutes, max(u): (2.928e-02, 3.852e-02, 8.380e-04) m/s, next Δt: 2.846 minutes
+[83.57%] i: 950, t: 2.507 days, wall time: 2.735 minutes, max(u): (1.280e-02, 5.846e-02, 5.937e-04) m/s, next Δt: 3.444 minutes
+[87.89%] i: 1000, t: 2.637 days, wall time: 2.706 minutes, max(u): (2.032e-02, 5.448e-02, 7.655e-04) m/s, next Δt: 4.100 minutes
+[91.73%] i: 1050, t: 2.752 days, wall time: 2.602 minutes, max(u): (2.994e-02, 2.808e-02, 1.101e-03) m/s, next Δt: 2.773 minutes
+[95.10%] i: 1100, t: 2.853 days, wall time: 2.620 minutes, max(u): (1.699e-02, 8.050e-03, 4.067e-04) m/s, next Δt: 3.472 minutes
+[99.29%] i: 1150, t: 2.979 days, wall time: 2.635 minutes, max(u): (1.553e-02, 8.440e-03, 8.098e-04) m/s, next Δt: 4.202 minutes
+[ Info: Simulation is stopping after running for 1.044 hours.
 [ Info: Simulation time 3 days equals or exceeds stop time 3 days.
-[ Info: Simulation completed in 47.046 minutes
+[ Info: Simulation completed in 1.045 hours
 </code></pre><h3 id="Option-to-regrid-to-mean-position"><a class="docs-heading-anchor" href="#Option-to-regrid-to-mean-position">Option to regrid to mean position</a><a id="Option-to-regrid-to-mean-position-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-regrid-to-mean-position" title="Permalink"></a></h3><pre><code class="language-julia hljs">if filter_config.map_to_mean
     regrid_to_mean_position!(filter_config)
 end</code></pre><pre><code class="nohighlight hljs">[ Info: Assuming velocities normal to z boundaries are zero
-[ Info: Wrote regridded data to new variables with _at_mean suffix in file geostrophic_adjustment.jld2
+[ Info: Wrote regridded data to new variables with _at_mean suffix in file geostrophic_adjustment_online_filtered.jld2
 </code></pre><h3 id="Option-to-calculate-Eulerian-filter-too"><a class="docs-heading-anchor" href="#Option-to-calculate-Eulerian-filter-too">Option to calculate Eulerian filter too</a><a id="Option-to-calculate-Eulerian-filter-too-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-calculate-Eulerian-filter-too" title="Permalink"></a></h3><pre><code class="language-julia hljs">compute_Eulerian_filter!(filter_config);</code></pre><pre><code class="nohighlight hljs">[ Info: Computing Eulerian filter for variable b
 [ Info: Computing Eulerian filter for variable T
 [ Info: Computing Eulerian filter for variable u
 [ Info: Computing Eulerian filter for variable w
-</code></pre><h3 id="Option-to-add-a-shifted-time-coordinate"><a class="docs-heading-anchor" href="#Option-to-add-a-shifted-time-coordinate">Option to add a shifted time coordinate</a><a id="Option-to-add-a-shifted-time-coordinate-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-add-a-shifted-time-coordinate" title="Permalink"></a></h3><pre><code class="language-julia hljs">compute_time_shift!(filter_config)</code></pre><pre><code class="nohighlight hljs">[ Info: Wrote time shift data to new group timeseries/t_shifted in file geostrophic_adjustment.jld2
-</code></pre><h3 id="Option-to-output-a-final-NetCDF-file"><a class="docs-heading-anchor" href="#Option-to-output-a-final-NetCDF-file">Option to output a final NetCDF file</a><a id="Option-to-output-a-final-NetCDF-file-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-output-a-final-NetCDF-file" title="Permalink"></a></h3><pre><code class="language-julia hljs">jld2_to_netcdf(filename_stem * &quot;.jld2&quot;, filename_stem * &quot;.nc&quot;)</code></pre><pre><code class="nohighlight hljs">[ Info: Wrote NetCDF file to geostrophic_adjustment.nc
+[ Info: Computing Eulerian filter for variable v
+</code></pre><h3 id="Option-to-add-a-shifted-time-coordinate"><a class="docs-heading-anchor" href="#Option-to-add-a-shifted-time-coordinate">Option to add a shifted time coordinate</a><a id="Option-to-add-a-shifted-time-coordinate-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-add-a-shifted-time-coordinate" title="Permalink"></a></h3><pre><code class="language-julia hljs">compute_time_shift!(filter_config)</code></pre><pre><code class="nohighlight hljs">[ Info: Wrote time shift data to new group timeseries/t_shifted in file geostrophic_adjustment_online_filtered.jld2
+</code></pre><h3 id="Option-to-output-a-final-NetCDF-file"><a class="docs-heading-anchor" href="#Option-to-output-a-final-NetCDF-file">Option to output a final NetCDF file</a><a id="Option-to-output-a-final-NetCDF-file-1"></a><a class="docs-heading-anchor-permalink" href="#Option-to-output-a-final-NetCDF-file" title="Permalink"></a></h3><pre><code class="language-julia hljs">jld2_to_netcdf(filename_stem * &quot;.jld2&quot;, filename_stem * &quot;.nc&quot;)</code></pre><pre><code class="nohighlight hljs">[ Info: Wrote NetCDF file to geostrophic_adjustment_online_filtered.nc
 </code></pre><h3 id="Animate-the-results,-buoyancy-first:"><a class="docs-heading-anchor" href="#Animate-the-results,-buoyancy-first:">Animate the results, buoyancy first:</a><a id="Animate-the-results,-buoyancy-first:-1"></a><a class="docs-heading-anchor-permalink" href="#Animate-the-results,-buoyancy-first:" title="Permalink"></a></h3><pre><code class="language-julia hljs">using CairoMakie
 
 timeseries1 = FieldTimeSeries(filter_config.output_filename, &quot;b&quot;)
@@ -232,6 +233,52 @@ frames = 1:length(times)
 CairoMakie.record(fig, &quot;geostrophic_adjustment_filtered_tracer_movie_online.mp4&quot;, frames, framerate=24) do i
     n[] = i
 end</code></pre><pre><code class="nohighlight hljs">[ Info: Making an animation
-</code></pre><p><video src="../geostrophic_adjustment_filtered_tracer_movie_online.mp4" controls="true" title><a href="../geostrophic_adjustment_filtered_tracer_movie_online.mp4"></a></video></p><p>We see that the Eulerian filter smudges the tracer field as it is advected by the inertial oscillations. The Lagrangian means directly calculated by this method are identical to the raw fields for the tracer and buoyancy shown, as they are conservative fields. However, when we remap to a mean reference position, we see the value of the Lagrangian filter in effectively removing the oscillations while preserving the tracer structures. In comparison to the offline filtering example, the online filter does a slightly worse job removing the oscillations in the &#39;Lagrangian filtered at mean&#39; field, since the filter is a more optimal low-pass.</p><pre><code class="language-julia hljs"># We remove these files to keep things tidy, keep them for analysis if desired
+</code></pre><p><video src="../geostrophic_adjustment_filtered_tracer_movie_online.mp4" controls="true" title><a href="../geostrophic_adjustment_filtered_tracer_movie_online.mp4"></a></video></p><p>We see that the Eulerian filter smudges the tracer field as it is advected by the inertial oscillations. The Lagrangian means directly calculated by this method are identical to the raw fields for the tracer and buoyancy shown, as they are conservative fields. However, when we remap to a mean reference position, we see the value of the Lagrangian filter in effectively removing the oscillations while preserving the tracer structures. In comparison to the offline filtering example, the online filter does a slightly worse job removing the oscillations in the &#39;Lagrangian filtered at mean&#39; field, since the filter is a more optimal low-pass.</p><p>Then the velocity into the page, v:</p><pre><code class="language-julia hljs">timeseries1 = FieldTimeSeries(filter_config.output_filename, &quot;v&quot;)
+timeseries2 = FieldTimeSeries(filter_config.output_filename, &quot;v_Eulerian_filtered&quot;)
+timeseries3 = FieldTimeSeries(filter_config.output_filename, &quot;v_Lagrangian_filtered&quot;)
+timeseries4 = FieldTimeSeries(filter_config.output_filename, &quot;v_Lagrangian_filtered_at_mean&quot;)
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = &quot;x&quot;,
+               ylabel = &quot;z&quot;,
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = &quot;Raw&quot;, axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = &quot;Eulerian filtered&quot;, axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = &quot;Lagrangian filtered&quot;, axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = &quot;Lagrangian filtered \n at mean position&quot;, axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax2, var2; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax3, var3; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax4, var4; colormap = :balance, colorrange = (-0.05, 0.05))
+
+
+title = @lift &quot;Velocity v, time = &quot; * string(round(times[$n]./3600., digits=2)) * &quot; hours&quot;
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info &quot;Making an animation&quot;
+
+CairoMakie.record(fig, &quot;geostrophic_adjustment_filtered_v_movie_online.mp4&quot;, frames, framerate=24) do i
+    n[] = i
+end</code></pre><pre><code class="nohighlight hljs">&quot;geostrophic_adjustment_filtered_v_movie_online.mp4&quot;</code></pre><p><video src="../geostrophic_adjustment_filtered_v_movie_online.mp4" controls="true" title><a href="../geostrophic_adjustment_filtered_v_movie_online.mp4"></a></video></p><p>In this case, the Lagrangian filtered velocity fields differ from the raw fields, as expected, since velocity is not a conservative field.</p><pre><code class="language-julia hljs"># We remove these files to keep things tidy, keep them for analysis if desired
 rm(filename_stem * &quot;.jld2&quot;)
-rm(filename_stem * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../offline_filtering/offline_how_it_works/">« How it works</a><a class="docs-footer-nextpage" href="../offline_filter_geostrophic_adjustment/">Geostrophic adjustment offline »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Wednesday 22 October 2025 10:39">Wednesday 22 October 2025</span>. Using Julia version 1.10.10.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+rm(filename_stem * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../offline_filtering/offline_how_it_works/">« How it works</a><a class="docs-footer-nextpage" href="../offline_filter_geostrophic_adjustment/">Geostrophic adjustment offline »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Monday 27 October 2025 17:17">Monday 27 October 2025</span>. Using Julia version 1.10.10.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
