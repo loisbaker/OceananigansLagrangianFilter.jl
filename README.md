@@ -58,7 +58,7 @@ using CUDA
 filter_config = OfflineFilterConfig(original_data_filename = "my_simulation.jld2", # Where the original simulation output is
                                     output_filename = "my_filtered_simulation.jld2" # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
-                                    velocity_names = ("u","v"), # Velocities to use for Lagrangian filtering
+                                    velocity_names = ("u","v"), # Velocities to use for remapping
                                     architecture = GPU(), # CPU() or GPU()
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data

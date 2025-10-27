@@ -18,6 +18,7 @@ using Oceananigans.Units
 using NCDatasets
 using Printf
 
+
 # ### Model parameters
 Nx = 400
 Nz = 80
@@ -117,9 +118,9 @@ using OceananigansLagrangianFilter
 
 # ### Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustment.jld2", # Where the original simulation output is
-                                    output_filename = "geostrophic_adjustment_filtered.jld2", # Where to save the filtered output
+                                    output_filename = "geostrophic_adjustment_offline_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
-                                    velocity_names = ("u","w"), # Velocities to use for Lagrangian filtering
+                                    velocity_names = ("u","w","v"), # Velocities to use for remapping
                                     architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data
@@ -245,6 +246,59 @@ end
 # fields. However, when we remap to a mean reference position, we see the value of the
 # Lagrangian filter in effectively removing the oscillations while preserving the tracer
 # structures.
+
+# Then the velocity into the page, v:
+timeseries1 = FieldTimeSeries(filter_config.output_filename, "v")
+timeseries2 = FieldTimeSeries(filter_config.output_filename, "v_Eulerian_filtered")
+timeseries3 = FieldTimeSeries(filter_config.output_filename, "v_Lagrangian_filtered")
+timeseries4 = FieldTimeSeries(filter_config.output_filename, "v_Lagrangian_filtered_at_mean")
+
+times = timeseries1.times
+
+set_theme!(Theme(fontsize = 20))
+fig = Figure(size = (1300, 500))
+
+axis_kwargs = (xlabel = "x",
+               ylabel = "z",
+               limits = ((-5000, 5000), (-100, 0)),
+               aspect = AxisAspect(1))
+
+ax1 = Axis(fig[2, 1]; title = "Raw", axis_kwargs...)
+ax2 = Axis(fig[2, 2]; title = "Eulerian filtered", axis_kwargs...)
+ax3 = Axis(fig[2, 3]; title = "Lagrangian filtered", axis_kwargs...)
+ax4 = Axis(fig[2, 4]; title = "Lagrangian filtered \n at mean position", axis_kwargs...)
+
+
+n = Observable(1)
+Observable(1)
+
+var1 = @lift timeseries1[$n]
+var2 = @lift timeseries2[$n]
+var3 = @lift timeseries3[$n]
+var4 = @lift timeseries4[$n]
+
+heatmap!(ax1, var1; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax2, var2; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax3, var3; colormap = :balance, colorrange = (-0.05, 0.05))
+heatmap!(ax4, var4; colormap = :balance, colorrange = (-0.05, 0.05))
+
+
+title = @lift "Velocity v, time = " * string(round(times[$n]./3600., digits=2)) * " hours"
+Label(fig[1, 1:4], title, fontsize=24, tellwidth=false)
+
+fig
+
+frames = 1:length(times)
+
+@info "Making an animation"
+
+CairoMakie.record(fig, "geostrophic_adjustment_filtered_v_movie_offline.mp4", frames, framerate=24) do i
+    n[] = i
+end
+# ![](geostrophic_adjustment_filtered_v_movie_offline.mp4)
+
+# In this case, the Lagrangian filtered velocity fields differ from the raw fields, as expected, 
+# since velocity is not a conservative field.
 
 # We remove these files to keep things tidy, keep them for analysis if desired
 rm(filename_stem * ".jld2")

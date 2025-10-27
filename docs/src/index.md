@@ -2,6 +2,8 @@
 
 *A package to compute Lagrangian temporal filters of Oceananigans.jl simulation output*
 
+This package builds on and is intended to be used with [*Oceananigans.jl*](https://github.com/CliMA/Oceananigans.jl) [Oceananigans-overview-paper-2025](@citep).
+
 The Lagrangian filter can be run in two ways
 
 - [**Online:**](@ref "Online filtering implementation") integrated into your Oceananigans simulation. This avoids the need to save data at wave-resolving resolution, but the available filter shapes are not as desirable. 

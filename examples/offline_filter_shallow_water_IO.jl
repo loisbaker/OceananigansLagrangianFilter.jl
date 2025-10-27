@@ -4,9 +4,9 @@
 # remove the effect of inertial oscillations on a tracer field.
 
 # We could also filter a shallow water simulation online, but would have to use the 
-# VectorInvariantFormulation() in order to have direct access to the model velocities. 
-# This example uses the ConservativeFormulation() instead, and filtering is performed 
-# offline using the saved velocities after they have been calculated from uh and vh.
+# ``VectorInvariantFormulation`` in order to have direct access to the model velocities. 
+# This example uses the ``ConservativeFormulation`` instead, and filtering is performed 
+# offline using the saved velocities after they have been calculated from ``uh`` and ``vh``.
 
 # ## Run the simulation 
 # ### Install dependencies
@@ -95,7 +95,7 @@ using OceananigansLagrangianFilter
 filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jld2", # Where the original simulation output is
                                     output_filename = "SW_IO_with_tracer_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T",), # Which variables to filter
-                                    velocity_names = ("u","v"), # Velocities to use for Lagrangian filtering
+                                    velocity_names = ("u","v"), # Velocities to use for remapping
                                     architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 1e-2, # Time step of filtering simulation
                                     T_out=0.1, # How often to output filtered data
