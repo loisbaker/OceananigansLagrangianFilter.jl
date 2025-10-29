@@ -348,8 +348,8 @@ function OfflineFilterConfig(; original_data_filename::String,
 
     # Check normalisation of filter coefficients
     if filter_params.N_coeffs == 0.5
-        if !(filter_params.a1/2 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1)"
+        if !(filter_params.a1*2 ≈ filter_params.c1)
+            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1)"
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
