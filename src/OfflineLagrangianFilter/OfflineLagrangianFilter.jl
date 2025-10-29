@@ -370,6 +370,20 @@ function OfflineFilterConfig(; original_data_filename::String,
         @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
     end
     
+    # Give warning about interpolation if grid is not RectlinearGrid and turn off interpolation for now
+    if !(grid isa RectilinearGrid) && map_to_mean
+        @warn "The final interpolation to mean position currently only works for RectilinearGrids - setting map_to_mean=false"
+        map_to_mean = false
+    end
+
+    # Give warning about netcdf file not working with non-RectlinearGrid and turn off netcdf output for now
+    if !(grid isa RectilinearGrid) && output_netcdf
+        @warn "NetCDF output currently only works for RectilinearGrids - setting output_netcdf=false"
+        output_netcdf = false
+    end
+
+
+
     filter_mode = "offline"  
 
     return OfflineFilterConfig(original_data_filename,
