@@ -95,7 +95,7 @@ struct OfflineFilterConfig <: AbstractConfig
     compute_Eulerian_filter::Bool
     output_netcdf::Bool
     output_original_data::Bool
-    advection::AbstractAdvectionScheme
+    advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     filter_mode::String
 
@@ -124,8 +124,8 @@ end
                         delete_intermediate_files::Bool = true,
                         compute_Eulerian_filter::Bool = false,
                         output_netcdf::Bool = false,
-                        output_original_data::Bool = true
-                        advection::AbstractAdvectionScheme = WENO(),
+                        output_original_data::Bool = true,
+                        advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
                         filter_mode::String = "offline")
 
@@ -220,7 +220,7 @@ function OfflineFilterConfig(; original_data_filename::String,
                             compute_Eulerian_filter::Bool = false,
                             output_netcdf::Bool = false,
                             output_original_data::Bool = true,
-                            advection::AbstractAdvectionScheme = WENO(),
+                            advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing)
 
     # Check that the original file exists 

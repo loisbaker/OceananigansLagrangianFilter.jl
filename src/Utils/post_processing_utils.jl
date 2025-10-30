@@ -1094,6 +1094,10 @@ The function iterates through each variable to be filtered:
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
+The method uses data saved to the filter output file - incase we decide to save this
+at lower frequency than the original data, it should be rewritten to use the original
+data file instead.
+
 Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the file path, variable
