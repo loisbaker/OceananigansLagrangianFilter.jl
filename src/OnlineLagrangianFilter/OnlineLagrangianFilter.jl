@@ -1,9 +1,10 @@
 module OnlineLagrangianFilter
 
 using ..OceananigansLagrangianFilter: AbstractConfig
-using Oceananigans.Grids: AbstractGrid
+using Oceananigans.Grids: AbstractGrid, RectilinearGrid, LatitudeLongitudeGrid
 using Oceananigans.Architectures
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
+
 
 
 using ..Utils
@@ -172,6 +173,14 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
     end
     
+    underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
+    
+    # Give warning about interpolation if grid is not RectilinearGrid and turn off interpolation for now
+    if !underlying_rectilinear_grid && map_to_mean
+        @warn "The final interpolation to mean position currently only works for RectilinearGrids - setting map_to_mean=false"
+        map_to_mean = false
+    end
+
     filter_mode = "online"
     return OnlineFilterConfig(grid,
                             output_filename,
