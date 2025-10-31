@@ -824,16 +824,16 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
                 "long_name"                 => "Cell face locations in the z-direction.",
             ))
             
-            ncdx_cfa = defVar(ds,"dx_cfa", Float32, ("lat_afa",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at the cell centers in x and faces in y) in the x-direction.",
-            ))
+            # ncdx_cfa = defVar(ds,"dx_cfa", Float32, ("lat_afa",), attrib = OrderedDict(
+            #     "units"                     => "m",
+            #     "long_name"                 => "Spacing between cell faces (located at the cell centers in x and faces in y) in the x-direction.",
+            # ))
             
 
-            ncdx_ffa = defVar(ds,"dx_ffa", Float32, ("lat_afa",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centres (located at the cell faces in x and y) in the x-direction.",
-            ))
+            # ncdx_ffa = defVar(ds,"dx_ffa", Float32, ("lat_afa",), attrib = OrderedDict(
+            #     "units"                     => "m",
+            #     "long_name"                 => "Spacing between cell centres (located at the cell faces in x and y) in the x-direction.",
+            # ))
 
             ncdx_fca = defVar(ds,"dx_fca", Float32, ("lat_aca",), attrib = OrderedDict(
                 "units"                     => "m",
@@ -877,8 +877,8 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
             nclat_aca[:] = try; parent(grid.φᵃᶜᵃ) catch; 0 end
             ncz_aac[:] = try; parent(grid.z.cᵃᵃᶜ) catch; 0 end
             ncz_aaf[:] = try; parent(grid.z.cᵃᵃᶠ) catch; 0 end
-            ncdx_cfa[:] = try; parent(grid.Δxᶜᶠᵃ) catch; 0 end
-            ncdx_ffa[:] = try; parent(grid.Δxᶠᶠᵃ) catch; 0 end
+            # ncdx_cfa[:] = try; parent(grid.Δxᶜᶠᵃ) catch; 0 end # We should include these and figure out what dimensions they live on
+            # ncdx_ffa[:] = try; parent(grid.Δxᶠᶠᵃ) catch; 0 end
             ncdx_cca[:] = try; parent(grid.Δxᶜᶜᵃ) catch; 0 end
             ncdx_fca[:] = try; parent(grid.Δxᶠᶜᵃ) catch; 0 end
             ncdy_fca[:] = try; parent(grid.Δyᶠᶜᵃ) catch; 0 end
