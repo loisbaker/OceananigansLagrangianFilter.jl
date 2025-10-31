@@ -11,7 +11,7 @@ We directly compute the Lagrangian mean of some scalar ``f`` as
 and optionally compute
 ```math
 \begin{equation}\label{Xidefonline}
-\vb*{\Xi}(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^t \alpha e^{-\alpha(t-s)}\vb*{\varphi}(\vb*{a},s)\,\mathrm{d} s\,,
+\vb*{\Xi}(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^t G(t-s)\vb*{\varphi}(\vb*{a},s)\,\mathrm{d} s\,,
 \end{equation}
 ```
 so that the generalised Lagrangian mean ``\bar{f}^{\mathrm{L}}`` (see definition in [Lagrangian averaging](@ref "Lagrangian averaging")) can be recovered by a post-processing interpolation step using
@@ -48,12 +48,12 @@ We define a set of ``N`` weight functions. For ``k = 1,...,N/2`` we have
 ```math
 \begin{align}
     G_{Ck}(t) &= \begin{cases}
-    e^{-c_k t}\cos d_k t\,,\hspace{1cm} t > 0\,, \\
-    0\,,\hspace{1cm} t \leq 0\,,
-    \end{cases}
+    e^{-c_k t}\cos d_k t\,,\hspace{1cm} &t > 0\,, \\
+    0\,,\hspace{1cm} &t \leq 0\,,
+    \end{cases}\\
     G_{Sk}(t) &= \begin{cases}
-    e^{-c_k t}\sin d_k t\,, \hspace{1cm} t > 0\,,\\
-    0\,,\hspace{1cm} t \leq 0\,.
+    e^{-c_k t}\sin d_k t\,, \hspace{1cm} &t > 0\,,\\
+    0\,,\hspace{1cm} &t \leq 0\,.
     \end{cases}
 \end{align}
 ```

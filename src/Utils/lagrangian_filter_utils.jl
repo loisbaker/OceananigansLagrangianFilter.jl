@@ -722,12 +722,19 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     compute_mean_velocities = config.compute_mean_velocities
     outputs_dict = Dict()
 
+    # When offline filtering, we can turn off advection to get Eulerian filtered fields
+    if config.filter_mode == "offline" && config.advection === nothing
+        filter_identifier = "_Eulerian_filtered"
+    else
+        filter_identifier = "_Lagrangian_filtered"
+    end
+
     for var_name in var_names_to_filter
         if N_coeffs == 0.5
             # Special case, single exponential only has a cosine component
             gC1 = getproperty(model.tracers,Symbol(var_name * "_C1"))
             g_total = filter_params.a1 * gC1
-            outputs_dict[var_name * "_Lagrangian_filtered"] = g_total
+            outputs_dict[var_name * filter_identifier] = g_total
         else
             # Reconstruct the filtered tracer fields, starting with the first coefficient
             gC1 = getproperty(model.tracers, Symbol(var_name * "_C1"))
@@ -742,7 +749,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                 gSi = getproperty(model.tracers,Symbol(var_name * "_S$i" ))
                 g_total += a * gCi + b * gSi
             end
-            outputs_dict[var_name * "_Lagrangian_filtered"] = g_total
+            outputs_dict[var_name * filter_identifier] = g_total
         end
     end
 
@@ -780,7 +787,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                 # Special case, single exponential only has a cosine component
                 xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
                 g_total = - filter_params.a1 * filter_params.c1 * xiC1
-                outputs_dict[vel_name * "_Lagrangian_filtered"] = g_total
+                outputs_dict[vel_name * filter_identifier] = g_total
             else
                 # Start with the first coefficient
                 xiC1 = getproperty(model.tracers,Symbol("xi_" * vel_name * "_C1"))
@@ -798,7 +805,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                     xiSi = getproperty(model.tracers,Symbol("xi_" * vel_name * "_S$i"))
                     g_total += (-a * c + b * d) * xiCi + (-a * d - b * c) * xiSi
                 end
-                outputs_dict[vel_name * "_Lagrangian_filtered"] = g_total
+                outputs_dict[vel_name * filter_identifier] = g_total
             end
         end
     end

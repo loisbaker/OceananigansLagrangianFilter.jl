@@ -48,15 +48,22 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     map_to_mean = config.map_to_mean
     compute_mean_velocities = config.compute_mean_velocities
     
+    # When offline filtering, we can turn off advection to get Eulerian filtered fields
+    if config.filter_mode == "offline" && config.advection === nothing
+        filter_identifier = "_Eulerian_filtered"
+    else
+        filter_identifier = "_Lagrangian_filtered"
+    end
+
     # List the names of the fields that we will combine
-    filtered_var_names = Tuple([var * "_Lagrangian_filtered" for var in var_names_to_filter])
+    filtered_var_names = Tuple([var * filter_identifier for var in var_names_to_filter])
     if map_to_mean
         filtered_var_names = (Tuple(["xi_" * vel for vel in velocity_names])..., filtered_var_names...)
     end
     filtered_vel_names = ()
     vel_names_to_filter = ()
     if compute_mean_velocities
-        filtered_vel_names = Tuple([vel * "_Lagrangian_filtered" for vel in velocity_names])
+        filtered_vel_names = Tuple([vel * filter_identifier for vel in velocity_names])
         vel_names_to_filter = velocity_names
     end
 
@@ -778,8 +785,8 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
             ncdx_faa[:] = try; parent(grid.Δxᶠᵃᵃ) catch; 0 end
             ncdy_aca[:] = try; parent(grid.Δyᵃᶜᵃ) catch; 0 end
             ncdy_afa[:] = try; parent(grid.Δyᵃᶠᵃ) catch; 0 end
-            ncdz_aac[:] = try; parent(grid.Δz.cᵃᵃᶜ) catch; 0 end
-            ncdz_aaf[:] = try; parent(grid.Δz.cᵃᵃᶠ) catch; 0 end
+            ncdz_aac[:] = try; parent(grid.z.Δᵃᵃᶜ) catch; 0 end
+            ncdz_aaf[:] = try; parent(grid.z.Δᵃᵃᶠ) catch; 0 end
 
         elseif (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
             nclat_afa = defVar(ds,"lat_afa", Float32, ("lat_afa",), attrib = OrderedDict(
@@ -817,27 +824,38 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
                 "long_name"                 => "Cell face locations in the z-direction.",
             ))
             
-            ncdx_caa = defVar(ds,"dx_caa", Float32, (), attrib = OrderedDict(
+            ncdx_cfa = defVar(ds,"dx_cfa", Float32, ("lat_afa",), attrib = OrderedDict(
                 "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at the cell centers) in the x-direction.",
+                "long_name"                 => "Spacing between cell faces (located at the cell centers in x and faces in y) in the x-direction.",
             ))
             
 
-            ncdx_faa = defVar(ds,"dx_faa", Float32, (), attrib = OrderedDict(
+            ncdx_ffa = defVar(ds,"dx_ffa", Float32, ("lat_afa",), attrib = OrderedDict(
                 "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at the cell faces) in the x-direction.",
+                "long_name"                 => "Spacing between cell centres (located at the cell faces in x and y) in the x-direction.",
+            ))
+
+            ncdx_fca = defVar(ds,"dx_fca", Float32, ("lat_aca",), attrib = OrderedDict(
+                "units"                     => "m",
+                "long_name"                 => "Spacing between cell centres (located at the cell faces in x and centers in y) in the x-direction.",
             ))
             
 
-            ncdy_aca = defVar(ds,"dy_aca", Float32, (), attrib = OrderedDict(
+            ncdx_cca = defVar(ds,"dx_cca", Float32, ("lat_aca",), attrib = OrderedDict(
                 "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at cell centers) in the y-direction.",
+                "long_name"                 => "Spacing between cell faces (located at the cell centers in x and y) in the x-direction.",
             ))
             
 
-            ncdy_afa = defVar(ds,"dy_afa", Float32, (), attrib = OrderedDict(
+            ncdy_fca = defVar(ds,"dy_fca", Float32, (), attrib = OrderedDict(
                 "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at cell faces) in the y-direction.",
+                "long_name"                 => "Spacing between cell centers (located at cell faces in x and centers in y) in the y-direction.",
+            ))
+            
+
+            ncdy_cfa = defVar(ds,"dy_cfa", Float32, (), attrib = OrderedDict(
+                "units"                     => "m",
+                "long_name"                 => "Spacing between cell faces (located at cell centers in x and faces in y) in the y-direction.",
             ))
             
             ncdz_aac = defVar(ds,"dz_aac", Float32, (), attrib = OrderedDict(
@@ -853,18 +871,20 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 
             # Fill grid variables
 
-            nclon_faa[:] = try; parent(grid.λᶠᵃᵃ) catch; 0 end
+            nclon_faa[:] = try; parent(grid.λᶠᵃᵃ) catch ; 0 end
             nclat_afa[:] = try; parent(grid.φᵃᶠᵃ) catch; 0 end
             nclon_caa[:] = try; parent(grid.λᶜᵃᵃ) catch; 0 end
             nclat_aca[:] = try; parent(grid.φᵃᶜᵃ) catch; 0 end
             ncz_aac[:] = try; parent(grid.z.cᵃᵃᶜ) catch; 0 end
             ncz_aaf[:] = try; parent(grid.z.cᵃᵃᶠ) catch; 0 end
-            ncdx_caa[:] = try; parent(grid.Δxᶜᵃᵃ) catch; 0 end
-            ncdx_faa[:] = try; parent(grid.Δxᶠᵃᵃ) catch; 0 end
-            ncdy_aca[:] = try; parent(grid.Δyᵃᶜᵃ) catch; 0 end
-            ncdy_afa[:] = try; parent(grid.Δyᵃᶠᵃ) catch; 0 end
-            ncdz_aac[:] = try; parent(grid.Δz.cᵃᵃᶜ) catch; 0 end
-            ncdz_aaf[:] = try; parent(grid.Δz.cᵃᵃᶠ) catch; 0 end
+            ncdx_cfa[:] = try; parent(grid.Δxᶜᶠᵃ) catch; 0 end
+            ncdx_ffa[:] = try; parent(grid.Δxᶠᶠᵃ) catch; 0 end
+            ncdx_cca[:] = try; parent(grid.Δxᶜᶜᵃ) catch; 0 end
+            ncdx_fca[:] = try; parent(grid.Δxᶠᶜᵃ) catch; 0 end
+            ncdy_fca[:] = try; parent(grid.Δyᶠᶜᵃ) catch; 0 end
+            ncdy_cfa[:] = try; parent(grid.Δyᶜᶠᵃ) catch; 0 end
+            ncdz_aac[:] = try; parent(grid.z.Δᵃᵃᶜ) catch; 0 end
+            ncdz_aaf[:] = try; parent(grid.z.Δᵃᵃᶠ) catch; 0 end
         
         else 
             error("Grid type $(typeof(grid)) not supported for NetCDF conversion")
