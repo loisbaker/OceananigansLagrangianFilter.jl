@@ -65,9 +65,9 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))</co
 ├── file_splitting: NoFileSplitting
 └── file size: 30.2 KiB</code></pre><h3 id="And-finally-run-the-simulation."><a class="docs-heading-anchor" href="#And-finally-run-the-simulation.">And finally run the simulation.</a><a id="And-finally-run-the-simulation.-1"></a><a class="docs-heading-anchor-permalink" href="#And-finally-run-the-simulation." title="Permalink"></a></h3><pre><code class="language-julia hljs">run!(simulation)</code></pre><pre><code class="nohighlight hljs">[ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds, max(|uh|, |vh|, |h|): 6.28e-01, 0.00e+00, 1.00e+00 
-[ Info:     ... simulation initialization complete (6.413 seconds)
+[ Info:     ... simulation initialization complete (6.735 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (4.973 seconds).
+[ Info:     ... initial time step complete (5.143 seconds).
 [ Info: Simulation time: 930.000 ms, max(|uh|, |vh|, |h|): 3.76e-01, 5.04e-01, 1.00e+00 
 [ Info: Simulation time: 1.890 seconds, max(|uh|, |vh|, |h|): 1.97e-01, 5.97e-01, 1.00e+00 
 [ Info: Simulation time: 2.800 seconds, max(|uh|, |vh|, |h|): 5.92e-01, 2.10e-01, 1.00e+00 
@@ -89,7 +89,7 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))</co
 [ Info: Simulation time: 17.480 seconds, max(|uh|, |vh|, |h|): 1.26e-01, 6.16e-01, 1.00e+00 
 [ Info: Simulation time: 18.480 seconds, max(|uh|, |vh|, |h|): 5.86e-01, 2.27e-01, 1.00e+00 
 [ Info: Simulation time: 19.480 seconds, max(|uh|, |vh|, |h|): 5.08e-01, 3.70e-01, 1.00e+00 
-[ Info: Simulation is stopping after running for 18.544 seconds.
+[ Info: Simulation is stopping after running for 19.121 seconds.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 </code></pre><h2 id="Perform-Lagrangian-filtering"><a class="docs-heading-anchor" href="#Perform-Lagrangian-filtering">Perform Lagrangian filtering</a><a id="Perform-Lagrangian-filtering-1"></a><a class="docs-heading-anchor-permalink" href="#Perform-Lagrangian-filtering" title="Permalink"></a></h2><p>Now we set up and run the offline Lagrangian filter on the output of the above simulation. This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)</p><pre><code class="language-julia hljs">using OceananigansLagrangianFilter</code></pre><h3 id="Set-up-the-filter-configuration"><a class="docs-heading-anchor" href="#Set-up-the-filter-configuration">Set up the filter configuration</a><a id="Set-up-the-filter-configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Set-up-the-filter-configuration" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_config = OfflineFilterConfig(original_data_filename=&quot;SW_IO_with_tracer.jld2&quot;, # Where the original simulation output is
                                     output_filename = &quot;SW_IO_with_tracer_filtered.jld2&quot;, # Where to save the filtered output
@@ -118,9 +118,9 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))</co
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (20.569 seconds)
+[ Info:     ... simulation initialization complete (21.380 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (12.225 seconds).
+[ Info:     ... initial time step complete (12.778 seconds).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -130,14 +130,14 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))</co
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 6.287 minutes.
+[ Info: Simulation is stopping after running for 7.407 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (54.034 ms)
+[ Info:     ... simulation initialization complete (67.730 ms)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (206.090 ms).
+[ Info:     ... initial time step complete (222.051 ms).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -147,7 +147,7 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))</co
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 5.195 minutes.
+[ Info: Simulation is stopping after running for 6.015 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Combined forward and backward contributions into SW_IO_with_tracer_filtered.jld2
@@ -205,4 +205,4 @@ CairoMakie.record(fig, &quot;IO_filtered_tracer_movie_offline.mp4&quot;, frames,
 end</code></pre><pre><code class="nohighlight hljs">&quot;IO_filtered_tracer_movie_offline.mp4&quot;</code></pre><p><video src="../IO_filtered_tracer_movie_offline.mp4" controls="true" title><a href="../IO_filtered_tracer_movie_offline.mp4"></a></video></p><p>We see that the Eulerian filter smudges the tracer field as it is advected by the inertial oscillations. The Lagrangian means directly calculated by this method are identical to the raw fields for the tracer and buoyancy shown, as they are conservative fields. However, when we remap to a mean reference position, we see the value of the Lagrangian filter in effectively removing the oscillations while preserving the tracer structures.</p><pre><code class="language-julia hljs"># We remove these files to keep things tidy, keep them for analysis if desired
 rm(filename_stem * &quot;.jld2&quot;)
 rm(filter_config.output_filename)
-rm(filter_config.output_filename[1:end-5] * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../offline_filter_geostrophic_adjustment/">« Geostrophic adjustment offline</a><a class="docs-footer-nextpage" href="../../references/">References »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Thursday 30 October 2025 17:49">Thursday 30 October 2025</span>. Using Julia version 1.10.10.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+rm(filter_config.output_filename[1:end-5] * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../offline_filter_geostrophic_adjustment/">« Geostrophic adjustment offline</a><a class="docs-footer-nextpage" href="../../references/">References »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Friday 31 October 2025 19:04">Friday 31 October 2025</span>. Using Julia version 1.10.10.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
