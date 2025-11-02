@@ -393,8 +393,6 @@ function OfflineFilterConfig(; original_data_filename::String,
     end
 
     # Warn if Eulerian filter is being calculated twice
-    @show compute_Eulerian_filter
-    @show isnothing(advection)
     if compute_Eulerian_filter && isnothing(advection)
         @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice."
     end
