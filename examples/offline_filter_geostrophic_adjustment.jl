@@ -95,13 +95,9 @@ u, v, w = model.velocities
 b = model.tracers.b
 T = model.tracers.T
 
-# Fields to be filtered must be specified at cell centers, so we can interpolate before 
-# output if necessary. 
-wc = Field(@at (Center, Center, Center) model.velocities.w) 
-
 # Output a jld2 file for Lagrangian filtering
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, (; b, u, v, w, wc, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; b, u, v, w, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
 
 # ### Run simulation
 @info "Running the simulation..."
