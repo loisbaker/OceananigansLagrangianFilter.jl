@@ -120,7 +120,7 @@ using OceananigansLagrangianFilter
 # Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustment_3D.jld2", # Where the original simulation output is
                                     output_filename = "geostrophic_adjustment_offline_filtered_3D.jld2", # Where to save the filtered output
-                                    var_names_to_filter = ("T", "b", "wc"), # Which variables to filter
+                                    var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","v","w"), # Velocities to use for Lagrangian filtering
                                     architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
                                     Δt = 20minutes, # Time step of filtering simulation
