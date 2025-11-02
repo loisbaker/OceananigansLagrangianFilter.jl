@@ -387,13 +387,13 @@ function OfflineFilterConfig(; original_data_filename::String,
 
     # Make sure that map_to_mean is false if advection is nothing (Eulerian filter)
 
-    if (advection is nothing) && map_to_mean
+    if isnothing(advection) && map_to_mean
         @warn "Advection scheme is 'nothing' (Eulerian filter) so setting map_to_mean=false"
         map_to_mean = false
     end
 
     # Warn if Eulerian filter is being calculated twice
-    if compute_Eulerian_filter && (advection is nothing)
+    if compute_Eulerian_filter && isnothing(advection)
         @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice."
     end
 
