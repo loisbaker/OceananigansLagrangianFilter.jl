@@ -363,9 +363,9 @@ end
 """
     create_original_vars(config::AbstractConfig)
 
-Creates a `NamedTuple` of `CenterField`s to serve as auxiliary fields for
-the original variables in a simulation. The fields are instantiated on the
-`grid` specified in the `config` object.
+Creates a `NamedTuple` to serve as auxiliary fields for the original variables 
+in a simulation. The fields are initialised from the input data to ensure that
+they are in the correct location. - the value of the data is unimportant.
 
 Arguments
 =========
@@ -382,8 +382,11 @@ function create_original_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     grid = config.grid
     vars = Dict()
+    original_data_filename = config.original_data_filename
+
     for var_name in var_names_to_filter
-        vars[Symbol(var_name)] = CenterField(grid)
+        fts_data = FieldTimeSeries(original_data_filename, var_name)[1]
+        vars[Symbol(var_name)] = fts_data
     end
     return NamedTuple(vars)
 end

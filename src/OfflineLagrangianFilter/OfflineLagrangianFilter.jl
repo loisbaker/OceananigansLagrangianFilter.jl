@@ -228,6 +228,30 @@ function OfflineFilterConfig(; original_data_filename::String,
         error("Source file not found: $original_data_filename")
     end
 
+    # Check that velocities aren't in the var_names_to_filter
+    for vel_str in ("u","v","w")
+        if vel_str in var_names_to_filter
+            error("Velocity variable '$vel_str' cannot be in 'var_names_to_filter'. 
+If you want to filter a velocity that you will also be advecting with, include it in 'velocity_names'. 
+If you want to filter a velocity that you don't want to advect with, then output it as a variable with 
+a different name in the original simulation.")
+        end
+    end
+
+    # Notify about the velocities that will be used
+    if map_to_mean
+        @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
+any other velocity components will be zero by default. Maps for regridding to mean position will
+be computed corresponding to velocities: $(velocity_names)."
+    else
+        @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
+any other velocity components will be zero by default."
+    end
+
+    if compute_mean_velocities
+        @info "Mean velocities corresponding to $(velocity_names) will be computed."
+    end
+
     # Open up the file for some checks
     jldopen(original_data_filename,"r") do original_file
 
@@ -315,27 +339,27 @@ function OfflineFilterConfig(; original_data_filename::String,
         # User has specified filter_params directly, but we should check it has the right fields
         if haskey(filter_params, :N_coeffs)
             if N_coeffs == 0.5 # Single exponential special case
-                if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
+                if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
                     error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
                 end
             elseif floor(filter_params.N_coeffs) != filter_params.N_coeffs
                 error("N_coeffs must be a positive integer or 0.5")
             else
-                if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
+                if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
                     error("For N_coeffs>0.5, filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             
             end
         else # N_coeffs isn't provided, but we might be able to infer it
             if floor(length(filter_params)/4) == length(filter_params)/4
-                filter_params = merge(filter_params, (N_coeffs = length(filter_params)/4,))
+                filter_params = merge(filter_params, (N_coeffs = Int(length(filter_params)/4),))
                 # But we still have to check that the right entries are there:
-                if !all(haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs)
+                if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
                     error("filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             elseif length(filter_params) == 2
                 filter_params = merge(filter_params, (N_coeffs = 0.5,))
-                if !all(haskey(filter_params, :a1) , haskey(filter_params, :c1))
+                if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
                     error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
                 end
             else
