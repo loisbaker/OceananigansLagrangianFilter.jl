@@ -71,18 +71,25 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
         jldopen(forward_output_filename,"r") do forward_file
 
             # First copy the forward file metadata and file structure
-            copy_file_metadata!(forward_file, combined_file, 
-            (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...))
+            if config.output_original_data
+                names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...)
+            else
+                names_to_copy = (filtered_var_names..., filtered_vel_names...)
+            end
+
+            copy_file_metadata!(forward_file, combined_file, names_to_copy)
 
             forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
 
             # Copy over the unfiltered field data
-            for var_name in (var_names_to_filter..., vel_names_to_filter..., "t")
-                for iter in forward_iterations
-                    combined_file["timeseries/$var_name/$iter"] = forward_file["timeseries/$var_name/$iter"]
+            if config.output_original_data
+                for var_name in (var_names_to_filter..., vel_names_to_filter..., "t")
+                    for iter in forward_iterations
+                        combined_file["timeseries/$var_name/$iter"] = forward_file["timeseries/$var_name/$iter"]
+                    end
                 end
             end
-
+            
             # Copy over the filtered data, combined with backward data
             for var_name in filtered_var_names
                 

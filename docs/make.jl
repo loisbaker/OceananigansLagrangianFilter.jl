@@ -86,6 +86,7 @@ pages = [
     "Online filtering" => online_pages,
     "Offline filtering" => offline_pages,
     "Examples" => example_pages,
+    "Technical comments" => "technical_comments.md",
     "References" => "references.md",
     "Library" => "library.md", # This page will contain all your functions' docstrings
 ]
