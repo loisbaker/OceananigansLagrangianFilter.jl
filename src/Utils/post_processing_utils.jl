@@ -82,14 +82,21 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
             forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
 
             # Copy over the unfiltered field data
+
             if config.output_original_data
-                for var_name in (var_names_to_filter..., vel_names_to_filter..., "t")
+                original_data_names = (var_names_to_filter..., vel_names_to_filter..., "t")
+            else
+                original_data_names = ("t",)
+            end
+            
+            if config.output_original_data
+                for var_name in original_data_names
                     for iter in forward_iterations
                         combined_file["timeseries/$var_name/$iter"] = forward_file["timeseries/$var_name/$iter"]
                     end
                 end
             end
-            
+
             # Copy over the filtered data, combined with backward data
             for var_name in filtered_var_names
                 
