@@ -144,11 +144,11 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     else # !isnothing(filter_params) && isnothing(N) && isnothing(freq_c)
         # User has specified filter_params directly, but we should check it has the right fields
         if haskey(filter_params, :N_coeffs)
-            if N_coeffs == 0.5 # Single exponential special case
+            if filter_params.N_coeffs == 0.5 # Single exponential special case
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
                     error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
                 end
-            elseif floor(filter_params.N_coeffs) != filter_params.N_coeffs
+            elseif Int(floor(filter_params.N_coeffs)) !== filter_params.N_coeffs
                 error("N_coeffs must be a positive integer or 0.5")
             else
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
