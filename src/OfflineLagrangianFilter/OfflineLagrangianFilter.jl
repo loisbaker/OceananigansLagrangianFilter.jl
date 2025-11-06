@@ -98,6 +98,7 @@ struct OfflineFilterConfig <: AbstractConfig
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     filter_mode::String
+    label::String
 
 end
 
@@ -127,7 +128,8 @@ end
                         output_original_data::Bool = true,
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
-                        filter_mode::String = "offline")
+                        filter_mode::String = "offline",
+                        label::String = "")
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -162,7 +164,8 @@ Keyword arguments
   - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "offline". TODO use multiple dispatch for this instead.
-
+  - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
+     at the same time.  Default: "".
 # Example:
 
 ```jldoctest offline config
@@ -221,7 +224,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             output_netcdf::Bool = false,
                             output_original_data::Bool = true,
                             advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
-                            grid::Union{AbstractGrid, Nothing} = nothing)
+                            grid::Union{AbstractGrid, Nothing} = nothing,
+                            label::String = "")
 
     # Check that the original file exists 
     if !isfile(original_data_filename)
@@ -448,7 +452,8 @@ any other velocity components will be zero by default."
                             output_original_data,
                             advection,
                             grid,
-                            filter_mode)
+                            filter_mode,
+                            label)
 
 end
 

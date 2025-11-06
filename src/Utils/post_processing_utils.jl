@@ -47,6 +47,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     map_to_mean = config.map_to_mean
     compute_mean_velocities = config.compute_mean_velocities
+    label = config.label
     
     # When offline filtering, we can turn off advection to get Eulerian filtered fields
     if config.filter_mode == "offline" && config.advection === nothing
@@ -56,14 +57,14 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     end
 
     # List the names of the fields that we will combine
-    filtered_var_names = Tuple([var * filter_identifier for var in var_names_to_filter])
+    filtered_var_names = Tuple([var * "_" * label * filter_identifier for var in var_names_to_filter])
     if map_to_mean
-        filtered_var_names = (Tuple(["xi_" * vel for vel in velocity_names])..., filtered_var_names...)
+        filtered_var_names = (Tuple(["xi_" * vel * "_" * label for vel in velocity_names])..., filtered_var_names...)
     end
     filtered_vel_names = ()
     vel_names_to_filter = ()
     if compute_mean_velocities
-        filtered_vel_names = Tuple([vel * filter_identifier for vel in velocity_names])
+        filtered_vel_names = Tuple([vel * "_" * label * filter_identifier for vel in velocity_names])
         vel_names_to_filter = velocity_names
     end
 
@@ -265,12 +266,19 @@ function regrid_to_mean_position!(config::AbstractConfig)
     compute_mean_velocities = config.compute_mean_velocities
     velocity_names = config.velocity_names
     npad = config.npad 
-    var_names_to_regrid = var_names_to_filter
+    label = config.label
 
+
+    if config.filter_mode == "offline" && config.advection === nothing
+        error("Regridding to mean position is not meaningful for Eulerian filtering")
+    end
     if compute_mean_velocities
-        var_names_to_regrid = (var_names_to_regrid..., velocity_names...)
+        var_names_to_filter = (var_names_to_filter..., velocity_names...)
     end
     
+    # Get names of labelled mean variables
+    var_names_to_regrid = Tuple([var * "_" * label * "_Lagrangian_filtered" for var in var_names_to_filter])
+
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         grid = file["serialized/grid"]
@@ -282,6 +290,11 @@ function regrid_to_mean_position!(config::AbstractConfig)
             Immersed = true
         else
             Immersed = false
+        end
+
+        # Error if not a RectilinearGrid
+        if !(grid isa RectilinearGrid) && !((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
+            error("Regridding to mean position is only implemented for RectilinearGrid")
         end
 
         # Work out the periodic and bounded directions
@@ -311,13 +324,13 @@ function regrid_to_mean_position!(config::AbstractConfig)
         
         # First add the necessary serialized entry for each new variable
         for var in var_names_to_regrid
-            new_path = "timeseries/$var"*"_Lagrangian_filtered_at_mean/serialized"
+            new_path = "timeseries/$var"*"_at_mean/serialized"
             if haskey(file, new_path)
                 Base.delete!(file, new_path) #incase we already tried to write this
             end
             g = Group(file, new_path)
-            for property in keys(file["timeseries/$var"*"_Lagrangian_filtered/serialized"])
-                g[property] = file["timeseries/$var"*"_Lagrangian_filtered/serialized/$property"]
+            for property in keys(file["timeseries/$var/serialized"])
+                g[property] = file["timeseries/$var/serialized/$property"]
             end
         end
 
@@ -333,7 +346,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     push!(true_dims, dim)
                     push!(regular_coord_mesh, coord_dict["$(dim)_mesh"])
                     if (dim == "x") && ("u" in velocity_names)
-                        Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u/$iter"]
+                        Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u_"*label*"/$iter"]
 
                         # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
                         Xi_u = _remove_halos(Xi_u,grid)
@@ -358,7 +371,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "y") && ("v" in velocity_names)
-                        Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v/$iter"]
+                        Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v_"*label*"/$iter"]
 
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
@@ -381,7 +394,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "z") && ("w" in velocity_names)
-                        Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w/$iter"]
+                        Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w_"*label*"/$iter"]
 
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
@@ -412,7 +425,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
             # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
             # First construct a matrix that contains the coordinates and the fields to interpolate
             for var in var_names_to_regrid
-                var_data = file["timeseries/$var"*"_Lagrangian_filtered/$iter"]
+                var_data = file["timeseries/$var/$iter"]
 
                 # Lose the halo regions 
                 var_data = _remove_halos(var_data,grid)
@@ -620,7 +633,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                 _fill_halos!(interp_data, grid, 0.0)
                 
                 # Finally write the data to a new variable in the file
-                new_var_loc = "timeseries/$var"*"_Lagrangian_filtered_at_mean/$iter"
+                new_var_loc = "timeseries/$var"*"_at_mean/$iter"
                 if haskey(file, new_var_loc)
                     Base.delete!(file, new_var_loc) #incase we already tried to write this variable
                 end
@@ -1143,6 +1156,7 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     compute_mean_velocities = config.compute_mean_velocities
     velocity_names = config.velocity_names
+    label = config.label
 
     var_names_to_Eulerian_filter = var_names_to_filter
     if compute_mean_velocities
@@ -1167,10 +1181,10 @@ function compute_Eulerian_filter!(config::AbstractConfig)
             @info "Computing Eulerian filter for variable $var_name"
 
             # Create group for filtered data
-            g_EF = Group(file, "timeseries/$(var_name * "_Eulerian_filtered")")
+            g_EF = Group(file, "timeseries/$(var_name * "_" * label *"_Eulerian_filtered")")
 
             # Copy over serialized properties
-            g_EF_serialized = Group(file, "timeseries/$(var_name * "_Eulerian_filtered")/serialized") 
+            g_EF_serialized = Group(file, "timeseries/$(var_name * "_" * label * "_Eulerian_filtered")/serialized") 
             for property in keys(file["timeseries/$var_name/serialized"])
                 g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
             end

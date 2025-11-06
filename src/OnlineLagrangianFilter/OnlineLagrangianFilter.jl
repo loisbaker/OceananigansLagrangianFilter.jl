@@ -27,6 +27,7 @@ struct OnlineFilterConfig <: AbstractConfig
     compute_mean_velocities::Bool
     npad::Int
     filter_mode::String
+    label::String
     
 end
 
@@ -41,7 +42,8 @@ end
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            filter_mode::String = "online"
+                            filter_mode::String = "online",
+                            label::String = ""
                             )
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
@@ -61,8 +63,9 @@ Keyword arguments
   - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
-- `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
-
+  - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
+  - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
+     at the same time.  Default: "".
 # Example:
 
 ```jldoctest online config
@@ -108,6 +111,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
+                            label::String = ""
                             )
 
     # Check that velocities aren't in the var_names_to_filter
@@ -213,7 +217,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             map_to_mean,
                             compute_mean_velocities,
                             npad,
-                            filter_mode
+                            filter_mode,
+                            label
                             )
  
 end
