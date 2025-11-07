@@ -195,7 +195,7 @@ OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 
 └── advection_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
 ├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "offline")
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "offline", "")
 
 ```
 
@@ -240,6 +240,10 @@ If you want to filter a velocity that you will also be advecting with, include i
 If you want to filter a velocity that you don't want to advect with, then output it as a variable with 
 a different name in the original simulation.")
         end
+    end
+
+    if "t" in var_names_to_filter
+        error("Time variable 't' cannot be in 'var_names_to_filter'.")
     end
 
     # Notify about the velocities that will be used
@@ -344,14 +348,14 @@ any other velocity components will be zero by default."
         if haskey(filter_params, :N_coeffs)
             if filter_params.N_coeffs == 0.5 # Single exponential special case
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
-                    error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
+                    error("For N_coeffs=0.5, filter_params must have fields :a1, and :c1")
                 end
             elseif Int(floor(filter_params.N_coeffs)) !== filter_params.N_coeffs
                 error("N_coeffs must be a positive integer or 0.5")
             else
 
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
-                    error("For N_coeffs>0.5, filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                    error("For N_coeffs>0.5, filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             
             end
@@ -360,12 +364,12 @@ any other velocity components will be zero by default."
                 filter_params = merge(filter_params, (N_coeffs = Int(length(filter_params)/4),))
                 # But we still have to check that the right entries are there:
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
-                    error("filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                    error("filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             elseif length(filter_params) == 2
                 filter_params = merge(filter_params, (N_coeffs = 0.5,))
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
-                    error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
+                    error("For a filter with two coefficients, filter_params must have fields :a1, and :c1")
                 end
             else
                 error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
@@ -378,7 +382,9 @@ any other velocity components will be zero by default."
     # Check normalisation of filter coefficients
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1*2 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1)"
+            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1). 
+You can continue, but setting `map_to_mean=false` as the map is now meaningless."
+            map_to_mean = false
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
@@ -386,7 +392,9 @@ any other velocity components will be zero by default."
         c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1/2)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5"
+            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5
+You can continue, but setting `map_to_mean=false` as the map is now meaningless."
+            map_to_mean = false
         end
     end
 
@@ -419,11 +427,14 @@ any other velocity components will be zero by default."
     if isnothing(advection) && map_to_mean
         @warn "Advection scheme is 'nothing' (Eulerian filter) so setting map_to_mean=false"
         map_to_mean = false
+    elseif isnothing(advection) 
+        @info "Advection scheme is 'nothing' so the Eulerian (not Lagrangian) filter will be computed."
     end
 
     # Warn if Eulerian filter is being calculated twice
     if compute_Eulerian_filter && isnothing(advection)
-        @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice."
+        @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice, so we'll set compute_Eulerian_filter=false."
+        compute_Eulerian_filter = false
     end
 
     

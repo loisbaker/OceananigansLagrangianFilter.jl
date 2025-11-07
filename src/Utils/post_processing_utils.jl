@@ -35,8 +35,17 @@ Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the file paths and
   variable names.
+- `extra_filtered_var_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
+  filtered variable names that have been calculated by the filter and also need to be
+  combined.
+- `extra_filtered_velocity_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
+  filtered velocity names that have been calculated by the filter and also need to be
+  combined.
+- `extra_original_data_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
+  original names that have been output and should be copied to the combined output file.
 """
-function sum_forward_backward_contributions!(config::AbstractConfig)
+function sum_forward_backward_contributions!(config::AbstractConfig; extra_filtered_var_names::Tuple{Vararg{String}}=(), 
+    extra_filtered_velocity_names::Tuple{Vararg{String}}=(), extra_original_data_names::Tuple{Vararg{String}}=())
     # Combine the forward and backward simulations by summing them into a single file
 
     output_filename = config.output_filename
@@ -61,12 +70,19 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     if map_to_mean
         filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
     end
+
+    # There might be some extra filtered variables that the user defined that we should combine too
+    filtered_var_names = Tuple(unique((filtered_var_names..., extra_filtered_var_names...)))
+
     filtered_vel_names = ()
     vel_names_to_filter = ()
     if compute_mean_velocities
         filtered_vel_names = Tuple([vel * label * filter_identifier for vel in velocity_names])
         vel_names_to_filter = velocity_names
     end
+
+    # There might be some extra filtered velocities that the user defined that we should combine too
+    filtered_vel_names = Tuple(unique((filtered_vel_names..., extra_filtered_velocity_names...)))
 
     jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
@@ -78,6 +94,9 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
                 names_to_copy = (filtered_var_names..., filtered_vel_names...)
             end
 
+            # There might be some extra variables provided to copy too
+            names_to_copy = Tuple(unique((names_to_copy..., extra_original_data_names...)))
+
             copy_file_metadata!(forward_file, combined_file, names_to_copy)
 
             forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
@@ -85,9 +104,9 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
             # Copy over the unfiltered field data
 
             if config.output_original_data
-                original_data_names = (var_names_to_filter..., vel_names_to_filter..., "t")
+                original_data_names = (var_names_to_filter..., vel_names_to_filter..., extra_original_data_names...,"t")
             else
-                original_data_names = ("t",)
+                original_data_names = ("t",extra_original_data_names...)
             end
 
             
@@ -258,8 +277,11 @@ Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the file paths, variable
   names, and grid information.
+- `extra_vars_to_regrid::Tuple{Vararg{String}}=()`: Optional tuple of additional
+  filtered variable names that have been calculated by the filter and also need to be
+  regridded. Include velocities here if needed.
 """
-function regrid_to_mean_position!(config::AbstractConfig)
+function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::Tuple{Vararg{String}}=())
     #TODO split this function into smaller functions for readability
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
@@ -278,6 +300,9 @@ function regrid_to_mean_position!(config::AbstractConfig)
     
     # Get names of labelled mean variables
     var_names_to_regrid = Tuple([var * label * "_Lagrangian_filtered" for var in var_names_to_filter])
+
+    # There might be some extra variables to regrid that the user defined
+    var_names_to_regrid = Tuple(unique((var_names_to_regrid..., extra_vars_to_regrid...)))
 
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
@@ -1162,7 +1187,7 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     if compute_mean_velocities
         var_names_to_Eulerian_filter = (var_names_to_Eulerian_filter..., velocity_names...)
     end
-
+    
     filter_mode = config.filter_mode
     if filter_mode == "offline"
         direction = "both"

@@ -95,7 +95,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "online")
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "online", "")
 
 ```
 
@@ -122,6 +122,10 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         end
     end
 
+    if "t" in var_names_to_filter
+        error("Time variable 't' cannot be in 'var_names_to_filter'.")
+    end
+    
     # Notify about the velocities that will be used
     if map_to_mean
         @info "Advection for Lagrangian filtering will be performed using full model velocities u, v, and w. 
@@ -150,13 +154,13 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         if haskey(filter_params, :N_coeffs)
             if filter_params.N_coeffs == 0.5 # Single exponential special case
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
-                    error("For N_coeffs=0.5, filter_params must have fields :N_coeffs, :a1, and :c1")
+                    error("For N_coeffs=0.5, filter_params must have fields :a1, and :c1")
                 end
             elseif Int(floor(filter_params.N_coeffs)) !== filter_params.N_coeffs
                 error("N_coeffs must be a positive integer or 0.5")
             else
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
-                    error("For N_coeffs>0.5, filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                    error("For N_coeffs>0.5, filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             
             end
@@ -165,12 +169,12 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                 filter_params = merge(filter_params, (N_coeffs = Int(length(filter_params)/4),))
                 # But we still have to check that the right entries are there:
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
-                    error("filter_params must have fields :N_coeffs, :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
+                    error("filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
             elseif length(filter_params) == 2
                 filter_params = merge(filter_params, (N_coeffs = 0.5,))
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
-                    error("For a filter with two coefficients, filter_params must have fields :N_coeffs, :a1, and :c1")
+                    error("For a filter with two coefficients, filter_params must have fields :a1, and :c1")
                 end
             else
                 error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
@@ -183,7 +187,9 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     # Check normalisation of filter coefficients
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1)"
+            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1).
+You can continue, but setting `map_to_mean=false` as the map is now meaningless."
+            map_to_mean = false
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
@@ -191,7 +197,9 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1.0)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1"
+            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1.
+You can continue, but setting `map_to_mean=false` as the map is now meaningless."
+            map_to_mean = false
         end
     end
 
