@@ -431,12 +431,12 @@ function create_filtered_vars(config::AbstractConfig)
     if N_coeffs == 0.5 # special case, single exponential only has a cosine component
         gC_symbols = Symbol[]
         for var_name in var_names_to_filter
-            push!(gC_symbols, Symbol(var_name, "_", label, "_C1"))
+            push!(gC_symbols, Symbol(var_name, label, "_C1"))
         end
         # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
         if map_to_mean || compute_mean_velocities
             for vel_name in velocity_names
-                push!(gC_symbols, Symbol("xi_", vel_name, "_", label,"_C1"))
+                push!(gC_symbols, Symbol("xi_", vel_name, label,"_C1"))
             end
         end
 
@@ -448,8 +448,8 @@ function create_filtered_vars(config::AbstractConfig)
 
         for var_name in var_names_to_filter
             for i in 1:N_coeffs
-                push!(gC_symbols, Symbol(var_name, "_", label, "_C", i))
-                push!(gS_symbols, Symbol(var_name, "_", label, "_S", i))
+                push!(gC_symbols, Symbol(var_name, label, "_C", i))
+                push!(gS_symbols, Symbol(var_name, label, "_S", i))
             end
         end
 
@@ -457,8 +457,8 @@ function create_filtered_vars(config::AbstractConfig)
         if map_to_mean || compute_mean_velocities
             for vel_name in velocity_names
                 for i in 1:N_coeffs
-                    push!(gC_symbols, Symbol("xi_", vel_name, "_", label, "_C", i))
-                    push!(gS_symbols, Symbol("xi_", vel_name, "_", label, "_S", i))
+                    push!(gC_symbols, Symbol("xi_", vel_name, label, "_C", i))
+                    push!(gS_symbols, Symbol("xi_", vel_name, label, "_S", i))
                 end
             end
         end
@@ -610,7 +610,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
     if N_coeffs == 0.5
         # Build by hand as only one coefficient
         for var_name in var_names_to_filter
-            labelled_var_name = var_name * "_" * label
+            labelled_var_name = var_name * label
             var_key = Symbol(var_name)
             gCkey = Symbol(labelled_var_name,"_C1")
 
@@ -625,7 +625,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
 
             # Create forcing for xi maps (one for each velocity component)
             for vel_name in velocity_names
-                labelled_var_name = "xi_" * vel_name * "_" * label
+                labelled_var_name = "xi_" * vel_name * label
                 gCkey = Symbol(labelled_var_name, "_C1") 
                  
                 # The forcing for xiC includes a term involving xiC (as for tracers) and a 
@@ -645,7 +645,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
         for var_name in var_names_to_filter
             var_key = Symbol(var_name)
             for i in 1:N_coeffs
-                labelled_var_name = var_name * "_" * label
+                labelled_var_name = var_name * label
                 gCkey = Symbol(labelled_var_name,"_C",i)
                 gSkey = Symbol(labelled_var_name,"_S",i)
 
@@ -666,7 +666,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
             for vel_name in velocity_names
                 
                 for i in 1:N_coeffs
-                    labelled_var_name = "xi_" * vel_name * "_" * label
+                    labelled_var_name = "xi_" * vel_name * label
                     gCkey = Symbol(labelled_var_name, "_C", i) 
                     gSkey = Symbol(labelled_var_name, "_S", i) 
 
@@ -739,7 +739,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     end
 
     for var_name in var_names_to_filter
-        labelled_var_name = var_name * "_" * label
+        labelled_var_name = var_name * label
         if N_coeffs == 0.5
             # Special case, single exponential only has a cosine component
             gC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
@@ -766,7 +766,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     # Reconstruct the maps, if we map to mean
     if map_to_mean
         for vel_name in velocity_names
-            labelled_var_name = "xi_" * vel_name * "_" * label
+            labelled_var_name = "xi_" * vel_name * label
             if N_coeffs == 0.5
                 # Special case, single exponential only has a cosine component
                 xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
@@ -794,12 +794,12 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     # Reconstruct the mean velocities
     if compute_mean_velocities
         for vel_name in velocity_names
-            labelled_var_name = "xi_" * vel_name * "_" * label
+            labelled_var_name = "xi_" * vel_name * label
             if N_coeffs == 0.5
                 # Special case, single exponential only has a cosine component
                 xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
                 g_total = - filter_params.a1 * filter_params.c1 * xiC1
-                outputs_dict[vel_name * "_" * label * filter_identifier] = g_total
+                outputs_dict[vel_name * label * filter_identifier] = g_total
             else
                 # Start with the first coefficient
                 xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
@@ -817,7 +817,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                     xiSi = getproperty(model.tracers,Symbol(labelled_var_name * "_S$i"))
                     g_total += (-a * c + b * d) * xiCi + (-a * d - b * c) * xiSi
                 end
-                outputs_dict[vel_name * "_" * label * filter_identifier] = g_total
+                outputs_dict[vel_name * label * filter_identifier] = g_total
             end
         end
     end
@@ -904,7 +904,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
     label = config.label
     for original_var_fts in input_data.var_data
         var_name = original_var_fts.name
-        labelled_var_name = var_name * "_" * label
+        labelled_var_name = var_name * label
         if filter_params.N_coeffs == 0.5 # Special case of single exponential
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             c1 = filter_params.c1
@@ -948,7 +948,7 @@ function initialise_filtered_vars_from_model(model::AbstractModel, config::Abstr
     var_names_to_filter = config.var_names_to_filter
     label = config.label
     for var_name in var_names_to_filter
-        labelled_var_name = var_name * "_" * label
+        labelled_var_name = var_name * label
         if filter_params.N_coeffs == 0.5 # Special case of single exponential
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             c1 = filter_params.c1
@@ -995,7 +995,7 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
     label = config.label
     dict = Dict()
     for var_name in var_names_to_filter
-        labelled_var_name = var_name * "_" * label
+        labelled_var_name = var_name * label
         if N_coeffs == 0.5 # Special case of single exponential
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             dict[filtered_var_C] = 0.0
@@ -1012,12 +1012,12 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
         velocity_names = config.velocity_names
         for vel_name in velocity_names
             if N_coeffs == 0.5 # Special case of single exponential
-                filtered_var_C = Symbol("xi_", vel_name, "_", label, "_C1",)
+                filtered_var_C = Symbol("xi_", vel_name, label, "_C1",)
                 dict[filtered_var_C] = 0.0
             else
                 for i in 1:N_coeffs
-                    filtered_var_C = Symbol("xi_", vel_name,"_", label, "_C",i)
-                    filtered_var_S = Symbol("xi_", vel_name,"_", label, "_S",i)
+                    filtered_var_C = Symbol("xi_", vel_name, label, "_C",i)
+                    filtered_var_S = Symbol("xi_", vel_name, label, "_S",i)
                     dict[filtered_var_C] = 0.0
                     dict[filtered_var_S] = 0.0
                 end
