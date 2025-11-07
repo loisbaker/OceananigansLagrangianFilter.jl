@@ -57,14 +57,14 @@ function sum_forward_backward_contributions!(config::AbstractConfig)
     end
 
     # List the names of the fields that we will combine
-    filtered_var_names = Tuple([var * "_" * label * filter_identifier for var in var_names_to_filter])
+    filtered_var_names = Tuple([var * label * filter_identifier for var in var_names_to_filter])
     if map_to_mean
-        filtered_var_names = (Tuple(["xi_" * vel * "_" * label for vel in velocity_names])..., filtered_var_names...)
+        filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
     end
     filtered_vel_names = ()
     vel_names_to_filter = ()
     if compute_mean_velocities
-        filtered_vel_names = Tuple([vel * "_" * label * filter_identifier for vel in velocity_names])
+        filtered_vel_names = Tuple([vel * label * filter_identifier for vel in velocity_names])
         vel_names_to_filter = velocity_names
     end
 
@@ -277,7 +277,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
     end
     
     # Get names of labelled mean variables
-    var_names_to_regrid = Tuple([var * "_" * label * "_Lagrangian_filtered" for var in var_names_to_filter])
+    var_names_to_regrid = Tuple([var * label * "_Lagrangian_filtered" for var in var_names_to_filter])
 
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
@@ -346,7 +346,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                     push!(true_dims, dim)
                     push!(regular_coord_mesh, coord_dict["$(dim)_mesh"])
                     if (dim == "x") && ("u" in velocity_names)
-                        Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u_"*label*"/$iter"]
+                        Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u"*label*"/$iter"]
 
                         # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
                         Xi_u = _remove_halos(Xi_u,grid)
@@ -371,7 +371,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "y") && ("v" in velocity_names)
-                        Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v_"*label*"/$iter"]
+                        Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v"*label*"/$iter"]
 
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
@@ -394,7 +394,7 @@ function regrid_to_mean_position!(config::AbstractConfig)
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "z") && ("w" in velocity_names)
-                        Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w_"*label*"/$iter"]
+                        Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w"*label*"/$iter"]
 
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
@@ -1181,10 +1181,10 @@ function compute_Eulerian_filter!(config::AbstractConfig)
             @info "Computing Eulerian filter for variable $var_name"
 
             # Create group for filtered data
-            g_EF = Group(file, "timeseries/$(var_name * "_" * label *"_Eulerian_filtered")")
+            g_EF = Group(file, "timeseries/$(var_name * label *"_Eulerian_filtered")")
 
             # Copy over serialized properties
-            g_EF_serialized = Group(file, "timeseries/$(var_name * "_" * label * "_Eulerian_filtered")/serialized") 
+            g_EF_serialized = Group(file, "timeseries/$(var_name * label * "_Eulerian_filtered")/serialized") 
             for property in keys(file["timeseries/$var_name/serialized"])
                 g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
             end
