@@ -954,15 +954,30 @@ function initialise_filtered_vars_from_model(model::AbstractModel, config::Abstr
         if filter_params.N_coeffs == 0.5 # Special case of single exponential
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             c1 = filter_params.c1
-            set!(getproperty(model.tracers, filtered_var_C), 1/c1*getproperty(model.tracers,Symbol(var_name)))
+            # original data can be tracer or auxiliary field
+            if Symbol(var_name) in propertynames(model.tracers)
+                field = getproperty(model.tracers,Symbol(var_name))
+            elseif Symbol(var_name) in propertynames(model.auxiliary_fields)
+                field = getproperty(model.auxiliary_fields,Symbol(var_name))
+            else
+                error("Variable $var_name not found in model tracers or auxiliary fields.")
+            end
+            set!(getproperty(model.tracers, filtered_var_C), 1/c1*field)
         else
             for i in 1:filter_params.N_coeffs
                 filtered_var_C = Symbol(labelled_var_name,"_C",i)
                 filtered_var_S = Symbol(labelled_var_name,"_S",i)
                 ci = getproperty(filter_params,Symbol("c$i"))
                 di = getproperty(filter_params,Symbol("d$i"))
-                set!(getproperty(model.tracers, filtered_var_C), ci/(ci^2 + di^2)*getproperty(model.tracers,Symbol(var_name)))
-                set!(getproperty(model.tracers, filtered_var_S), di/(ci^2 + di^2)*getproperty(model.tracers,Symbol(var_name)))
+                if Symbol(var_name) in propertynames(model.tracers)
+                    field = getproperty(model.tracers,Symbol(var_name))
+                elseif Symbol(var_name) in propertynames(model.auxiliary_fields)
+                    field = getproperty(model.auxiliary_fields,Symbol(var_name))
+                else
+                    error("Variable $var_name not found in model tracers or auxiliary fields.")
+                end
+                set!(getproperty(model.tracers, filtered_var_C), ci/(ci^2 + di^2)*field)
+                set!(getproperty(model.tracers, filtered_var_S), di/(ci^2 + di^2)*field)
             end
         end
     end
