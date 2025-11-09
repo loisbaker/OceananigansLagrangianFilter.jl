@@ -68,7 +68,7 @@ Keyword arguments
      at the same time.  Default: "".
 # Example:
 
-```jldoctest online config
+```@example online config
 using OceananigansLagrangianFilter
 using Oceananigans.Units
 
@@ -88,14 +88,6 @@ filter_config = OnlineFilterConfig( grid = grid,
                                     velocity_names = ("u","w"),
                                     N = 2,
                                     freq_c = 1e-4/2)
-
-# output
-
-[ Info: Setting filter parameters to use Butterworth order 2, cutoff frequency 5.0e-5
-OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
-├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
-├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "online", "")
 
 ```
 
