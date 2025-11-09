@@ -1,7 +1,7 @@
 # Technical comments
 
 - The online and offline filtering both work on GPU, just make sure CUDA is installed in the environment and loaded, and set `architecture = GPU()`
-- The post-processing interpolation step using [`regrid_to_mean_position!`](@ref "regrid_to_mean_position!") isn't currently set up to work in domains with immersed boundaries or with more than one bounded dimension. Interpolation results might be junk near the boundary!
+- The post-processing interpolation step using [`regrid_to_mean_position!`](@ref "regrid_to_mean_position!") isn't currently set up to work in domains with immersed boundaries, with more than one bounded dimension, or on non-rectlinear grids. 
 - As with any moving average, there are endpoint effects. For the offline filter, a time window at each end of the filtered timeseries of the order of the inverse of the cutoff frequency should be excluded from any further analysis. For the online filter, this is only necessary at the beginning of the timeseries. 
 - This method is not tested with open boundaries. There is a fundamental causal issue with knowing the Lagrangian mean near a boundary when part of the trajectory on which it relies is outside of the domain. There are ways to approximate the solution near the open boundary to allow the code to run, (e.g. setting an open boundary condition on the Lagrangian filtered variables) but then the near-boundary region should be discarded. 
 - This package can be used to filter output from other numerical models (offline). In particular, model output that shares the same Arakawa type-C grid (such as MITgcm) can easily be manipulated into Oceananigans output format and run through the Lagrangian filter. 
