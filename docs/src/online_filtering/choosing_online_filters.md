@@ -38,7 +38,7 @@ G(t) = a_1 e^{-c_1 t}\,.
 
 ## Butterworth
 
-Instead of providing the individual parameters in `filter_params`, the user can provide ``N`` (the filter order, which should be even or 1) and ``freq_c`` (the cut-off frequency) to use a filter with frequency response 
+Instead of providing the individual parameters in `filter_params`, the user can provide ``N`` (the filter order, which should be even or 1) and `freq_c` (the cut-off frequency) to use a filter with frequency response 
 
 ```math
 \begin{equation}
