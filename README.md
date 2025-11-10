@@ -26,17 +26,30 @@ A package for offline and online filtering of simulation data from Oceananigans.
 ---
 ## 🛠️ Installation
 
-For now, you can install the package from github. With a fresh or existing julia environment activated, either 
-access the Pkg REPL and use
-```
-add https://github.com/loisbaker/OceananigansLagrangianFilter.jl.git
+To install OceananigansLagrangianFilter, run the following in the Julia REPL:
+
+```julia
+using Pkg
+Pkg.add("OceananigansLagrangianFilter")
 ```
 
-or in julia:
+Or, in Pkg mode (by pressing ]):
+
+```
+pkg> add OceananigansLagrangianFilter
+```
+
+To install the dev version:
+
 ```julia
 using Pkg
 Pkg.add(url = "https://github.com/loisbaker/OceananigansLagrangianFilter.jl.git")
+```
 
+Or, in Pkg mode (by pressing ]):
+
+```
+add https://github.com/loisbaker/OceananigansLagrangianFilter.jl.git
 ```
 
 ---
