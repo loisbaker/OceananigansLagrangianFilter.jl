@@ -3,7 +3,7 @@
 
 [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://loisbaker.github.io/OceananigansLagrangianFilter.jl/dev)
 
-A package for offline and online filtering of simulation data from Oceananigans.jl. 
+A set of tools to perform online or offline Lagrangian filtering on Oceananigans.jl simulation output.
 
 ---
 ## 📄 Overview
@@ -110,4 +110,4 @@ If you encounter any issues, questions, or requests for functionality, it would 
 ## 📜 License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
+
