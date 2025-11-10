@@ -1,6 +1,6 @@
 name = "OceananigansLagrangianFilter"
 uuid = "3a2ee588-b56c-4451-ba19-103f511bcf00"
-authors = ["lbaker "]
+authors = ["Lois Baker"]
 version = "0.1.0"
 
 [deps]
