@@ -15,6 +15,9 @@ where ``G(t)`` is some weight function, also referred to as a *filter kernel* or
 
 The Eulerian mean ``\bar{f}^{\mathrm{E}}(\vb*{x},t)`` is the field found by taking an average in time at a fixed spatial location ``\vb*{x}``. 
 
+Note that OceananigansLagrangianFilter can also be used to find the Eulerian mean. Two different ways to do this are described in [helpful tips](@ref "Helpful tips").
+
+
 ## Lagrangian averaging
 In contrast, the Lagrangian mean finds the temporal average whilst moving with the flow on an (imaginary) fluid particle. We define the Lagrangian weighted temporal mean as 
 ```math
