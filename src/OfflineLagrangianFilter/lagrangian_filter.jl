@@ -5,7 +5,7 @@ using Oceananigans.Architectures: AbstractArchitecture
 using Oceananigans.DistributedComputations: Distributed
 using Oceananigans.Advection: Centered, adapt_advection_order
 using Oceananigans.BoundaryConditions: regularize_field_boundary_conditions
-using Oceananigans.Fields: Field, tracernames, VelocityFields, TracerFields, CenterField
+using Oceananigans.Fields: Field, tracernames, VelocityFields, TracerFields, CenterField, location
 using Oceananigans.Forcings: model_forcing
 using Oceananigans.Grids: inflate_halo_size, with_halo, architecture
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
@@ -129,6 +129,17 @@ function LagrangianFilter(; grid,
 
     # Ensure `closure` describes all tracers
     closure = with_tracers(tracernames(tracers), closure)
+
+    # If grid has been inflated (e.g. to accommodate different advection scheme to original data), the auxiliary_fields
+    # are not automatically updated to reflect this, so we do this here
+    auxiliary_fields_update = NamedTuple()
+    for (name, field) in pairs(auxiliary_fields)
+        loc = location(field)
+        new_field = Field((loc[1](), loc[2](), loc[3]()), grid)
+        set!(new_field, field)
+        auxiliary_fields_update = merge(auxiliary_fields_update, (;(name => new_field)))
+    end        
+    auxiliary_fields = auxiliary_fields_update     
 
     # Either check grid-correctness, or construct tuples of fields
     velocities         = VelocityFields(velocities, grid, boundary_conditions)
