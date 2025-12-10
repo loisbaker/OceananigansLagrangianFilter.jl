@@ -87,6 +87,23 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
 
+            # It's possible the file doesn't contain some of the filtered variables - for example the user might have defined their own outputs. 
+            # Let's check and only try to copy the variables that exist in the forward file
+            forward_file_all_names = keys(forward_file["timeseries"])
+            missing_var_names = [var for var in filtered_var_names if !(var in forward_file_all_names)]
+            missing_vel_names = [var for var in filtered_vel_names if !(var in forward_file_all_names)]
+            
+            if length(missing_var_names) > 0
+                @warn "The following filtered variable names were not found in the forward output file and will be skipped: $(missing_var_names)"
+            end
+            if length(missing_vel_names) > 0
+                @warn "The following filtered velocity names were not found in the forward output file and will be skipped: $(missing_vel_names)"
+            end
+
+            filtered_var_names = Tuple([var for var in filtered_var_names if var in forward_file_all_names])
+            filtered_vel_names = Tuple([var for var in filtered_vel_names if var in forward_file_all_names])
+
+
             # First copy the forward file metadata and file structure
             if config.output_original_data
                 names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...)
