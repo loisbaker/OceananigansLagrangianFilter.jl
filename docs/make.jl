@@ -50,7 +50,7 @@ mathengine = MathJax3(Dict(
 ))
 
 format = Documenter.HTML(collapselevel = 1,
-                          repolink = "https://loisbaker.github.io/OceananigansLagrangianFilter.jl",
+                          repolink = "https://github.com/loisbaker/OceananigansLagrangianFilter.jl",
                         # canonical = "https://loisbaker.github.io/OceananigansLagrangianFilter/stable/")
                            mathengine = mathengine)
                         #  size_threshold = 2^20,
