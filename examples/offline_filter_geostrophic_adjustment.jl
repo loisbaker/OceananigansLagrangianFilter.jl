@@ -51,7 +51,7 @@ closure = (horizontal_closure, vertical_closure);
 tracers = (:b,:T)
 
 # ### Define the model
-model =  NonhydrostaticModel(; grid,
+model =  NonhydrostaticModel(grid;
                 coriolis = FPlane(f = f),
                 buoyancy = BuoyancyTracer(),
                 tracers = tracers,

@@ -33,7 +33,7 @@ gravitational_acceleration = 1/Fr^2
 coriolis = FPlane(f=1/Ro)
 
 # ### Define the model
-model = ShallowWaterModel(; grid, coriolis, gravitational_acceleration,
+model = ShallowWaterModel(grid; coriolis, gravitational_acceleration,
                             timestepper = :RungeKutta3,
                             tracers= (:T,),
                             momentum_advection = WENO())

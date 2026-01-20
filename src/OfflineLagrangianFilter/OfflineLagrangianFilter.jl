@@ -20,7 +20,9 @@ using Oceananigans.Architectures
 
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale, AbstractAdvectionScheme
+import Oceananigans.Simulations:timestepper
 using ..OceananigansLagrangianFilter: AbstractConfig
+import Oceananigans.OutputWriters: default_included_properties
 
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
@@ -28,6 +30,9 @@ using ..Utils
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
+include("lagrangian_filter_rk3_substep.jl")
+include("lagrangian_filter_ab2_step.jl")
+include("cache_lagrangian_filter_tendencies.jl")
 include("compute_lagrangian_filter_buffer_tendencies.jl")
 include("compute_lagrangian_filter_tendencies.jl")
 include("lagrangian_filter_tendency_kernel_functions.jl")
@@ -63,6 +68,8 @@ Return a flattened `NamedTuple` of the prognostic fields associated with `Lagran
 """
 prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.tracers)
 
+# Extend default_included_properties to include grid in LagrangianFilter outputs
+default_included_properties(::LagrangianFilter) = [:grid]
 
 ##### Define a config structure
 

@@ -4,9 +4,7 @@ using Oceananigans.Grids: AbstractGrid
 using NCDatasets
 
 
-# Python import to use the LinearNDInterpolator for regridding
-using CondaPkg
-using PythonCall
+
 const scipy_interpolate = PythonCall.pynew()
 const numpy = PythonCall.pynew()
 function __init__()
@@ -113,7 +111,6 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
 
             # There might be some extra variables provided to copy too
             names_to_copy = Tuple(unique((names_to_copy..., extra_original_data_names...)))
-
             copy_file_metadata!(forward_file, combined_file, names_to_copy)
 
             forward_iterations = parse.(Int, keys(forward_file["timeseries/t"]))
@@ -261,9 +258,9 @@ function _create_coords(grid::AbstractGrid)
         if coord !== nothing
             coord_dict[String(coord_name)] = parent(coord)
             if coord_name == :x
-                coord_dict["x_mesh"] = parent(coord) .+ zeros(full_grid_size)
+                coord_dict["x_mesh"] = reshape(parent(coord),length(parent(coord)),1,1) .+ zeros(full_grid_size)
             elseif coord_name == :y
-                coord_dict["y_mesh"] = parent(coord)' .+ zeros(full_grid_size)
+                coord_dict["y_mesh"] = reshape(parent(coord),1,length(parent(coord)),1) .+ zeros(full_grid_size)
             elseif coord_name == :z
                 coord_dict["z_mesh"] = reshape(parent(coord),1,1,length(parent(coord))) .+ zeros(full_grid_size)
             end

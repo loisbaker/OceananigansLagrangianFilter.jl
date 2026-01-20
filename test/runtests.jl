@@ -1,5 +1,6 @@
 # Some basic tests for OceananigansLagrangianFilter
 using Test
+using PythonCall
 using Oceananigans.Units
 using OceananigansLagrangianFilter
 

@@ -44,7 +44,7 @@ function run_offline_Lagrangian_filter(config)
     @info "Created forcing for filtered variables"
 
     # Define model 
-    model = LagrangianFilter(;config.grid, tracers = filtered_vars, auxiliary_fields = original_vars, forcing = forcing, advection=config.advection)
+    model = LagrangianFilter(config.grid; tracers = filtered_vars, auxiliary_fields = original_vars, forcing = forcing, advection=config.advection)
     @info "Created model"
 
     # We can set initial values to improve the spinup, use the limit freq_c -> \infty

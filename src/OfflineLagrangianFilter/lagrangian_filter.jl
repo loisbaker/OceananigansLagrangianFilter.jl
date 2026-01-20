@@ -1,6 +1,3 @@
-#using CUDA: has_cuda
-#using OrderedCollections: OrderedDict
-
 using Oceananigans.Architectures: AbstractArchitecture
 using Oceananigans.DistributedComputations: Distributed
 using Oceananigans.Advection: Centered, adapt_advection_order
@@ -11,12 +8,12 @@ using Oceananigans.Grids: inflate_halo_size, with_halo, architecture
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Models: AbstractModel, NaNChecker, extract_boundary_conditions
 using Oceananigans.TimeSteppers: Clock, TimeStepper, update_state!
-using Oceananigans.TurbulenceClosures: validate_closure, with_tracers, build_diffusivity_fields, time_discretization, implicit_diffusion_solver
+using Oceananigans.TurbulenceClosures: validate_closure, with_tracers, build_closure_fields, time_discretization, implicit_diffusion_solver
 using Oceananigans.TurbulenceClosures.TKEBasedVerticalDiffusivities: FlavorOfCATKE
 using Oceananigans.Utils: tupleit
 using Oceananigans.Grids: topology
 import Oceananigans.Architectures: architecture
-import Oceananigans.Models: total_velocities, default_nan_checker, timestepper
+import Oceananigans.Models: total_velocities
 
 
 
@@ -32,13 +29,13 @@ mutable struct LagrangianFilter{TS, E, A<:AbstractArchitecture, G, T, U, C, F,
             buoyancy  :: B        # Defunct buoyancy
            velocities :: U        # Container for velocity fields `u`, `v`, and `w`
               tracers :: C        # Container for tracer fields
-   diffusivity_fields :: K        # Container for turbulent diffusivities
+       closure_fields :: K        # Container for turbulent diffusivities
           timestepper :: TS       # Object containing timestepper fields and parameters
      auxiliary_fields :: AF       # User-specified auxiliary fields for forcing functions and boundary conditions
 end
 
 """
-    LagrangianFilter(;           grid,
+    LagrangianFilter(grid;           
                                     clock = Clock{eltype(grid)}(time = 0),
                                 advection = Centered(),
                       forcing::NamedTuple = NamedTuple(),
@@ -47,18 +44,20 @@ end
                                   tracers = (),
                               timestepper = :RungeKutta3,
                                velocities = nothing,
-                       diffusivity_fields = nothing,
+                           closure_fields = nothing,
                          auxiliary_fields = NamedTuple())
 
 By default, all Bounded directions are rigid and impenetrable.
 
-Keyword arguments
-=================
-
-  - `grid`: (required) The resolution and discrete geometry on which the `model` is solved. The
+Arguments
+==========
+- `grid`: (required) The resolution and discrete geometry on which the `model` is solved. The
             architecture (CPU/GPU) that the model is solved on is inferred from the architecture
             of the `grid`. Note that the grid needs to be regularly spaced in the horizontal
             dimensions, ``x`` and ``y``.
+
+Keyword arguments
+=================
   - `advection`: The scheme that advects velocities and tracers. See `Oceananigans.Advection`.
   - `forcing`: `NamedTuple` of user-defined forcing functions that contribute to solution tendencies.
   - `closure`: The turbulence closure for `model`. See `Oceananigans.TurbulenceClosures`.
@@ -68,12 +67,12 @@ Keyword arguments
   - `timestepper`: A symbol that specifies the time-stepping method. Either `:QuasiAdamsBashforth2` or
                    `:RungeKutta3` (default).
   - `velocities`: The model velocities. Default: `nothing`.
-  - `diffusivity_fields`: Diffusivity fields. Default: `nothing`.
+  - `closure_fields`: Diffusivity fields. Default: `nothing`.
   - `auxiliary_fields`: `NamedTuple` of auxiliary fields. Default: `nothing`         
 """
 
 
-function LagrangianFilter(; grid,
+function LagrangianFilter(grid;
                             clock = Clock{eltype(grid)}(time = 0),
                             advection = Centered(),
                             forcing::NamedTuple = NamedTuple(),
@@ -82,7 +81,7 @@ function LagrangianFilter(; grid,
                             tracers = (),
                             timestepper = :RungeKutta3,
                             velocities = nothing,
-                            diffusivity_fields = nothing,
+                            closure_fields = nothing,
                             auxiliary_fields = NamedTuple())
 
     arch = architecture(grid)
@@ -110,12 +109,12 @@ function LagrangianFilter(; grid,
     # auxiliary fields. Boundary conditions are "regularized" based on the _name_ of the field:
     # boundary conditions on u, v, w are regularized assuming they represent momentum at appropriate
     # staggered locations. All other fields are regularized assuming they are tracers.
-    # Note that we do not regularize boundary conditions contained in *tupled* diffusivity fields right now.
+    # Note that we do not regularize boundary conditions contained in *tupled* closure fields right now.
 
     # First, we extract boundary conditions that are embedded within any _user-specified_ field tuples:
     embedded_boundary_conditions = merge(extract_boundary_conditions(velocities),
                                          extract_boundary_conditions(tracers),
-                                         extract_boundary_conditions(diffusivity_fields))
+                                         extract_boundary_conditions(closure_fields))
 
     # Next, we form a list of default boundary conditions:
     prognostic_field_names = (:u, :v, :w, tracernames(tracers)..., keys(auxiliary_fields)...)
@@ -144,7 +143,7 @@ function LagrangianFilter(; grid,
     # Either check grid-correctness, or construct tuples of fields
     velocities         = VelocityFields(velocities, grid, boundary_conditions)
     tracers            = TracerFields(tracers,      grid, boundary_conditions)
-    diffusivity_fields = build_diffusivity_fields(diffusivity_fields, grid, clock, tracernames(tracers), boundary_conditions, closure)
+    closure_fields = build_closure_fields(closure_fields, grid, clock, tracernames(tracers), boundary_conditions, closure)
     buoyancy = nothing                                                                    
     model_fields = merge(velocities, tracers, auxiliary_fields)
     prognostic_fields = merge(velocities, tracers)
@@ -153,12 +152,12 @@ function LagrangianFilter(; grid,
     implicit_solver = implicit_diffusion_solver(time_discretization(closure), grid)
     timestepper = TimeStepper(timestepper, grid, prognostic_fields; implicit_solver=implicit_solver)
 
-    # Regularize forcing for model tracer and velocity fields.
-    forcing = model_forcing(model_fields; forcing...)
+    # Materialize forcing for model tracer and velocity fields.
+    forcing = model_forcing(forcing, model_fields, prognostic_fields)
 
     model = LagrangianFilter(arch, grid, clock, advection,
                               forcing, closure, buoyancy, velocities, tracers,
-                              diffusivity_fields, timestepper, auxiliary_fields)
+                              closure_fields, timestepper, auxiliary_fields)
 
     update_state!(model; compute_tendencies = false)
     

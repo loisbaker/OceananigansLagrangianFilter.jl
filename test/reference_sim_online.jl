@@ -56,7 +56,7 @@ vertical_closure = VerticalScalarDiffusivity(ν=1e-6 , κ=merge((T=1e-6, b= 1e-6
 closure = (horizontal_closure, vertical_closure);
 
 # Define the model
-model =  NonhydrostaticModel(; grid,
+model =  NonhydrostaticModel(grid;
                 coriolis = FPlane(f = f),
                 buoyancy = BuoyancyTracer(),
                 tracers = tracers,

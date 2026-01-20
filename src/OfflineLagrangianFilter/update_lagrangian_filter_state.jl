@@ -38,7 +38,7 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
 
     # Calculate diffusivities 
     @apply_regionally compute_auxiliaries!(model)
-    fill_halo_regions!(model.diffusivity_fields; only_local_halos = true)
+    fill_halo_regions!(model.closure_fields; only_local_halos = true)
     
     for callback in callbacks
         callback.callsite isa UpdateStateCallsite && callback(model)
@@ -53,7 +53,7 @@ end
 function compute_auxiliaries!(model::LagrangianFilter; κ_parameters = tuple(:xyz)) 
 
     closure = model.closure
-    diffusivity = model.diffusivity_fields
+    diffusivity = model.closure_fields
 
     for κpar in κ_parameters
         compute_diffusivities!(diffusivity, closure, model; parameters = κpar)

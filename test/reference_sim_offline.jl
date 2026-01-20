@@ -26,7 +26,7 @@ grid = RectilinearGrid(CPU(),size = (Nx, Nz),
 tracers = (:b,)
 
 # ### Define the model
-model =  NonhydrostaticModel(; grid,
+model =  NonhydrostaticModel(grid;
                 coriolis = FPlane(f = f),
                 buoyancy = BuoyancyTracer(),
                 tracers = tracers,

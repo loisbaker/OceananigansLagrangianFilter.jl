@@ -1,5 +1,8 @@
 module Utils
 
+using CondaPkg
+using PythonCall
+
 using OceananigansLagrangianFilter: AbstractConfig
 using JLD2
 using JLD2: Group
