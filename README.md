@@ -99,7 +99,7 @@ There's lots of documentation, examples, and explanation of the methods availabl
 ---
 ## 💻 Contributing
 
-We welcome contributions! 
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 ## 🤝 Support

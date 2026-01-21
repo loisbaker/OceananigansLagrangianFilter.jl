@@ -1,7 +1,7 @@
 name = "OceananigansLagrangianFilter"
 uuid = "3a2ee588-b56c-4451-ba19-103f511bcf00"
 authors = ["Lois Baker"]
-version = "0.1.0"
+version = "0.1.0-DEV"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -25,7 +25,7 @@ DocStringExtensions = "0.8, 0.9"
 JLD2 = "0.4, 0.5, 0.6"
 KernelAbstractions = "0.9.21"
 NCDatasets = "0.12.10, 0.13.1, 0.14"
-Oceananigans = "0.98 - 0.104"
+Oceananigans = "0.104"
 PythonCall = "0.9"
 Reexport = "1"
 julia = "1.10"
