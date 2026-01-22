@@ -105,4 +105,5 @@ makedocs(; sitename="OceananigansLagrangianFilter.jl",
       
 deploydocs(
     repo = "github.com/loisbaker/OceananigansLagrangianFilter.jl.git",
+    versions = ["stable" => "v^", "dev" => "dev", "v#.#.#"],
 )

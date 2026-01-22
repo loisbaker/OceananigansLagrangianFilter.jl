@@ -1,7 +1,7 @@
 name = "OceananigansLagrangianFilter"
 uuid = "3a2ee588-b56c-4451-ba19-103f511bcf00"
 authors = ["Lois Baker"]
-version = "0.1.0-DEV"
+version = "0.1.1-DEV"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
