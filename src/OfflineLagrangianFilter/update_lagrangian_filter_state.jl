@@ -14,7 +14,7 @@ import Oceananigans.TimeSteppers: update_state!
 Update peripheral aspects of the model (halo regions, diffusivities) to the current model state. If `callbacks` are provided (in an array),
 they are called in the end.
 """
-function update_state!(model::LagrangianFilter, callbacks=[])
+function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies = true)
     
     # Mask immersed tracers
     foreach(model.tracers) do tracer
@@ -44,7 +44,8 @@ function update_state!(model::LagrangianFilter, callbacks=[])
         callback.callsite isa UpdateStateCallsite && callback(model)
     end
 
-    compute_tendencies!(model, callbacks)
+    # Keep functionality here to not compute tendencies when set is called if needed
+    compute_tendencies && compute_tendencies!(model, callbacks)
 
     return nothing
 end

@@ -44,7 +44,7 @@ function set!(model::LagrangianFilter; kwargs...)
     # Apply a mask
     foreach(mask_immersed_field!, model.tracers)
     foreach(mask_immersed_field!, model.velocities)
-    #update_state!(model)
+    
     update_state!(model; compute_tendencies = false)
 
     return nothing

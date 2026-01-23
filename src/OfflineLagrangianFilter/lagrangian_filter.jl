@@ -158,7 +158,7 @@ function LagrangianFilter(grid;
     model = LagrangianFilter(arch, grid, clock, advection,
                               forcing, closure, buoyancy, velocities, tracers,
                               closure_fields, timestepper, auxiliary_fields)
-    #update_state!(model)
+    
     update_state!(model; compute_tendencies = false)
     
     return model
