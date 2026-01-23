@@ -117,14 +117,14 @@ function LagrangianFilter(grid;
                                          extract_boundary_conditions(closure_fields))
 
     # Next, we form a list of default boundary conditions:
-    prognostic_field_names = (:u, :v, :w, tracernames(tracers)..., keys(auxiliary_fields)...)
-    default_boundary_conditions = NamedTuple{prognostic_field_names}(FieldBoundaryConditions()
-                                                                     for name in prognostic_field_names)
+    field_names = (:u, :v, :w, tracernames(tracers)..., keys(auxiliary_fields)...)
+    default_boundary_conditions = NamedTuple{field_names}(FieldBoundaryConditions()
+                                                                     for name in field_names)
 
     # Finally, we merge specified, embedded, and default boundary conditions. Specified boundary conditions
     # have precedence, followed by embedded, followed by default.
     boundary_conditions = merge(default_boundary_conditions, embedded_boundary_conditions, boundary_conditions)
-    boundary_conditions = regularize_field_boundary_conditions(boundary_conditions, grid, prognostic_field_names)
+    boundary_conditions = regularize_field_boundary_conditions(boundary_conditions, grid, field_names)
 
     # Ensure `closure` describes all tracers
     closure = with_tracers(tracernames(tracers), closure)
@@ -150,7 +150,7 @@ function LagrangianFilter(grid;
 
     # Instantiate timestepper if not already instantiated
     implicit_solver = implicit_diffusion_solver(time_discretization(closure), grid)
-    timestepper = TimeStepper(timestepper, grid, prognostic_fields; implicit_solver=implicit_solver)
+    timestepper = TimeStepper(timestepper, grid, prognostic_fields; implicit_solver)
 
     # Materialize forcing for model tracer and velocity fields.
     forcing = model_forcing(forcing, model_fields, prognostic_fields)
@@ -158,13 +158,14 @@ function LagrangianFilter(grid;
     model = LagrangianFilter(arch, grid, clock, advection,
                               forcing, closure, buoyancy, velocities, tracers,
                               closure_fields, timestepper, auxiliary_fields)
-
+    #update_state!(model)
     update_state!(model; compute_tendencies = false)
     
     return model
 end
 
 architecture(model::LagrangianFilter) = model.architecture
+timestepper(model::LagrangianFilter) = model.timestepper
 
 function inflate_grid_halo_size(grid, tendency_terms...)
     user_halo = grid.Hx, grid.Hy, grid.Hz

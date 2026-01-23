@@ -14,11 +14,11 @@ import Oceananigans.TimeSteppers: update_state!
 Update peripheral aspects of the model (halo regions, diffusivities) to the current model state. If `callbacks` are provided (in an array),
 they are called in the end.
 """
-function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies = true)
+function update_state!(model::LagrangianFilter, callbacks=[])
     
     # Mask immersed tracers
     foreach(model.tracers) do tracer
-        @apply_regionally mask_immersed_field!(tracer)
+        mask_immersed_field!(tracer)
     end
 
     # Update all FieldTimeSeries used in the model
@@ -29,7 +29,7 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
 
     # Fill halos for velocities and tracers
     fill_halo_regions!(merge(model.velocities, model.tracers), model.clock, fields(model); 
-                       fill_boundary_normal_velocities = false, async = true)
+                       fill_open_bcs = false, async = true)
 
     # Compute auxiliary fields
     for aux_field in model.auxiliary_fields
@@ -37,26 +37,25 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
     end
 
     # Calculate diffusivities 
-    @apply_regionally compute_auxiliaries!(model)
+    compute_auxiliaries!(model)
     fill_halo_regions!(model.closure_fields; only_local_halos = true)
     
     for callback in callbacks
         callback.callsite isa UpdateStateCallsite && callback(model)
     end
 
-    compute_tendencies && 
-        @apply_regionally compute_tendencies!(model, callbacks)
+    compute_tendencies!(model, callbacks)
 
     return nothing
 end
 
-function compute_auxiliaries!(model::LagrangianFilter; κ_parameters = tuple(:xyz)) 
+function compute_auxiliaries!(model::LagrangianFilter; κ_parameters = :xyz) 
 
     closure = model.closure
     diffusivity = model.closure_fields
 
-    for κpar in κ_parameters
-        compute_diffusivities!(diffusivity, closure, model; parameters = κpar)
-    end
+    # Compute diffusivities
+    compute_diffusivities!(diffusivity, closure, model; parameters = κ_parameters)
+
     return nothing
 end

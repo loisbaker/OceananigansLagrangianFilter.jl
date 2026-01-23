@@ -82,7 +82,7 @@ function compute_interior_tendency_contributions!(model, kernel_parameters; acti
                      clock, forcing)
 
         launch!(arch, grid, kernel_parameters, compute_Gc!, 
-                c_tendency, grid, active_cells_map, args;
+                c_tendency, grid, args;
                 active_cells_map)
     end
 
@@ -94,16 +94,11 @@ end
 #####
 
 """ Calculate the right-hand-side of the tracer advection-diffusion equation. """
-@kernel function compute_Gc!(Gc, grid, ::Nothing, args)
+@kernel function compute_Gc!(Gc, grid, args)
     i, j, k = @index(Global, NTuple)
     @inbounds Gc[i, j, k] = tracer_tendency(i, j, k, grid, args...)
 end
 
-@kernel function compute_Gc!(Gc, grid, interior_map, args) 
-    idx = @index(Global, Linear)
-    i, j, k = active_linear_index_to_tuple(idx, interior_map)
-    @inbounds Gc[i, j, k] = tracer_tendency(i, j, k, grid, args...)
-end
 
 #####
 ##### Boundary contributions to tendencies due to user-prescribed fluxes

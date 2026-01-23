@@ -1,6 +1,5 @@
 using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Oceananigans.TimeSteppers: update_state!
-
 import Oceananigans.Fields: set!
 
 """
@@ -12,6 +11,21 @@ fields of `model.velocities` or `model.tracers`, and the `data` may be an array,
 a function with arguments `(x, y, z)`, or any data type for which a
 `set!(ϕ::AbstractField, data)` function exists.
 
+Example
+=======
+```@example
+using OceananigansLagrangianFilter
+using OceananigansLagrangianFilter: LagrangianFilter
+grid = RectilinearGrid(size=(16, 16, 16), extent=(1, 1, 1))
+model = LagrangianFilter(grid, tracers=:T)
+
+T₀ = rand(size(model.grid)...)
+T₀[T₀ .< 0.5] .= 0
+
+set!(model, T=T₀)
+
+model.tracers.T
+```
 """
 function set!(model::LagrangianFilter; kwargs...)
     for (fldname, value) in kwargs
@@ -30,6 +44,7 @@ function set!(model::LagrangianFilter; kwargs...)
     # Apply a mask
     foreach(mask_immersed_field!, model.tracers)
     foreach(mask_immersed_field!, model.velocities)
+    #update_state!(model)
     update_state!(model; compute_tendencies = false)
 
     return nothing

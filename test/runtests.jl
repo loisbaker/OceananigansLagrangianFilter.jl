@@ -85,8 +85,8 @@ end
     @test u_test.grid == u_ref.grid
 
     # Remove test files
-    rm("data/test_offline_output.jld2", force=true)
-    rm("data/test_offline_output.nc", force=true)
+    # rm("data/test_offline_output.jld2", force=true)
+    # rm("data/test_offline_output.nc", force=true)
 
 end
 
@@ -247,6 +247,6 @@ end
 
 
     # Remove test files
-    rm("data/test_online_output.jld2", force=true)
-    rm("data/test_online_output.nc", force=true)
+    # rm("data/test_online_output.jld2", force=true)
+    # rm("data/test_online_output.nc", force=true)
 end

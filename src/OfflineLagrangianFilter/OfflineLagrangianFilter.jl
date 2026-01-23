@@ -11,7 +11,7 @@ using JLD2
 
 using Oceananigans.DistributedComputations
 using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
-using Oceananigans.Grids: XYRegularRG, XZRegularRG, YZRegularRG, XYZRegularRG
+using Oceananigans.Grids: XYZRegularRG
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
 using Oceananigans.OutputReaders: AbstractInMemoryBackend
