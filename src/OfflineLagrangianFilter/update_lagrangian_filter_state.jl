@@ -44,7 +44,9 @@ function update_state!(model::LagrangianFilter, callbacks=[]; compute_tendencies
         callback.callsite isa UpdateStateCallsite && callback(model)
     end
 
-    # Keep functionality here to not compute tendencies when set is called if needed
+    # Keep functionality here to not compute tendencies when set is called if needed. 
+    # This allows the `update_input_data!` callback to use `set!`` (which calls `update_state!` without the callback) 
+    # without recomputing tendencies each time (for them just to be recomputed here again).
     compute_tendencies && compute_tendencies!(model, callbacks)
 
     return nothing

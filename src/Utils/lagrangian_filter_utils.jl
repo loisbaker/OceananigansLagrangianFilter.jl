@@ -840,11 +840,11 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
 end
 
 """
-    update_input_data!(sim::Simulation, input_data::NamedTuple)
+    update_input_data!(model::AbstractModel, input_data::NamedTuple)
 
 Updates the velocity and auxiliary fields of a simulation at the current
 simulation time `t`. This function is designed to be used as a callback in an
-Oceananigans `Simulation`.
+Oceananigans `Simulation` at callsite UpdateStateCallsite().
 
 The function performs two main tasks:
 1.  **Updates velocities**: It sets the `u`, `v`, and `w` velocity fields of
@@ -857,15 +857,14 @@ The function performs two main tasks:
 Arguments
 =========
 
-- `sim`: The `Simulation` object.
+- `model`: The model.
 - `input_data`: A `NamedTuple` containing `velocity_data` and `var_data`,
   where each field is a `Tuple` of `FieldTimeSeries` objects.
 """
-function update_input_data!(sim::Simulation, input_data::NamedTuple)
+function update_input_data!(model::AbstractModel, input_data::NamedTuple)
     velocity_timeseries = input_data.velocity_data
     original_var_timeseries = input_data.var_data
-    model = sim.model
-    t = sim.model.clock.time
+    t = model.clock.time
     
     # Update the velocities
     kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)

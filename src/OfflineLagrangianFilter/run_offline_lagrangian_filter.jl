@@ -60,8 +60,9 @@ function run_offline_Lagrangian_filter(config)
     simulation = Simulation(model, Δt = config.Δt, stop_time = config.T) 
     @info "Defined simulation"
 
-    # Tell the simulation to use the saved data
-    simulation.callbacks[:update_input_data] = Callback(update_input_data!, parameters = input_data)
+    # Tell the simulation to use the saved data.
+    # Use UpdateStateCallsite so that velocities are updated at each substep if using multi-stage time steppers.
+    simulation.callbacks[:update_input_data] = Callback(update_input_data!, callsite = UpdateStateCallsite(), parameters = input_data)
 
     # Add a progress monitor
     function progress(sim)

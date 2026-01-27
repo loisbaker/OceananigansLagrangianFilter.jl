@@ -5,16 +5,16 @@ import Oceananigans.TimeSteppers: rk3_substep!
     rk3_substep!(model::LagrangianFilter, Δt, γ, ζ, callbacks)
 
 Perform a single RK3 substep for `LagrangianFilter` tracers without pressure correction.
-Dispatches to `pressure_correction_rk3_substep!` which advances tracers
+Dispatches to `tracer_rk3_substep!` which advances tracers
 using the RK3 coefficients as in NonhydrostaticModel, but doesn't advance velocities or correct pressure. 
 """
 rk3_substep!(model::LagrangianFilter, Δt, γ, ζ, callbacks) =
-    pressure_correction_rk3_substep!(model, Δt, γ, ζ, callbacks)
+    tracer_rk3_substep!(model, Δt, γ, ζ, callbacks)
 
 """
-    pressure_correction_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
+    tracer_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
 
-Implement a single RK3 substep with pressure correction for `NonhydrostaticModel`.
+Implement a single RK3 substep for `LagrangianFilter`.
 
 The substep advances the state as
 
@@ -28,27 +28,11 @@ where:
 After advancing velocities, a pressure Poisson equation is solved and velocities
 are corrected to satisfy the incompressibility constraint.
 """
-function pressure_correction_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
+function tracer_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
     Δτ   = stage_Δt(Δt, γⁿ, ζⁿ)
     grid = model.grid
 
     compute_flux_bc_tendencies!(model)
-
-    # We don't evolve the velocities for LagrangianFilter
-    # Velocity steps
-    # for (i, field) in enumerate(model.velocities)
-    #     kernel_args = (field, Δt, γⁿ, ζⁿ, model.timestepper.Gⁿ[i], model.timestepper.G⁻[i])
-    #     launch!(architecture(grid), grid, :xyz, _rk3_substep_field!, kernel_args...; exclude_periphery=true)
-
-    #     implicit_step!(field,
-    #                    model.timestepper.implicit_solver,
-    #                    model.closure,
-    #                    model.closure_fields,
-    #                    nothing,
-    #                    model.clock,
-    #                    fields(model),
-    #                    Δτ)
-    # end
 
     # Tracer steps
     for (i, name) in enumerate(propertynames(model.tracers))
@@ -66,9 +50,6 @@ function pressure_correction_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
                        Δτ)
     end
 
-    # We don't work with pressure for LagrangianFilter
-    # compute_pressure_correction!(model, Δτ)
-    # make_pressure_correction!(model, Δτ)
 
     return nothing
 end

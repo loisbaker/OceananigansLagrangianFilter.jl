@@ -76,3 +76,5 @@ docs/local_compile.sh
 !test/data/reference_offline_output.jld2
 !test/data/reference_online_output.jld2 
 
+# Paper
+paper/*

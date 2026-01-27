@@ -35,7 +35,7 @@ filter_config = OnlineFilterConfig( grid = grid,
                                     var_names_to_filter = ("b","T"), 
                                     velocity_names = ("u","w"),
                                     N = 1,
-                                    freq_c = f/2)
+                                    freq_c = f/4)
 
 # Create the filtered variables - these will be tracers in the model
 filtered_vars = create_filtered_vars(filter_config)
