@@ -1,4 +1,4 @@
-using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition
+using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
 using DataStructures: OrderedDict
 using Oceananigans.Grids: AbstractGrid
 using NCDatasets
@@ -238,9 +238,9 @@ Creates a dictionary of coordinate arrays and mesh grids for a given `grid` obje
 - `Dict`: A dictionary with the following keys:
     - `"full_grid_size"`: A tuple representing the dimensions of the full grid
       `(Nx + 2*Hx, Ny + 2*Hy, Nz + 2*Hz)`.
-    - `"x"`, `"y"`, `"z"`: 1D `AbstractArray`s containing the coordinates along each axis,
+    - `"x"`, `"y"`, `"z"`: 1D `AbstractArray`s containing the `Center` coordinates along each axis,
       including halos.
-    - `"x_mesh"`, `"y_mesh"`, `"z_mesh"`: 3D `AbstractArray`s representing the coordinate
+    - `"x_mesh"`, `"y_mesh"`, `"z_mesh"`: 3D `AbstractArray`s representing the `Center` coordinate
       values at every point in the full grid. These are created by broadcasting the 1D
       coordinates to the full grid size.
 """
@@ -268,6 +268,35 @@ function _create_coords(grid::AbstractGrid)
     end
     return coord_dict
 end
+
+"""
+    _mask_immersed(data::AbstractArray, grid::AbstractGrid, Immersed::Bool, buffer_dz::Int = 3)
+Applies masking to the input `data` array based on the presence of immersed boundaries in the `grid`. 
+If `Immersed` is `true`, the function masks out regions below the bottom height of the immersed boundary, 
+adding a buffer zone of `buffer_dz`*`dz` to avoid interpolation issues. RectilinearGrid is assumed.
+
+Arguments
+=========
+- `data`: An instance of `AbstractArray` containing the array to be masked
+- `grid`: An ImmersedBoundaryGrid grid object that defines the spatial dimensions and halo sizes.
+- `data_has_halos`: A `Bool` indicating whether the input `data` includes halo regions. Defaults to `true`.
+- `buffer_dz`: An `Int` specifying the number of grid cells to use as a buffer zone above the bottom height. Defaults to `3`.
+"""
+function _mask_immersed(data::AbstractArray, grid::ImmersedBoundaryGrid; fill_value::Float64 = NaN, data_has_halos::Bool = true, buffer_dz::Int = 0)
+    # If there are immersed boundaries, we'll mask out the solid regions plus a small buffer zone with NaN (for field being regridded)
+    # or 0 (for maps) to avoid bad interpolations
+    if !data_has_halos # Halos have been removed already
+        bottom_height = parent(grid.immersed_boundary.bottom_height)[grid.Hx+1:end-grid.Hx,grid.Hy+1:end-grid.Hy,:] # Remove halos
+        z3D = _remove_halos(_create_coords(grid)["z_mesh"], grid)
+        data[z3D .< bottom_height .+ buffer_dz*abs(grid.z.Δᵃᵃᶜ)] .= fill_value
+    else # Data still has halos
+        bottom_height = parent(grid.immersed_boundary.bottom_height)
+        z3D = _create_coords(grid)["z_mesh"]
+        data[z3D .< bottom_height .+ buffer_dz*abs(grid.z.Δᵃᵃᶜ)] .= fill_value
+    end
+    return data
+end
+
 
 """
     regrid_to_mean_position!(config::AbstractConfig)
@@ -325,7 +354,8 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
 
         # Check if it is an immersed boundary grid:
         if isa(grid, ImmersedBoundaryGrid)
-            @warn "Grid is an ImmersedBoundaryGrid, regridding to mean position may not be sensible"
+            @warn "Grid is an ImmersedBoundaryGrid, regridding to mean position may not be sensible. 
+            Areas below bottom height will be masked with NaNs, assuming bottom height is a function of x and/or y."
             Immersed = true
         else
             Immersed = false
@@ -343,22 +373,22 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
         bounded_dimensions = []
         if BCs.west == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"x")
-        elseif Immersed == false && !isnothing(BCs.west)
-            # We only do the fixed boundary correction if we know there's no immersed boundary and this is a non singleton dimension
+        elseif !Immersed && !isnothing(BCs.west)
+            # We only do the fixed boundary correction if we know this is a non singleton dimension
             push!(bounded_dimensions,"x")
-            @info "Assuming velocities normal to x boundaries are zero"
+            @info "Assuming velocities normal to x boundaries are zero (open boundaries not yet supported for regridding)"
         end
         if BCs.south == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"y")
-        elseif Immersed == false && !isnothing(BCs.south)   
+        elseif !Immersed && !isnothing(BCs.south)   
             push!(bounded_dimensions,"y")
-            @info "Assuming velocities normal to y boundaries are zero"
+            @info "Assuming velocities normal to y boundaries are zero (open boundaries not yet supported for regridding)"
         end
         if BCs.top == PeriodicBoundaryCondition()
             push!(periodic_dimensions,"z")
-        elseif Immersed == false && !isnothing(BCs.top)
+        elseif !Immersed && !isnothing(BCs.top)
             push!(bounded_dimensions,"z")
-            @info "Assuming velocities normal to z boundaries are zero"
+            @info "Assuming velocities normal to z boundaries are zero (open boundaries not yet supported for regridding)"
         end
         
         # First add the necessary serialized entry for each new variable
@@ -385,8 +415,11 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                     push!(true_dims, dim)
                     push!(regular_coord_mesh, coord_dict["$(dim)_mesh"])
                     if (dim == "x") && ("u" in velocity_names)
-                        Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u"*label*"/$iter"]
-
+                        if !Immersed
+                            Xi_u = coord_dict["x_mesh"] .+ file["timeseries/xi_u"*label*"/$iter"]
+                        else
+                            Xi_u = coord_dict["x_mesh"] .+ _mask_immersed(file["timeseries/xi_u"*label*"/$iter"], grid, fill_value = 0.)
+                        end
                         # Lose the halo regions (they don't help with fixed boundaries as they're zero, or with periodic as its repeated information)
                         Xi_u = _remove_halos(Xi_u,grid)
 
@@ -410,7 +443,11 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "y") && ("v" in velocity_names)
-                        Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v"*label*"/$iter"]
+                        if !Immersed
+                            Xi_v =  coord_dict["y_mesh"] .+ file["timeseries/xi_v"*label*"/$iter"]
+                        else
+                            Xi_v =  coord_dict["y_mesh"] .+ _mask_immersed(file["timeseries/xi_v"*label*"/$iter"], grid, fill_value = 0.)
+                        end
 
                         # Lose the halo regions 
                         Xi_v = _remove_halos(Xi_v,grid)
@@ -433,7 +470,11 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                         push!(Xi_list,vec(indices_array))
 
                     elseif (dim == "z") && ("w" in velocity_names)
-                        Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w"*label*"/$iter"]
+                        if !Immersed
+                            Xi_w = coord_dict["z_mesh"] .+ file["timeseries/xi_w"*label*"/$iter"]
+                        else
+                            Xi_w = coord_dict["z_mesh"] .+ _mask_immersed(file["timeseries/xi_w"*label*"/$iter"], grid, fill_value = 0.)
+                        end
 
                         # Lose the halo regions 
                         Xi_w = _remove_halos(Xi_w,grid)
@@ -464,8 +505,12 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
             # Now we do some padding on the periodic dimensions, introducing new elements to the list near the periodic boundaries
             # First construct a matrix that contains the coordinates and the fields to interpolate
             for var in var_names_to_regrid
-                var_data = file["timeseries/$var/$iter"]
-
+                if !Immersed
+                    var_data = file["timeseries/$var/$iter"]
+                else
+                    var_data = _mask_immersed(file["timeseries/$var/$iter"], grid, fill_value = NaN)
+                end
+                
                 # Lose the halo regions 
                 var_data = _remove_halos(var_data,grid)
 
