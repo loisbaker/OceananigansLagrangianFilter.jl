@@ -613,12 +613,26 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
             coords = data_array[:,1:2:2*n_true_dims] # The first columns are the coordinates and indices, just take the coordinates
             var_data = data_array[:,(2*n_true_dims+1):end] # The rest is the data
             
+            # Normalisation to help with interpolation stability. Delaunay triangulation can struggle with very different scales in 
+            # different dimensions (e.g. x - z slice of ocean).
+            coord_mins = minimum(coords, dims=1)
+            coord_maxs = maximum(coords, dims=1)
+            coord_ranges = coord_maxs .- coord_mins
+            coords_norm = (coords .- coord_mins) ./ coord_ranges
+            
+            regular_coord_mesh_norm = []
+            for (i, mesh) in enumerate(regular_coord_mesh)
+                norm_mesh = mesh .-coord_mins[i]
+                norm_mesh = norm_mesh ./coord_ranges[i]
+                push!(regular_coord_mesh_norm, norm_mesh)
+            end
+
             for (ivar,var) in enumerate(var_names_to_regrid)    
                 
                 # This is the main interpolation
                 values = var_data[:,ivar]
-                interpolator = scipy_interpolate.LinearNDInterpolator(coords, values)
-                interp_data = pyconvert(Array,interpolator(regular_coord_mesh...))
+                interpolator = scipy_interpolate.LinearNDInterpolator(coords_norm, values)
+                interp_data = pyconvert(Array,interpolator(regular_coord_mesh_norm...))
 
                 # We already dealt with the periodic boundaries with padding, but we now make sure
                 # that the interpolation is accurate at fixed boundaries by doing an interpolation 
@@ -643,8 +657,14 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                         coords_cut = data_array_cut[:,1:2:2*(n_true_dims-1)] # The first columns are the coordinates and indices, just take the coordinates
                         values_cut = data_array_cut[:,2*(n_true_dims-1)+ivar] # The rest is the data
                         
+                        # Normalise coords_cut for interpolation stability
+                        coord_mins_cut = minimum(coords_cut, dims=1)
+                        coord_maxs_cut = maximum(coords_cut, dims=1)
+                        coord_ranges_cut = coord_maxs_cut .- coord_mins_cut
+                        coords_cut_norm = (coords_cut .- coord_mins_cut) ./ coord_ranges_cut
                         if bounded_dim == "x"
                             if n_true_dims == 2
+                                # No need to normalise coords_cut as we are only doing 1D interpolation here
                                 if "y" in true_dims
                                     mesh = coord_dict["y_mesh"][edge_index_with_halos,:,1]
                                     interp_data[edge_index_with_halos,:,1] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
@@ -656,10 +676,13 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                                 end
                                 
                             elseif n_true_dims == 3
+                                # Need to normalise for interpolation stability
                                 y_mesh = coord_dict["y_mesh"][edge_index_with_halos,:,:]
                                 z_mesh = coord_dict["z_mesh"][edge_index_with_halos,:,:]
-                                meshes = (y_mesh,z_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                y_mesh_norm = (y_mesh .- coord_mins_cut[2]) ./ coord_ranges_cut[2]
+                                z_mesh_norm = (z_mesh .- coord_mins_cut[3]) ./ coord_ranges_cut[3]
+                                meshes = (y_mesh_norm,z_mesh_norm)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut_norm, values_cut)
                                 interp_data[edge_index_with_halos,:,:] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
@@ -667,6 +690,7 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
             
                         elseif bounded_dim =="y"
                             if n_true_dims == 2
+                                # No need to normalise coords_cut as we are only doing 1D interpolation here
                                 if "x" in true_dims
                                     mesh = coord_dict["x_mesh"][:,edge_index_with_halos,1]
                                     interp_data[:,edge_index_with_halos,1] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))
@@ -679,16 +703,20 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                                 
                                 
                             elseif n_true_dims == 3
+                                # Need to normalise for interpolation stability
                                 x_mesh = coord_dict["x_mesh"][:,edge_index_with_halos,:]
                                 z_mesh = coord_dict["z_mesh"][:,edge_index_with_halos,:]
-                                meshes = (x_mesh,z_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                x_mesh_norm = (x_mesh .- coord_mins_cut[1]) ./ coord_ranges_cut[1]
+                                z_mesh_norm = (z_mesh .- coord_mins_cut[3]) ./ coord_ranges_cut[3]
+                                meshes = (x_mesh_norm,z_mesh_norm)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut_norm, values_cut)
                                 interp_data[:,edge_index_with_halos,:] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
                             end
                         elseif bounded_dim == "z"
                             if n_true_dims == 2
+                                # No need to normalise coords_cut as we are only doing 1D interpolation here
                                 if "x" in true_dims
                                     mesh = coord_dict["x_mesh"][:,1,edge_index_with_halos]
                                     interp_data[:,1,edge_index_with_halos] = pyconvert(Array,numpy.interp(mesh, coords_cut[:,1], values_cut))                           
@@ -700,10 +728,13 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
                                 end
                                 
                             elseif n_true_dims == 3
+                                # Need to normalise for interpolation stability
                                 x_mesh = coord_dict["x_mesh"][:,:,edge_index_with_halos]
                                 y_mesh = coord_dict["y_mesh"][:,:,edge_index_with_halos]
-                                meshes = (x_mesh,y_mesh)
-                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut, values_cut)
+                                x_mesh_norm = (x_mesh .- coord_mins_cut[1]) ./ coord_ranges_cut[1]
+                                y_mesh_norm = (y_mesh .- coord_mins_cut[2]) ./ coord_ranges_cut[2]
+                                meshes = (x_mesh_norm,y_mesh_norm)
+                                interpolator = scipy_interpolate.LinearNDInterpolator(coords_cut_norm, values_cut)
                                 interp_data[:,:,edge_index_with_halos] = pyconvert(Array,interpolator(meshes...))
                             else
                                 @info "Number of dimensions $n_true_dims is not implemented"
