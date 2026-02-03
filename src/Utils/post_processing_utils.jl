@@ -1198,7 +1198,7 @@ end
 
 #TODO do this for forward and backward only too
 """
-    get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
+    get_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
 
 Calculates the frequency response of the offline filter. This function takes a set
 of frequencies and the filter's coefficients to compute how the filter amplifies
@@ -1219,22 +1219,30 @@ Returns
 - A vector `Ghat` representing the filter's frequency response at each
   corresponding frequency in `freq`.
 """
-function get_frequency_response(freq::AbstractArray, filter_params::NamedTuple)
+function get_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
     
     Ghat = 0*freq
     N_coeffs = filter_params.N_coeffs
  
-    for i in 1:N_coeffs
-        
-        a = getproperty(filter_params, Symbol("a$i"))
-        b = getproperty(filter_params, Symbol("b$i"))
-        c = getproperty(filter_params, Symbol("c$i"))
-        d = getproperty(filter_params, Symbol("d$i"))
+    if N_coeffs == 0.5
+        a1 = filter_params.a1
+        c1 = filter_params.c1
+        Ghat .= (2.0*a1*c1)./(c1^2 .+ freq.^2)
+        return Ghat
+    else
 
-        Ghat += (a*c .+ b.*(d .+ freq))./(c^2 .+ (d .+ freq).^2) .+ (a*c .+ b.*(d .- freq))./(c^2 .+ (d .- freq).^2)
-    end
+        for i in 1:N_coeffs
+            
+            a = getproperty(filter_params, Symbol("a$i"))
+            b = getproperty(filter_params, Symbol("b$i"))
+            c = getproperty(filter_params, Symbol("c$i"))
+            d = getproperty(filter_params, Symbol("d$i"))
 
+            Ghat += (a*c .+ b.*(d .+ freq))./(c^2 .+ (d .+ freq).^2) .+ (a*c .+ b.*(d .- freq))./(c^2 .+ (d .- freq).^2)
+        end
+    
     return Ghat
+    end
 end
 
 """

@@ -25,19 +25,19 @@ example_scripts = [
 ]
 
 
-@info string("Executing the examples")
-
-for n in 1:length(example_scripts)
-    example = example_scripts[n]
-    example_filepath = joinpath(EXAMPLES_DIR, example)
+# To rerun examples, uncomment the following block
+# @info string("Executing the examples")
+# for n in 1:length(example_scripts)
+#     example = example_scripts[n]
+#     example_filepath = joinpath(EXAMPLES_DIR, example)
     
-    start_time = time_ns()
-    Literate.markdown(example_filepath, OUTPUT_DIR;
-                        flavor = Literate.DocumenterFlavor(), execute = true)
-    elapsed = 1e-9 * (time_ns() - start_time)
-    @info @sprintf("%s example took %s to build.", example, prettytime(elapsed))
+#     start_time = time_ns()
+#     Literate.markdown(example_filepath, OUTPUT_DIR;
+#                         flavor = Literate.DocumenterFlavor(), execute = true)
+#     elapsed = 1e-9 * (time_ns() - start_time)
+#     @info @sprintf("%s example took %s to build.", example, prettytime(elapsed))
     
-end
+# end
 
 
 # Set up math rendering 

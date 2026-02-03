@@ -5,11 +5,11 @@
 # to the output of the simulation to extract the mean flow, removing the wave
 # oscillations.
 
-# The simulation is initialised with a constant and uniform stratification and horizontal background velocity
+# The simulation is initialised with a constant and uniform stratification and horizontal background velocity.
 
 # In this example, the filtering is performed offline after the simulation. We let the simulation run to steady
 # state, and run the filter on the steady data. This could also be performed online during the simulation, as 
-# shown in the `lee_wave_online_filtering.jl` example.
+# demonstrated in the `online_filter_geostrophic_adjustment` example.
 
 # ## Run the simulation
 # ### Install dependencies
@@ -122,7 +122,7 @@ set!(model, u=U, b=bᵢ)
 simulation = Simulation(model, Δt=20seconds, stop_time=15days)
 
 # Set an adaptive timestep
-conjure_time_step_wizard!(simulation, IterationInterval(20), cfl=0.2, max_Δt=2minutes)
+conjure_time_step_wizard!(simulation, IterationInterval(500), cfl=0.2, max_Δt=2minutes)
 
 # Add a progress callback
 
@@ -142,7 +142,7 @@ function print_progress(sim)
     return nothing
 end
 
-add_callback!(simulation, print_progress, IterationInterval(200))
+add_callback!(simulation, print_progress, IterationInterval(500))
 
 
 # ### Set up the output 
@@ -268,16 +268,22 @@ CairoMakie.record(fig, "lee_wave_filtered_u_movie_offline.mp4", frames, framerat
 end
 # ![](lee_wave_filtered_u_movie_offline.mp4)
 
+# The filter has been run after the initial simulation spin-up (time shown is time from day 5 of the 
+# original simulation, so the raw fields are already in steady state). The filtered fields also need 
+# time to spin-up (corresponding to the characteristic timescale of the cut-off filter, here ~1.5 days),
+# so the initial and final frames of the animation show transient behaviour in the filtered fields. 
+
 # The Eulerian filtered output looks very similar to the raw output, since the lee waves are steady. 
 # They're steady because they've been Doppler-shifted by the mean flow. When we use the Lagrangian 
 # filter instead, we see that the lee waves are removed as they are high frequency in the frame of the 
 # flow. Note that the colour range shown is an order of magnitude smaller for the Lagrangian filtered 
-# fields, allowing us to see the wave impact on the mean flow. The contours of buoyancy demonstrate 
-# the difference between the displaced Lagrangian filtered field (bottom left) and the Lagrangian 
-#filtered field remapped to the mean position (bottom right). This removes the wave-like displacements
-# from the isopycnals. The interpolation stage to calculate this field is imperfect near the immersed 
-# boundary (it's not guaranteed that every spatial location has a corresponding Lagrangian mean defined
-# at the mean position), so it has been masked.
+# fields, allowing us to see the wave impact on the mean flow. 
+
+# The contours of buoyancy demonstrate the difference between the displaced Lagrangian filtered field 
+# (bottom left) and the Lagrangian filtered field remapped to the mean position (bottom right). This 
+# removes the wave-like displacements from the isopycnals. The interpolation stage to calculate this 
+# field is imperfect near the immersed boundary (it's not guaranteed that every spatial location has 
+# a corresponding Lagrangian mean defined at the mean position), so it has been masked.
 
 
 # We remove these files to keep things tidy, keep them for analysis if desired

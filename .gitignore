@@ -14,7 +14,7 @@ deps/deps.jl
 # Documenter.jl and MkDocs
 docs/build
 docs/site
-docs/src/literated
+#docs/src/literated
 docs/Manifest.toml
 
 # Model output
@@ -69,7 +69,9 @@ statprof
 docs/.CondaPkg
 
 # Docs
+# Generate the videos locally and push to git to avoid action timeout during build docs
 docs/local_compile.sh
+!docs/src/literated/*.mp4 
 
 # Testing
 !test/data/reference_sim.jld2
