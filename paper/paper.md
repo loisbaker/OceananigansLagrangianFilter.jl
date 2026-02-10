@@ -30,7 +30,7 @@ the nonhydrostatic and hydrostatic Boussinesq equations on CPUs and GPUs. ``Ocea
 - A section that clearly illustrates the research purpose of the software and places it in the context of related work. This should clearly state what problems the software is designed to solve, who the target audience is, and its relation to other work.
 - Write definition equations
 - Describe the two example use cases here.
-$$\boldsymbol{\varphi}$$
+$$\boldsymbol{\varphi}\varphi$$
 $$\symbf{\varphi}$$
 <!--
 Lagrangian filtering consists of finding, for some simulated scalar field $f(x,t)$, the generalised Lagrangian mean $\overline{f}^{\mathrm{L}}(\bm{x},t)$ defined by
