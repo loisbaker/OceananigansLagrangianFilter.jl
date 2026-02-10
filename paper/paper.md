@@ -26,7 +26,7 @@ In this package, we implement methods for Lagrangian filtering based on the solu
 the nonhydrostatic and hydrostatic Boussinesq equations on CPUs and GPUs. ``OceananigansLagrangianFilter.jl`` provides a user-friendly way for ``Oceananigans.jl`` users to analyse their simulations and gain new insights using Lagrangian filtering, either by post-processing their existing simulation output ('offline') or integrating the functionality into their simulations at run-time ('online'). 
 
 
-# Statement of Need
+# Statement of Need NEW VERSION
 - A section that clearly illustrates the research purpose of the software and places it in the context of related work. This should clearly state what problems the software is designed to solve, who the target audience is, and its relation to other work.
 - Write definition equations
 - Describe the two example use cases here.
