@@ -31,6 +31,7 @@ the nonhydrostatic and hydrostatic Boussinesq equations on CPUs and GPUs. ``Ocea
 - Write definition equations
 - Describe the two example use cases here.
 $$\boldsymbol{\varphi}$$
+$$\symbf{\varphi}$$
 <!--
 Lagrangian filtering consists of finding, for some simulated scalar field $f(x,t)$, the generalised Lagrangian mean $\overline{f}^{\mathrm{L}}(\bm{x},t)$ defined by
 $$\overline{f}^{\mathrm{L}}(\bar{\bm{\varphi}}(\bm{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\bm{\varphi}(\bm{a},s),s)\,\mathrm{d} s \,,$$
