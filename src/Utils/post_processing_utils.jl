@@ -1196,9 +1196,8 @@ function get_weight_function(;t::AbstractArray, tref::Real, filter_params::Named
     return G
 end
 
-#TODO do this for forward and backward only too
 """
-    get_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
+    get_offline_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
 
 Calculates the frequency response of the offline filter. This function takes a set
 of frequencies and the filter's coefficients to compute how the filter amplifies
@@ -1219,7 +1218,7 @@ Returns
 - A vector `Ghat` representing the filter's frequency response at each
   corresponding frequency in `freq`.
 """
-function get_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
+function get_offline_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
     
     Ghat = 0*freq
     N_coeffs = filter_params.N_coeffs
@@ -1239,6 +1238,55 @@ function get_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
             d = getproperty(filter_params, Symbol("d$i"))
 
             Ghat += (a*c .+ b.*(d .+ freq))./(c^2 .+ (d .+ freq).^2) .+ (a*c .+ b.*(d .- freq))./(c^2 .+ (d .- freq).^2)
+        end
+    
+    return Ghat
+    end
+end
+
+"""
+    get_online_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
+
+Calculates the frequency response of the online filter (i.e a one-sided filter that 
+is zero for negative times). This function takes a set of frequencies and the filter's 
+coefficients to compute how the filter amplifies or attenuates different frequency 
+components of a signal.
+
+The response is computed by summing the contributions of each coefficient pair
+based on the filter's transfer function in the frequency domain. The result is
+a measure of the filter's gain at each given frequency.
+
+Arguments
+=========
+- `freq`: A vector of frequencies (in radians per unit time).
+- `filter_params`: A `NamedTuple` containing the filter coefficients (`a`, `b`,
+  `c`, `d`) and the number of coefficient pairs (`N_coeffs`).
+
+Returns
+=======
+- A complex vector `Ghat` representing the filter's frequency response at each
+  corresponding frequency in `freq`.
+"""
+function get_online_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
+    
+    Ghat = 0*freq .+ 0im
+    N_coeffs = filter_params.N_coeffs
+ 
+    if N_coeffs == 0.5
+        a1 = filter_params.a1
+        c1 = filter_params.c1
+        Ghat .= a1./(c1 .+ im.*freq)
+        return Ghat
+    else
+
+        for i in 1:N_coeffs
+            
+            a = getproperty(filter_params, Symbol("a$i"))
+            b = getproperty(filter_params, Symbol("b$i"))
+            c = getproperty(filter_params, Symbol("c$i"))
+            d = getproperty(filter_params, Symbol("d$i"))
+
+            Ghat += 0.5*((a .+ im.*b)./(c .+ im.*(d .+ freq)) .+ (a .- im.*b)./(c .+ im.*(-d .+ freq)))
         end
     
     return Ghat
