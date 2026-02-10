@@ -30,13 +30,10 @@ the nonhydrostatic and hydrostatic Boussinesq equations on CPUs and GPUs. ``Ocea
 - A section that clearly illustrates the research purpose of the software and places it in the context of related work. This should clearly state what problems the software is designed to solve, who the target audience is, and its relation to other work.
 - Write definition equations
 - Describe the two example use cases here.
-$$\boldsymbol{\varphi}\varphi$$
-$$\symbf{\varphi}$$
-<!--
-Lagrangian filtering consists of finding, for some simulated scalar field $f(x,t)$, the generalised Lagrangian mean $\overline{f}^{\mathrm{L}}(\bm{x},t)$ defined by
-$$\overline{f}^{\mathrm{L}}(\bar{\bm{\varphi}}(\bm{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\bm{\varphi}(\bm{a},s),s)\,\mathrm{d} s \,,$$
-where $\bm{\varphi(\bm{a},t)}$ is the flow map, defining the position of a fluid particle with label $\bm{a}$ at time $t$, $G(t)$ is some weight function (or equivalently the impulse response of the filter) 
--->
+
+Lagrangian filtering consists of finding, for some simulated scalar field $f(x,t)$, the generalised Lagrangian mean $\overline{f}^{\mathrm{L}}(\symbf{x},t)$ defined by
+$$\overline{f}^{\mathrm{L}}(\bar{\symbf{\varphi}}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,$$
+where $\symbf{\varphi(\symbf{a},t)}$ is the flow map, defining the position of a fluid particle with label $\symbf{a}$ at time $t$, $G(t)$ is some weight function (or equivalently the impulse response of the filter) 
 
 Figures can be included like this:
 ![Caption for IO figure.\label{fig:IO}](figures/offline_IO_lagrangian_filtering.png)
