@@ -102,10 +102,10 @@ axis_bottom_kwargs = (xlabel = L"x",
 
 # x-y plots at time index it
 # Using L strings for titles to ensure they use the LaTeX engine
-ax1 = Axis(fig[1, 1]; title = L"\text{Raw}", xlabelvisible = false, xticklabelsvisible = false, axis_top_kwargs...)
-ax2 = Axis(fig[1, 2]; title = L"\text{Eulerian filtered}", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_top_kwargs...)
-ax3 = Axis(fig[1, 3]; title = L"\text{Lagrangian filtered}", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_top_kwargs...)
-ax4 = Axis(fig[1, 4]; title = L"\text{Lagrangian filtered (remapped)}", xlabelvisible = false, ylabelvisible = false, yticklabelsvisible = false, xticklabelsvisible = false, axis_top_kwargs...)
+ax1 = Axis(fig[1, 1]; title = L"\text{Raw } T", xlabelvisible = false, xticklabelsvisible = false, axis_top_kwargs...)
+ax2 = Axis(fig[1, 2]; title = L"\text{Eulerian filtered } \overline{T}", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_top_kwargs...)
+ax3 = Axis(fig[1, 3]; title = L"\text{Lagrangian filtered } T*", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_top_kwargs...)
+ax4 = Axis(fig[1, 4]; title = L"\text{Lagrangian filtered } \overline{T}^\mathrm{L}", xlabelvisible = false, ylabelvisible = false, yticklabelsvisible = false, xticklabelsvisible = false, axis_top_kwargs...)
 
 n = Observable(it)
 
@@ -166,6 +166,17 @@ hlines!(ax4, [2.5]; color = :black, linestyle = :dash, linewidth = 2)
 Colorbar(fig[1:2, 5], hm1, label = L"\text{Tracer concentration, } T", valign = :bottom, height = Relative(0.935), labelsize = 32) 
 
 rowgap!(fig.layout, -30)
+
+# Add simple text labels 
+# We place them in the TopLeft() of the grid position with some padding
+text!(ax1, 0.02, 1, text = "a", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax2, 0.02, 1, text = "b", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax3, 0.02, 1, text = "c", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax4, 0.02, 1, text = "d", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax5, 0.02, 1, text = "e", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax6, 0.02, 1, text = "f", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax7, 0.02, 1, text = "g", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax8, 0.02, 1, text = "h", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
 fig
 
 save("offline_IO_lagrangian_filtering.png", fig,px_per_unit = 4)

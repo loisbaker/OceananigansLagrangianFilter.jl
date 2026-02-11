@@ -59,10 +59,10 @@ axis_kwargs = (xlabel = L"x \text{ [km]}",
                limits = ((-20, 10), (-2000, 0)),
                aspect = AxisAspect(2.2))
 
-ax1 = Axis(fig[1, 1]; title = L"\text{Raw}", xlabelvisible = false, xticklabelsvisible = false, axis_kwargs...)
-ax2 = Axis(fig[1, 2]; title = L"\text{Eulerian filtered}", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_kwargs...)
-ax3 = Axis(fig[2, 1]; title = L"\text{Lagrangian filtered}", axis_kwargs...)
-ax4 = Axis(fig[2, 2]; title = L"\text{Lagrangian filtered (remapped)}", ylabelvisible = false, yticklabelsvisible = false, axis_kwargs...)
+ax1 = Axis(fig[1, 1]; title = L"\text{Raw } u", xlabelvisible = false, xticklabelsvisible = false, axis_kwargs...)
+ax2 = Axis(fig[1, 2]; title = L"\text{Eulerian filtered } \overline{u}", xlabelvisible = false, xticklabelsvisible = false, ylabelvisible = false, yticklabelsvisible = false, axis_kwargs...)
+ax3 = Axis(fig[2, 1]; title = L"\text{Lagrangian filtered } u*", axis_kwargs...)
+ax4 = Axis(fig[2, 2]; title = L"\text{Lagrangian filtered } \overline{u}^\mathrm{L}", ylabelvisible = false, yticklabelsvisible = false, axis_kwargs...)
 
 # Observables
 n = Observable(it)
@@ -105,6 +105,11 @@ end
 # Redo x-axis ticks to avoid overlap
 ax3.xticks = ([-20, -15, -10, -5, 0, 5])
 ax4.xticks = ([-20, -15, -10, -5, 0, 5])
+
+text!(ax1, 0.01, 1, text = "a", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax2, 0.01, 1, text = "b", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax3, 0.01, 1, text = "c", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax4, 0.01, 1, text = "d", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
 
 save("offline_lee_wave_lagrangian_filtering.png", fig,px_per_unit = 4)
 fig

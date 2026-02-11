@@ -29,14 +29,16 @@ In this package, we implement methods for Lagrangian filtering based on the solu
 <!-- A section that clearly illustrates the research purpose of the software and places it in the context of related work. This should clearly state what problems the software is designed to solve, who the target audience is, and its relation to other work.-->
 
 Lagrangian filtering consists of finding, for some simulated scalar field $f(x,t)$, the generalised Lagrangian mean $\overline{f}^{\mathrm{L}}(\symbf{x},t)$ defined by
-$$\overline{f}^{\mathrm{L}}(\bar{\symbf{\varphi}}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,$$
+$$\overline{f}^{\mathrm{L}}(\bar{\symbf{\varphi}}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,\label{eq:fbarL}$$
 where $\symbf{\varphi}(\symbf{a},t)$ is the flow map, defining the position of a fluid particle with label $\symbf{a}$ at time $t$, $G(t)$ is some weight function (or equivalently the impulse response of the filter), and $\bar{\symbf{\varphi}}(\symbf{a},t)$ is the mean flow map, defined by 
-$$\bar{\symbf{\varphi}}(\symbf{a},t) = \int_{-\infty}^\infty G(t-s) \symbf{\varphi}(\symbf{a},s)\mathrm{d} s \,.$$ 
+$$\bar{\symbf{\varphi}}(\symbf{a},t) = \int_{-\infty}^\infty G(t-s) \symbf{\varphi}(\symbf{a},s)\mathrm{d} s \,.\label{eq:phibar}$$ 
 
+For comparison, the Eulerian mean is defined as
+$$\bar{f}(\symb{x},t) = \int_{-\infty}^\infty G(t-s) f(\symb{x},s)\,\mathrm{d} s \,.\label{eq:fE}$$
 While $\overline{f}^{\mathrm{L}}$ is the true generalised Lagrangian mean as it is defined at the mean position of a trajectory, we also define a spatial rearrangement $f^*$ that is instead defined on the trajectory itself
-$$f^*(\symbf{\varphi}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,$$
+$$f^*(\symbf{\varphi}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,\label{eq:fstar}$$
 and a map
-$$\symbf{\Xi}(\symbf{\varphi}(\symbf{a},t),t) = \bar{\symbf{\varphi}}(\symbf{a},t)\,,$$
+$$\symbf{\Xi}(\symbf{\varphi}(\symbf{a},t),t) = \bar{\symbf{\varphi}}(\symbf{a},t)\,,\label{eq:Xi}$$
 that maps between $f^*$ and $\overline{f}^{\mathrm{L}}$, such that $\overline{f}^{\mathrm{L}}(\symbf{\Xi}(\symbf{x},t),t) = f^*(\symbf{x},t)$.
 
 ``OceananigansLagrangianFilter.jl`` solves directly for $f^*$ for any specified variables $f$ (including velocity components), which may be sufficient if $\symbf{\Xi}$ is close to the identity, or for certain wave decompositions [@bakerLagrangianFilteringWave2025]. Optionally, it also solves for $\symbf{\Xi}$ and afterward performs a spatial interpolation to recover $\overline{f}^{\mathrm{L}}$. The weight function $G(t)$ is constructed from sums of (complex) exponentials, which allows closed PDE systems for $f^*$ and $\symbf{\Xi}$ [@minzEfficientLagrangianAveraging2025] (see \autoref{fig:filtershape}).

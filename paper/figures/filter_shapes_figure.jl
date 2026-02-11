@@ -192,5 +192,12 @@ Legend(fig[1, 2],
     margin = (10, 10, 10, 10)
 )
 
+# Add simple text labels (a, b, c, d)
+# We place them in the TopLeft() of the grid position with some padding
+text!(ax1, 0.02, 0.98, text = "a", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax2, 0.02, 0.98, text = "b", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax3, 0.02, 0.98, text = "c", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+text!(ax4, 0.02, 0.98, text = "d", space = :relative, fontsize = 40, font = :bold, align = (:left, :top))
+
 save("filter_responses.png", fig,px_per_unit = 4)
 fig
