@@ -4,7 +4,6 @@ authors = ["Lois Baker"]
 version = "0.1.1"
 
 [deps]
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CondaPkg = "992eb4ea-22a4-4c89-a5bb-47a3300528ab"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
@@ -18,14 +17,13 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-CUDA = "=5.8.5, 5.9.1"
+CondaPkg = "0.2.33"
 DataStructures = "0.18"
 DocStringExtensions = "0.8, 0.9"
 JLD2 = "0.4, 0.5, 0.6"
 KernelAbstractions = "0.9.21"
 NCDatasets = "0.12.10, 0.13.1, 0.14"
 Oceananigans = "0.104"
+PythonCall = "0.9.31"
 Reexport = "1"
 julia = "1.10"
-PythonCall = "0.9.31"
-CondaPkg = "0.2.33"

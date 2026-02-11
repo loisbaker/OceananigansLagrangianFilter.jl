@@ -78,6 +78,9 @@ docs/local_compile.sh
 !test/data/reference_offline_output.jld2
 !test/data/reference_online_output.jld2 
 
-# Paper data
-paper/figures/data
-!paper/figures/*.png
+# Draft paper 
+/paper
+.github/workflows/draft-pdf.yml
+
+# Zenodo metadata file
+!.zenodo.json
