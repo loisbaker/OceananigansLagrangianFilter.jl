@@ -112,7 +112,7 @@ If you encounter any issues, questions, or requests for functionality, it would 
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
-__
+---
 ## 📖 Citation
 
 If you use this package, please cite it as:
