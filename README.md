@@ -112,3 +112,9 @@ If you encounter any issues, questions, or requests for functionality, it would 
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
+__
+## 📖 Citation
+
+If you use this package, please cite it as:
+
+Baker, L. E. (2026). OceananigansLagrangianFilter.jl: A set of tools to perform online or offline Lagrangian filtering of Oceananigans.jl simulations. Zenodo. https://doi.org/10.5281/zenodo.18613285  
