@@ -1,7 +1,7 @@
 name = "OceananigansLagrangianFilter"
 uuid = "3a2ee588-b56c-4451-ba19-103f511bcf00"
 authors = ["Lois Baker"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 CondaPkg = "992eb4ea-22a4-4c89-a5bb-47a3300528ab"
