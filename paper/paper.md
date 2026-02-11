@@ -34,7 +34,7 @@ where $\symbf{\varphi}(\symbf{a},t)$ is the flow map, defining the position of a
 $$\bar{\symbf{\varphi}}(\symbf{a},t) = \int_{-\infty}^\infty G(t-s) \symbf{\varphi}(\symbf{a},s)\mathrm{d} s \,.\label{eq:phibar}$$ 
 
 For comparison, the Eulerian mean is defined as
-$$\bar{f}(\symb{x},t) = \int_{-\infty}^\infty G(t-s) f(\symb{x},s)\,\mathrm{d} s \,.\label{eq:fE}$$
+$$\bar{f}(\symbf{x},t) = \int_{-\infty}^\infty G(t-s) f(\symbf{x},s)\,\mathrm{d} s \,.\label{eq:fE}$$
 While $\overline{f}^{\mathrm{L}}$ is the true generalised Lagrangian mean as it is defined at the mean position of a trajectory, we also define a spatial rearrangement $f^*$ that is instead defined on the trajectory itself
 $$f^*(\symbf{\varphi}(\symbf{a},t),t) = \int_{-\infty}^\infty G(t-s) f(\symbf{\varphi}(\symbf{a},s),s)\,\mathrm{d} s \,,\label{eq:fstar}$$
 and a map
