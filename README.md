@@ -1,7 +1,8 @@
 
 # :ocean: OceananigansLagrangianFilter.jl
 
-[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://loisbaker.github.io/OceananigansLagrangianFilter.jl/dev)
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://loisbaker.github.io/OceananigansLagrangianFilter.jl/stable)
+[![DOI](https://zenodo.org/badge/1015402609.svg)](https://doi.org/10.5281/zenodo.18613285)
 
 A set of tools to perform online or offline Lagrangian filtering on Oceananigans.jl simulation output.
 
