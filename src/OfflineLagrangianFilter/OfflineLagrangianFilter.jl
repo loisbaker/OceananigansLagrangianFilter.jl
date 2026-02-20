@@ -57,7 +57,7 @@ end
 Return a flattened `NamedTuple` of the fields in `model.velocities`, `model.tracers`, and any
 auxiliary fields for a `LagrangianFilter` model.
 """
-fields(model::LagrangianFilter) = merge(model.velocities,
+fields(model::LagrangianFilter) = merge((u = model.velocities.u, v = model.velocities.v, w = model.velocities.w),
                                         model.tracers,
                                         model.auxiliary_fields)
 
