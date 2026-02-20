@@ -867,13 +867,13 @@ function update_input_data!(model::AbstractModel, input_data::NamedTuple)
     t = model.clock.time
     
     # Update the velocities
-    kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
-    set!(model; kwargs...)          
+    # kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
+    # set!(model; kwargs...)          
 
     # We also update the saved original variables to be used for forcing - these are auxiliary fields so need to be set separately
     for original_var_fts in original_var_timeseries
-        set!(getproperty(model.auxiliary_fields, Symbol(original_var_fts.name)), original_var_fts[Time(t)])
-        # halo regions get filled automatically
+        field = getproperty(model.auxiliary_fields, Symbol(original_var_fts.name))
+        parent(field) .= parent(original_var_fts[Time(t)])
     end
 end
 
