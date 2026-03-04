@@ -57,7 +57,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     label = config.label
     
     # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if config.filter_mode == "offline" && config.advection === nothing
+    if (config isa OfflineFilterConfig) && config.advection === nothing
         filter_identifier = "_Eulerian_filtered"
     else
         filter_identifier = "_Lagrangian_filtered"
@@ -334,7 +334,7 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
     label = config.label
 
 
-    if config.filter_mode == "offline" && config.advection === nothing
+    if (config isa OfflineFilterConfig) && config.advection === nothing
         error("Regridding to mean position is not meaningful for Eulerian filtering")
     end
     if compute_mean_velocities
@@ -1334,10 +1334,9 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         var_names_to_Eulerian_filter = (var_names_to_Eulerian_filter..., velocity_names...)
     end
     
-    filter_mode = config.filter_mode
-    if filter_mode == "offline"
+    if (config isa OfflineFilterConfig)
         direction = "both"
-    elseif filter_mode == "online"
+    elseif (config isa OnlineFilterConfig)
         direction = "forward"
     end
 
@@ -1392,15 +1391,15 @@ is stored in a new group called `timeseries/t_shifted` within the output JLD2 fi
 
 # Arguments
 - `config`: A configuration object of type `OfflineFilterConfig` which contains
-  the `filter_mode`, `output_filename`, and `filter_params` (filter coefficients).
+  the `output_filename` and `filter_params` (filter coefficients).
 
 # Throws
-- `error`: If `config.filter_mode` is not `"online"`. The time shift for offline
+- `error`: If config is not an `"OnlineFilterConfig"`. The time shift for offline
   (forward-backward) filtering is zero by definition due to an even weight function.
 
 """
 function compute_time_shift!(config::AbstractConfig)
-    if config.filter_mode != "online"
+    if !(config isa OnlineFilterConfig)
         error("Time shift computation is only relevant for online filtering. Offline forward-backward filtering
         has an even weight function, so time shift is zero .")
     end

@@ -26,7 +26,6 @@ struct OnlineFilterConfig <: AbstractConfig
     map_to_mean::Bool
     compute_mean_velocities::Bool
     npad::Int
-    filter_mode::String
     label::String
     
 end
@@ -42,13 +41,12 @@ end
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            filter_mode::String = "online",
                             label::String = ""
                             )
 
-Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
-This function validates the input data file, time specifications, and filter parameters
-before creating the `OfflineFilterConfig` object.
+Constructs a configuration object for online Lagrangian filtering of Oceananigans data.
+This function validates the time specifications and filter parameters
+before creating the `OnlineFilterConfig` object.
 
 Keyword arguments
 =================
@@ -63,7 +61,6 @@ Keyword arguments
   - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
-  - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "online". TODO use multiple dispatch for this instead.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
 # Example:
@@ -218,7 +215,6 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
         map_to_mean = false
     end
 
-    filter_mode = "online"
     return OnlineFilterConfig(grid,
                             output_filename,
                             var_names_to_filter,
@@ -227,7 +223,6 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             map_to_mean,
                             compute_mean_velocities,
                             npad,
-                            filter_mode,
                             label
                             )
  

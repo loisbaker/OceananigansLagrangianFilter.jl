@@ -104,7 +104,6 @@ struct OfflineFilterConfig <: AbstractConfig
     output_original_data::Bool
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
-    filter_mode::String
     label::String
 
 end
@@ -135,7 +134,6 @@ end
                         output_original_data::Bool = true,
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
-                        filter_mode::String = "offline",
                         label::String = "")
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
@@ -170,7 +168,6 @@ Keyword arguments
     - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
   - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
-  - `filter_mode`: A `String` indicating whether to run the filter in "offline" or "online" mode. Default: "offline". TODO use multiple dispatch for this instead.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
 # Example:
@@ -449,8 +446,6 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
     end
 
     
-    filter_mode = "offline"  
-
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
                             velocity_names,
@@ -474,7 +469,6 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             output_original_data,
                             advection,
                             grid,
-                            filter_mode,
                             label)
 
 end
