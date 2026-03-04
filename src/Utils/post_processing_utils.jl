@@ -57,7 +57,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     label = config.label
     
     # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if (config isa OfflineFilterConfig) && config.advection === nothing
+    if (config isa AbstractOfflineConfig) && config.advection === nothing
         filter_identifier = "_Eulerian_filtered"
     else
         filter_identifier = "_Lagrangian_filtered"
@@ -334,7 +334,7 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
     label = config.label
 
 
-    if (config isa OfflineFilterConfig) && config.advection === nothing
+    if (config isa AbstractOfflineConfig) && config.advection === nothing
         error("Regridding to mean position is not meaningful for Eulerian filtering")
     end
     if compute_mean_velocities
@@ -1334,9 +1334,9 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         var_names_to_Eulerian_filter = (var_names_to_Eulerian_filter..., velocity_names...)
     end
     
-    if (config isa OfflineFilterConfig)
+    if (config isa AbstractOfflineConfig)
         direction = "both"
-    elseif (config isa OnlineFilterConfig)
+    elseif (config isa AbstractOnlineConfig)
         direction = "forward"
     end
 
@@ -1399,7 +1399,7 @@ is stored in a new group called `timeseries/t_shifted` within the output JLD2 fi
 
 """
 function compute_time_shift!(config::AbstractConfig)
-    if !(config isa OnlineFilterConfig)
+    if !(config isa AbstractOnlineConfig)
         error("Time shift computation is only relevant for online filtering. Offline forward-backward filtering
         has an even weight function, so time shift is zero .")
     end

@@ -21,7 +21,7 @@ using Oceananigans.Architectures
 import Oceananigans: fields, prognostic_fields 
 import Oceananigans.Advection: cell_advection_timescale, AbstractAdvectionScheme
 import Oceananigans.Simulations:timestepper
-using ..OceananigansLagrangianFilter: AbstractConfig
+using ..OceananigansLagrangianFilter: AbstractConfig, AbstractOfflineConfig
 import Oceananigans.OutputWriters: default_included_properties
 
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
@@ -80,7 +80,7 @@ default_included_properties(::LagrangianFilter) = [:grid]
 
 A configuration object for `apply_offline_filter`.
 """
-struct OfflineFilterConfig <: AbstractConfig
+struct OfflineFilterConfig <: AbstractOfflineConfig
     original_data_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}}

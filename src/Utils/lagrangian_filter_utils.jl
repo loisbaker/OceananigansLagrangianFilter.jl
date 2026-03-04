@@ -735,7 +735,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     outputs_dict = Dict()
 
     # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if (config isa OfflineFilterConfig) && config.advection === nothing
+    if (config isa AbstractOfflineConfig) && config.advection === nothing
         filter_identifier = "_Eulerian_filtered"
     else
         filter_identifier = "_Lagrangian_filtered"
@@ -826,7 +826,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     end
 
     # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
-    if (config isa OfflineFilterConfig) && config.output_original_data
+    if (config isa AbstractOfflineConfig) && config.output_original_data
         for var_name in var_names_to_filter
             outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
         end

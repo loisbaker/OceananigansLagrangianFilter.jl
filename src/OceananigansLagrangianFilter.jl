@@ -6,6 +6,9 @@ using Reexport
 
 # Define a supertype for all configuration objects.
 abstract type AbstractConfig end
+abstract type AbstractOfflineConfig <: AbstractConfig end
+abstract type AbstractOnlineConfig  <: AbstractConfig end
+export AbstractConfig, AbstractOfflineConfig, AbstractOnlineConfig
 
 # Define submodules
 include("./Utils/Utils.jl")

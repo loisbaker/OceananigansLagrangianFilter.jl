@@ -1,6 +1,6 @@
 module OnlineLagrangianFilter
 
-using ..OceananigansLagrangianFilter: AbstractConfig
+using ..OceananigansLagrangianFilter: AbstractConfig, AbstractOnlineConfig
 using Oceananigans.Grids: AbstractGrid, RectilinearGrid, LatitudeLongitudeGrid
 using Oceananigans.Architectures
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
@@ -17,7 +17,7 @@ export OnlineFilterConfig
 
 A configuration object for online filtering.
 """
-struct OnlineFilterConfig <: AbstractConfig
+struct OnlineFilterConfig <: AbstractOnlineConfig
     grid::AbstractGrid
     output_filename::String
     var_names_to_filter::Tuple{Vararg{String}}

@@ -3,7 +3,7 @@ module Utils
 using CondaPkg
 using PythonCall
 
-using OceananigansLagrangianFilter: AbstractConfig
+using OceananigansLagrangianFilter: AbstractConfig, AbstractOfflineConfig, AbstractOnlineConfig
 using JLD2
 using JLD2: Group
 using Oceananigans
