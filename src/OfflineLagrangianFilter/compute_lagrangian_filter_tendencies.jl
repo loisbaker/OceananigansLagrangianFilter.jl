@@ -111,7 +111,7 @@ function compute_flux_bc_tendencies!(model::LagrangianFilter)
     arch  = model.architecture
     clock = model.clock
     model_fields = fields(model)
-    prognostic_fields = merge(model.velocities, model.tracers)
+    prognostic_fields = model.tracers
 
     foreach(i -> compute_x_bcs!(Gⁿ[i], prognostic_fields[i], arch, clock, model_fields), 1:length(prognostic_fields))
     foreach(i -> compute_y_bcs!(Gⁿ[i], prognostic_fields[i], arch, clock, model_fields), 1:length(prognostic_fields))
