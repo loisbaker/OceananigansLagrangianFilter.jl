@@ -391,8 +391,7 @@ any other velocity components will be zero by default."
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1*2 ≈ filter_params.c1)
             @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1). 
-You can continue, but setting `map_to_mean=false` as the map is now meaningless."
-            map_to_mean = false
+You can continue, but you should consider setting `map_to_mean=false` as the map is now meaningless."
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
@@ -401,8 +400,7 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1/2)
             @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5
-You can continue, but setting `map_to_mean=false` as the map is now meaningless."
-            map_to_mean = false
+You can continue, but you should consider setting `map_to_mean=false` as the map is now meaningless."
         end
     end
 
@@ -419,8 +417,7 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
 
     # Give warning about interpolation if grid is not RectilinearGrid and turn off interpolation for now
     if !underlying_rectilinear_grid && map_to_mean
-        @warn "The final interpolation to mean position currently only works for RectilinearGrids - setting map_to_mean=false"
-        map_to_mean = false
+        @warn "The final interpolation to mean position currently only works for RectilinearGrids - consider setting map_to_mean=false"
     end
 
     underlying_latlon_grid = (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
@@ -441,7 +438,7 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
 
     # Warn if Eulerian filter is being calculated twice
     if compute_Eulerian_filter && isnothing(advection)
-        @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice, so we'll set compute_Eulerian_filter=false."
+        @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice, so you should probably set compute_Eulerian_filter=false."
         compute_Eulerian_filter = false
     end
 
