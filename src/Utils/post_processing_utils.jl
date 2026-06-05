@@ -1382,26 +1382,22 @@ end
 """
     compute_time_shift!(config::AbstractConfig)
 
-Computes the time shift for an online filter based on its coefficients and writes
-the shifted time series to the output file.
+Computes the time shift for a forward filter (either online or forward-only offline)
+based on its coefficients and writes the shifted time series to the output file.
 
-This function is only applicable for online filtering. The time shift is computed
-as the time delay introduced by the filter's transfer function. This new time series
-is stored in a new group called `timeseries/t_shifted` within the output JLD2 file.
+The time shift is computed as the time delay introduced by the filter's transfer function. 
+This new time series is stored in a new group called `timeseries/t_shifted` within the output JLD2 file.
 
 # Arguments
-- `config`: A configuration object of type `OfflineFilterConfig` which contains
+- `config`: A configuration object of type `AbstractFilterConfig` which contains
   the `output_filename` and `filter_params` (filter coefficients).
-
-# Throws
-- `error`: If config is not an `"OnlineFilterConfig"`. The time shift for offline
-  (forward-backward) filtering is zero by definition due to an even weight function.
 
 """
 function compute_time_shift!(config::AbstractConfig)
     if !(config isa AbstractOnlineConfig)
-        error("Time shift computation is only relevant for online filtering. Offline forward-backward filtering
-        has an even weight function, so time shift is zero .")
+        @warn "Time shift computation is only relevant when filtering forward only. Offline forward-backward filtering
+        has an even weight function, so time shift should be zero. This function will compute a time shift regardless, but 
+        it may not be meaningful for offline forward-backward filters."
     end
     output_filename = config.output_filename
     filter_params = config.filter_params    

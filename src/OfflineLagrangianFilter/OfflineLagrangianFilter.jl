@@ -391,7 +391,7 @@ any other velocity components will be zero by default."
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1*2 ≈ filter_params.c1)
             @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1). 
-You can continue, but you should consider setting `map_to_mean=false` as the map is now meaningless."
+You can continue, but you should consider setting `map_to_mean=false` as the map may be meaningless."
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
@@ -400,7 +400,7 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1/2)
             @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5
-You can continue, but you should consider setting `map_to_mean=false` as the map is now meaningless."
+You can continue, but you should consider setting `map_to_mean=false` as the map may be meaningless."
         end
     end
 
