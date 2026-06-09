@@ -1,17 +1,20 @@
+using Oceananigans.Advection: Centered, adapt_advection_order, materialize_advection
 using Oceananigans.Architectures: AbstractArchitecture
 using Oceananigans.DistributedComputations: Distributed
 using Oceananigans.Advection: Centered, adapt_advection_order
 using Oceananigans.BoundaryConditions: regularize_field_boundary_conditions
+using Oceananigans.DistributedComputations: Distributed
 using Oceananigans.Fields: Field, tracernames, VelocityFields, TracerFields, CenterField, location
 using Oceananigans.Forcings: model_forcing
-using Oceananigans.Grids: inflate_halo_size, with_halo, architecture
+using Oceananigans.Grids: topology, inflate_halo_size, with_halo, architecture
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
-using Oceananigans.Models: AbstractModel, NaNChecker, extract_boundary_conditions
-using Oceananigans.TimeSteppers: Clock, TimeStepper, update_state!
-using Oceananigans.TurbulenceClosures: validate_closure, with_tracers, build_closure_fields, time_discretization, implicit_diffusion_solver
+using Oceananigans.Models: AbstractModel, extract_boundary_conditions
+using Oceananigans.TimeSteppers: Clock, TimeStepper, update_state!, materialize_clock!, AbstractLagrangianParticles, time_discretization
+using Oceananigans.TurbulenceClosures: validate_closure, with_tracers, build_closure_fields, implicit_diffusion_solver, VerticallyImplicitTimeDiscretization, initialize_closure_fields!
+using Oceananigans.Advection: needs_implicit_solver
 using Oceananigans.TurbulenceClosures.TKEBasedVerticalDiffusivities: FlavorOfCATKE
 using Oceananigans.Utils: tupleit
-using Oceananigans.Grids: topology
+import Oceananigans: prognostic_state, restore_prognostic_state!
 import Oceananigans.Architectures: architecture
 import Oceananigans.Models: total_velocities
 
@@ -100,6 +103,10 @@ function LagrangianFilter(grid;
     # direction
     advection = adapt_advection_order(advection, grid)
 
+    # Fill any settings in advection scheme that might have been deferred until
+    # the grid and backend is known
+    advection = materialize_advection(advection, grid)
+
     # Adjust halos when the advection scheme or turbulence closure requires it.
     # Note that halos are isotropic by default; however we respect user-input here
     # by adjusting each (x, y, z) halo individually.
@@ -146,10 +153,16 @@ function LagrangianFilter(grid;
     closure_fields = build_closure_fields(closure_fields, grid, clock, tracernames(tracers), boundary_conditions, closure)
     buoyancy = nothing                                                                    
     model_fields = merge(velocities, tracers, auxiliary_fields)
-    prognostic_fields = merge(velocities, tracers)
+    prognostic_fields = tracers
 
     # Instantiate timestepper if not already instantiated
     implicit_solver = implicit_diffusion_solver(time_discretization(closure), grid)
+
+    # Also create the implicit solver if adaptive implicit advection requires it
+    if isnothing(implicit_solver) && needs_implicit_solver(advection)
+        implicit_solver = implicit_diffusion_solver(VerticallyImplicitTimeDiscretization(), grid)
+    end
+
     timestepper = TimeStepper(timestepper, grid, prognostic_fields; implicit_solver)
 
     # Materialize forcing for model tracer and velocity fields.
@@ -159,7 +172,9 @@ function LagrangianFilter(grid;
                               forcing, closure, buoyancy, velocities, tracers,
                               closure_fields, timestepper, auxiliary_fields)
     
-    update_state!(model; compute_tendencies = false)
+    materialize_clock!(clock, timestepper)
+    update_state!(model)
+    initialize_closure_fields!(model.closure_fields, model.closure, model)
     
     return model
 end
@@ -181,4 +196,30 @@ function inflate_grid_halo_size(grid, tendency_terms...)
     end
 
     return grid
+end
+
+#####
+##### Initialization
+#####
+
+import Oceananigans: initialize!
+
+function initialize!(model::LagrangianFilter)
+    initialize_closure_fields!(model.closure_fields, model.closure, model)
+    return nothing
+end
+
+#####
+##### Checkpointing
+#####
+
+function prognostic_state(model::LagrangianFilter)
+    return (clock = prognostic_state(model.clock),
+            
+            velocities = prognostic_state(model.velocities),
+            tracers = prognostic_state(model.tracers),
+            closure_fields = prognostic_state(model.closure_fields),
+            timestepper = prognostic_state(model.timestepper),
+            auxiliary_fields = prognostic_state(model.auxiliary_fields)
+            )
 end

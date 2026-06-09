@@ -42,10 +42,10 @@ velocity components, tracer fields, and precalculated diffusivities where applic
                                  velocities,
                                  tracers,
                                  auxiliary_fields,
-                                 diffusivities,
+                                 closure_fields,
                                  clock,
                                  forcing) where tracer_index
-
+    
     @inbounds c = tracers[tracer_index]
 
     model_fields = merge(velocities, tracers, auxiliary_fields)
@@ -55,7 +55,7 @@ velocity components, tracer fields, and precalculated diffusivities where applic
     buoyancy = nothing
     return ( - div_Uc(i, j, k, grid, advection, total_velocities, c)
              + c_div_U(i, j, k, grid, advection, total_velocities, c) # Allows for divergent velocities
-             - ∇_dot_qᶜ(i, j, k, grid, closure, diffusivities, val_tracer_index, c, clock, model_fields, buoyancy) 
-             - immersed_∇_dot_qᶜ(i, j, k, grid, c, c_immersed_bc, closure, diffusivities, val_tracer_index, clock, model_fields)
+             - ∇_dot_qᶜ(i, j, k, grid, closure, closure_fields, val_tracer_index, c, clock, model_fields, buoyancy) 
+             - immersed_∇_dot_qᶜ(i, j, k, grid, c, c_immersed_bc, closure, closure_fields, val_tracer_index, clock, model_fields)
              + forcing(i, j, k, grid, clock, model_fields))
 end
