@@ -1,6 +1,7 @@
 using Oceananigans.BoundaryConditions: fill_halo_regions!
 using Oceananigans.TimeSteppers: update_state!
 import Oceananigans.Fields: set!
+using Oceananigans.TurbulenceClosures: initialize_closure_fields!
 
 """
     set!(model::LagrangianFilter; kwargs...)
@@ -28,9 +29,12 @@ model.tracers.T
 ```
 """
 function set!(model::LagrangianFilter; kwargs...)
+    velocity_names = propertynames(model.velocities)
+    velocities_are_set = false
     for (fldname, value) in kwargs
-        if fldname ∈ propertynames(model.velocities)
+        if fldname ∈ velocity_names
             ϕ = getproperty(model.velocities, fldname)
+            velocities_are_set = true
         elseif fldname ∈ propertynames(model.tracers)
             ϕ = getproperty(model.tracers, fldname)
         else
@@ -44,8 +48,8 @@ function set!(model::LagrangianFilter; kwargs...)
     # Apply a mask
     foreach(mask_immersed_field!, model.tracers)
     foreach(mask_immersed_field!, model.velocities)
-    
-    update_state!(model; compute_tendencies = false)
+    velocities_are_set && initialize_closure_fields!(model.closure_fields, model.closure, model)
+    update_state!(model)
 
     return nothing
 end

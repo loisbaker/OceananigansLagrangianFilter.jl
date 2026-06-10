@@ -23,13 +23,15 @@ does not advance velocities or correct pressure. The step proceeds as follows:
 """
 function tracer_ab2_step!(model, Δt, callbacks)
     grid = model.grid
+    kernel_Δt = convert(eltype(grid), Δt)
 
     # Compute flux bc tendencies
     compute_flux_bc_tendencies!(model)
+    model_fields = prognostic_fields(model)
 
     # Tracer steps
-    for (i, name) in enumerate(propertynames(model.tracers))
-        field = model.tracers[name]
+    for (i, name) in enumerate(keys(model_fields))
+        field = model_fields[name]
         kernel_args = (field, Δt, model.timestepper.χ, model.timestepper.Gⁿ[name], model.timestepper.G⁻[name])
         launch!(architecture(grid), grid, :xyz, _ab2_step_field!, kernel_args...)
 
@@ -40,7 +42,9 @@ function tracer_ab2_step!(model, Δt, callbacks)
                        Val(i),
                        model.clock,
                        fields(model),
-                       Δt)
+                       kernel_Δt,
+                       model.advection,
+                       model.velocities)
     end
 
     return nothing

@@ -10,7 +10,7 @@ new file.
 This function is a utility for creating a new file structure with all
 necessary simulation metadata (such as grid information and serialized
 objects) without copying large timeseries data. It copies core simulation
-metadata (`grid`, `serialized`, `coriolis`) and the `serialized` entries for
+metadata (`serialized`) and the `serialized` entries for
 specified timeseries variables.
 
 # Arguments
@@ -24,9 +24,8 @@ function copy_file_metadata!(original_file::JLD2.JLDFile, new_file::JLD2.JLDFile
                              timeseries_vars_to_copy::Tuple{Vararg{String}})
 
     # Copy over metadata that isn't associated with variables
-    for path in ("grid","serialized")
-        _copy_jld2_recursive!(original_file, new_file, path)
-    end
+    _copy_jld2_recursive!(original_file, new_file, "serialized")
+    
 
     # Copy serialized entries for timeseries variables
     for var in timeseries_vars_to_copy

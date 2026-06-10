@@ -29,14 +29,17 @@ After advancing velocities, a pressure Poisson equation is solved and velocities
 are corrected to satisfy the incompressibility constraint.
 """
 function tracer_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
-    Δτ   = stage_Δt(Δt, γⁿ, ζⁿ)
+    
     grid = model.grid
+    FT        = eltype(grid)
+    kernel_Δt = convert(FT, Δt)
+    Δτ        = convert(FT, stage_Δt(Δt, γⁿ, ζⁿ))
 
     compute_flux_bc_tendencies!(model)
-
+    model_fields = prognostic_fields(model)
     # Tracer steps
-    for (i, name) in enumerate(propertynames(model.tracers))
-        field = model.tracers[name]
+    for (i, name) in enumerate(keys(model_fields))
+        field = model_fields[name]
         kernel_args = (field, Δt, γⁿ, ζⁿ, model.timestepper.Gⁿ[name], model.timestepper.G⁻[name])
         launch!(architecture(grid), grid, :xyz, _rk3_substep_field!, kernel_args...)
 
@@ -47,7 +50,10 @@ function tracer_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
                        Val(i),
                        model.clock,
                        fields(model),
-                       Δτ)
+                       Δτ,
+                       model.advection,
+                       model.velocities)
+        
     end
 
 

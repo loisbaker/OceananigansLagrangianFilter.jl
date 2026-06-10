@@ -64,12 +64,12 @@ fields(model::LagrangianFilter) = merge(model.velocities,
 """
     prognostic_fields(model::LagrangianFilter)
 
-Return a flattened `NamedTuple` of the prognostic fields associated with `LagrangianFilter`. velocities are not really prognostic, but we include them here for convenience.
+Return a flattened `NamedTuple` of the prognostic fields associated with `LagrangianFilter`. Here only the tracers are prognostic.
 """
-prognostic_fields(model::LagrangianFilter) = merge(model.velocities, model.tracers)
+prognostic_fields(model::LagrangianFilter) = model.tracers
 
 # Extend default_included_properties to include grid in LagrangianFilter outputs
-default_included_properties(::LagrangianFilter) = [:grid]
+# default_included_properties(::LagrangianFilter) = [:grid] (not necessary, as grid in serialized)
 
 ##### Define a config structure
 
