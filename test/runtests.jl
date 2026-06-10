@@ -85,8 +85,8 @@ end
     @test u_test.grid == u_ref.grid
 
     # Remove test files
-    # rm("data/test_offline_output.jld2", force=true)
-    # rm("data/test_offline_output.nc", force=true)
+    rm("data/test_offline_output.jld2", force=true)
+    rm("data/test_offline_output.nc", force=true)
 
 end
 
@@ -230,25 +230,7 @@ end
     wE_test = FieldTimeSeries("data/test_online_output.jld2", "w_Eulerian_filtered")
     wE_ref = FieldTimeSeries("data/reference_online_output.jld2", "w_Eulerian_filtered")
 
-    # Test without using FieldTimeSeries (i.e. just the data arrays) to ensure that the filtering is correct, now there's version incompatibilities with FieldTimeSeries that prevent direct comparison of the FieldTimeSeries objects. 
-    # using JLD2
-    
-    # w_test_data = jldopen("data/test_online_output.jld2","r") do f_w_test
-    #     iterations = parse.(Int, keys(f_w_test["timeseries/t"]))
-    #     w_test_data = [f_w_test["timeseries/w/$(iter)"] for iter in iterations]
-    #     return w_test_data
-    # end
-
-    # w_ref_data = jldopen("data/reference_online_output.jld2","r") do f_w_ref
-    #     iterations = parse.(Int, keys(f_w_ref["timeseries/t"]))
-    #     w_ref_data = [f_w_ref["timeseries/w/$(iter)"] for iter in iterations]
-    #     return w_ref_data
-    # end
-
-
-
-
-
+    # Test vs ref original data
     @test isapprox(w_test.data, w_ref.data)
 
     # Test vs ref Lagrangian filtered data
@@ -265,6 +247,6 @@ end
 
 
     # Remove test files
-    # rm("data/test_online_output.jld2", force=true)
-    # rm("data/test_online_output.nc", force=true)
+    rm("data/test_online_output.jld2", force=true)
+    rm("data/test_online_output.nc", force=true)
 end
