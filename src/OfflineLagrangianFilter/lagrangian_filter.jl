@@ -7,6 +7,7 @@ using Oceananigans.Forcings: model_forcing
 using Oceananigans.Grids: inflate_halo_size, with_halo, architecture
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Models: AbstractModel, NaNChecker, extract_boundary_conditions
+using Oceananigans.Models.HydrostaticFreeSurfaceModels: materialize_prescribed_velocity
 using Oceananigans.TimeSteppers: Clock, TimeStepper, update_state!
 using Oceananigans.TurbulenceClosures: validate_closure, with_tracers, build_closure_fields, time_discretization, implicit_diffusion_solver
 using Oceananigans.TurbulenceClosures.TKEBasedVerticalDiffusivities: FlavorOfCATKE
@@ -105,6 +106,8 @@ function LagrangianFilter(grid;
     # by adjusting each (x, y, z) halo individually.
     grid = inflate_grid_halo_size(grid, advection, closure)
 
+    velocities = materialize_prescribed_velocities(velocities, grid, clock, nothing)
+
     # Collect boundary conditions for all model prognostic fields and, if specified, some model
     # auxiliary fields. Boundary conditions are "regularized" based on the _name_ of the field:
     # boundary conditions on u, v, w are regularized assuming they represent momentum at appropriate
@@ -141,12 +144,11 @@ function LagrangianFilter(grid;
     auxiliary_fields = auxiliary_fields_update     
 
     # Either check grid-correctness, or construct tuples of fields
-    velocities         = VelocityFields(velocities, grid, boundary_conditions)
     tracers            = TracerFields(tracers,      grid, boundary_conditions)
     closure_fields = build_closure_fields(closure_fields, grid, clock, tracernames(tracers), boundary_conditions, closure)
     buoyancy = nothing                                                                    
-    model_fields = merge(velocities, tracers, auxiliary_fields)
-    prognostic_fields = merge(velocities, tracers)
+    model_fields = merge((; u = velocities.u, v = velocities.v, w = velocities.w), tracers, auxiliary_fields)
+    prognostic_fields = tracers
 
     # Instantiate timestepper if not already instantiated
     implicit_solver = implicit_diffusion_solver(time_discretization(closure), grid)
@@ -166,6 +168,22 @@ end
 
 architecture(model::LagrangianFilter) = model.architecture
 timestepper(model::LagrangianFilter) = model.timestepper
+
+materialize_prescribed_velocities(velocities, grid, clock, bcs) = velocities
+
+function materialize_prescribed_velocities(velocities::PrescribedVelocityFields, grid, clock, bcs)
+
+    parameters = velocities.parameters
+    u = materialize_prescribed_velocity(Face, Center, Center, velocities.u, grid; clock, parameters)
+    v = materialize_prescribed_velocity(Center, Face, Center, velocities.v, grid; clock, parameters)
+    w = materialize_prescribed_velocity(Center, Center, Face, velocities.w, grid; clock, parameters)
+
+    fill_halo_regions!((u, v))
+    fill_halo_regions!(w)
+
+    return PrescribedVelocityFields(u, v, w, parameters)
+end
+
 
 function inflate_grid_halo_size(grid, tendency_terms...)
     user_halo = grid.Hx, grid.Hy, grid.Hz

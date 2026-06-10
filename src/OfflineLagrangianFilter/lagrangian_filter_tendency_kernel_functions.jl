@@ -48,7 +48,7 @@ velocity components, tracer fields, and precalculated diffusivities where applic
 
     @inbounds c = tracers[tracer_index]
 
-    model_fields = merge(velocities, tracers, auxiliary_fields)
+    model_fields = merge((u = velocities.u, v = velocities.v, w = velocities.w), tracers, auxiliary_fields)
 
 
     total_velocities = with_advective_forcing(forcing, velocities)

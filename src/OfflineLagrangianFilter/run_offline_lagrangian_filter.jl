@@ -43,8 +43,10 @@ function run_offline_Lagrangian_filter(config)
     forcing = create_forcing(filtered_vars, config)
     @info "Created forcing for filtered variables"
 
+    velocities = grab_velocities(input_data.velocity_data)
+
     # Define model 
-    model = LagrangianFilter(config.grid; tracers = filtered_vars, auxiliary_fields = original_vars, forcing = forcing, advection=config.advection)
+    model = LagrangianFilter(config.grid; tracers = filtered_vars, velocities, auxiliary_fields = original_vars, forcing = forcing, advection=config.advection)
     @info "Created model"
 
     # We can set initial values to improve the spinup, use the limit freq_c -> \infty
@@ -128,4 +130,12 @@ function run_offline_Lagrangian_filter(config)
         jld2_to_netcdf(config.output_filename, config.output_filename[1:end-5] * ".nc")
     end
 
+end
+
+# Correct this!
+function grab_velocities(velocities::Tuple)
+    u = velocities[1]
+    v = Oceananigans.Fields.ZeroField()
+    w = velocities[2]
+    return PrescribedVelocityFields(; u, v, w)
 end
