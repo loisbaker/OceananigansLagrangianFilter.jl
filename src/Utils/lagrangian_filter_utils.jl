@@ -622,25 +622,25 @@ function _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::Strin
 end
 
 #TODO
-"""
-- Add the relaxation argument to the config (Offline and online, though probably only useful offline)
-- Add docstrings for the above functions
-- Add option for spatial mask in relaxation functions
-- Initialise the xi fields with the new velocity scheme, should be careful with staggered grids. 
+# 
+# - Add the relaxation argument to the config (Offline and online, though probably only useful offline)
+# - Add docstrings for the above functions
+# - Add option for spatial mask in relaxation functions
+# - Initialise the xi fields with the new velocity scheme, should be careful with staggered grids. 
 
-Something like:
-# @inline sponge_mask_func(x, p) = 0.5*(tanh(0.5*p.sponge_slope*(x-xEnd)+(p.sponge_width)) - tanh(2*p.sponge_slope*(x-xStart)-(p.sponge_width)))+1
-@inline sponge_mask_func(x, p) = exp(-(x-(p.xEnd + 4*p.sponge_width))^2/(2*p.sponge_width^2))
-@inline ramp_forcing_func(t,p) = 0.5*(tanh((t-(0.5*p.ramp_timescale))/(0.25*p.ramp_timescale)) + 1)
-@inline ramp_forcing_func(t,p) = 1
+# Something like:
+# # @inline sponge_mask_func(x, p) = 0.5*(tanh(0.5*p.sponge_slope*(x-xEnd)+(p.sponge_width)) - tanh(2*p.sponge_slope*(x-xStart)-(p.sponge_width)))+1
+# @inline sponge_mask_func(x, p) = exp(-(x-(p.xEnd + 4*p.sponge_width))^2/(2*p.sponge_width^2))
+# @inline ramp_forcing_func(t,p) = 0.5*(tanh((t-(0.5*p.ramp_timescale))/(0.25*p.ramp_timescale)) + 1)
+# @inline ramp_forcing_func(t,p) = 1
 
-# Sponge forcing - to be added later
-@inline u_sponge_forcing_func(x, z, t, u, p) = sponge_mask_func(x,p) * (ramp_forcing_func(t,p) * U(z,p) - u)/p.restoring_time_scale
+# # Sponge forcing - to be added later
+# @inline u_sponge_forcing_func(x, z, t, u, p) = sponge_mask_func(x,p) * (ramp_forcing_func(t,p) * U(z,p) - u)/p.restoring_time_scale
 
-But we'd like to allow a user defined mask func.
+# But we'd like to allow a user defined mask func.
 
 
-"""
+# 
 """
     create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
@@ -696,8 +696,8 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
             gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
             gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies = (;var_key))
 
-            if filter_config.boundary_relaxation
-                relax_timescale = filter_config.relax_timescale
+            if config.boundary_relaxation
+                relax_timescale = config.relax_timescale
                 gC_relaxation = _make_gC_relaxation(1, labelled_var_name, var_name, filter_params, relax_timescale)
                 gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing, gC_relaxation)
             else
@@ -718,8 +718,8 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                 gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
                 xiC_forcing = _make_xiC_forcing(1, vel_name, filter_params)
 
-                if filter_config.boundary_relaxation
-                    relax_timescale = filter_config.relax_timescale
+                if config.boundary_relaxation
+                    relax_timescale = config.relax_timescale
                     xiC_relaxation = _make_xiC_relaxation(1, labelled_var_name, vel_name, filter_params, relax_timescale)
                     gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing, xiC_relaxation)
                 else
@@ -745,8 +745,8 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                 gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies= (;var_key))
                 gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
 
-                if filter_config.boundary_relaxation
-                    relax_timescale = filter_config.relax_timescale
+                if config.boundary_relaxation
+                    relax_timescale = config.relax_timescale
                     gC_relaxation = _make_gC_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale)
                     gS_relaxation = _make_gS_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale)
 
@@ -779,8 +779,8 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                     gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
                     xiS_forcing_i = _make_xiS_forcing(i, vel_name, filter_params)
 
-                    if filter_config.boundary_relaxation
-                        relax_timescale = filter_config.relax_timescale
+                    if config.boundary_relaxation
+                        relax_timescale = config.relax_timescale
                         xiC_relaxation = _make_xiC_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale)
                         xiS_relaxation = _make_xiS_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale)
                         gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i, xiC_relaxation)
