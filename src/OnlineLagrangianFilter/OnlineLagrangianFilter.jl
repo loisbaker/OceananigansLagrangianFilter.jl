@@ -27,6 +27,7 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     compute_mean_velocities::Bool
     npad::Int
     label::String
+    boundary_relaxation::Bool
     
 end
 
@@ -41,7 +42,8 @@ end
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            label::String = ""
+                            label::String = "",
+                            boundary_relaxation::Bool = false
                             )
 
 Constructs a configuration object for online Lagrangian filtering of Oceananigans data.
@@ -63,6 +65,7 @@ Keyword arguments
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
+  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
 # Example:
 
 ```jldoctest online config
@@ -110,7 +113,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            label::String = ""
+                            label::String = "",
+                            boundary_relaxation::Bool = false
                             )
 
     # Check that velocities aren't in the var_names_to_filter
@@ -223,7 +227,8 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             map_to_mean,
                             compute_mean_velocities,
                             npad,
-                            label
+                            label,
+                            boundary_relaxation
                             )
  
 end

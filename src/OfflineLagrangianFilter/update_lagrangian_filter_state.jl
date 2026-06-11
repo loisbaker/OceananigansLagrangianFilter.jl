@@ -26,10 +26,10 @@ function update_state!(model::LagrangianFilter, callbacks=[])
     # Update all FieldTimeSeries used in the model
     update_model_field_time_series!(model, model.clock)
 
-    # Update the boundary conditions
-    update_boundary_conditions!(fields(model), model)
+    # Update the boundary conditions (this doesn't do anything by default for most BCs)
+    # update_boundary_conditions!(fields(model), model)
 
-    # Fill halos for tracers
+    # Fill halos for tracers - we're only applying the BCs to the tracers - not the velocities or the auxiliary fields. 
     fill_halo_regions!(model.tracers, model.clock, fields(model); 
                        fill_normal_flow_bcs = false, async = true)
 

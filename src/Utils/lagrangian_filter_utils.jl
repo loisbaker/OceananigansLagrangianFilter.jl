@@ -540,7 +540,7 @@ the special case of a single exponential filter where `d` is zero.
 function _make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
     c = getproperty(filter_params, Symbol("c",i))
     d = filter_params.N_coeffs == 0.5 ? 0 : getproperty(filter_params, Symbol("d",i)) # Single exponential special case gets d = 0
-    forcing_func = (args...) -> -args[end][1]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
+    forcing_func = (args...) -> -args[end][1]/(args[end][1]^2 + args[end][2]^2)*args[end-1] # Parameters are last argument, and field dependence is second to last argument. 
     return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
 end
 
@@ -565,6 +565,82 @@ function _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
 end
 
 
+# Functions for relaxation. No spatial mask for now. 
+function _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale)
+    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
+        c = getproperty(filter_params, Symbol("c",i))
+        gCkey = Symbol(labelled_var_name,"_C",i)
+        var_key = Symbol(original_var_name)
+        gC_relaxation_func = (args...) -> -1/args[end][2]*(args[end-1] - args[end-2]/args[end][1]) # args are (field deps, parameters). Parameters are args[end] = (c, relax_timescale), and field deps are original variable (args[end-2]), gC (args[end-1])
+        return Forcing(gC_relaxation_func, parameters = (c,relax_timescale), field_dependencies = (var_key, gCkey))
+    else
+        c = getproperty(filter_params, Symbol("c",i))
+        d = getproperty(filter_params, Symbol("d",i))
+        gCkey = Symbol(labelled_var_name, "_C",i)
+        var_key = Symbol(original_var_name)
+        gC_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*args[end][1]/(args[end][1]^2 + args[end][2]^2)) # args are (field deps, parameters). Parameters are args[end] = (c, d, relax_timescale), and field deps are original variable (args[end-2]), and gC (args[end-1])
+        return Forcing(gC_relaxation_func, parameters = (c, d, relax_timescale), field_dependencies = (var_key,gCkey))
+    end
+end
+
+# Functions for relaxation. No spatial mask for now. 
+function _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale)
+    c = getproperty(filter_params, Symbol("c",i))
+    d = getproperty(filter_params, Symbol("d",i))
+    gSkey = Symbol(labelled_var_name, "_S",i)
+    var_key = Symbol(original_var_name)
+    gS_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*args[end][2]/(args[end][1]^2 + args[end][2]^2)) # args are (field deps, parameters). Parameters are args[end] = (c, d, relax_timescale), and field deps are original variable (args[end-2]), and gC (args[end-1])
+    return Forcing(gS_relaxation_func, parameters = (c, d, relax_timescale), field_dependencies = (var_key,gSkey))
+end
+
+# Functions for relaxation. No spatial mask for now. 
+function _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale)
+    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
+        c = getproperty(filter_params, Symbol("c",i))
+        xiCkey = Symbol(labelled_var_name,"_C",i)
+        vel_key = Symbol(vel_name)
+        xiC_relaxation_func = (args...) -> -1/args[end][2]*(args[end-1] - (-1/args[end][1]^2)*args[end-2]) # args are (field deps, parameters). Parameters are args[end] = (c, relax_timescale), and field deps are original velocity (args[end-2]), xiC (args[end-1])
+        return Forcing(xiC_relaxation_func, parameters = (c,relax_timescale), field_dependencies = (vel_key, xiCkey))
+    else
+        c = getproperty(filter_params, Symbol("c",i))
+        d = getproperty(filter_params, Symbol("d",i))
+        xiCkey = Symbol(labelled_var_name, "_C",i)
+        vel_key = Symbol(vel_name)
+        xiC_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*(args[end][2]^2 - args[end][1]^2)/(args[end][1]^2 + args[end][2]^2)^2) # args are (field deps, parameters). Parameters are args[end] = (c, d, relax_timescale), and field deps are original velocity (args[end-2]), and xiC (args[end-1])
+        return Forcing(xiC_relaxation_func, parameters = (c, d, relax_timescale), field_dependencies = (vel_key, xiCkey))
+    end
+end
+
+# Functions for relaxation. No spatial mask for now. 
+function _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale)
+    c = getproperty(filter_params, Symbol("c",i))
+    d = getproperty(filter_params, Symbol("d",i))
+    xiSkey = Symbol(labelled_var_name, "_S",i)
+    vel_key = Symbol(vel_name)
+    xiS_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*(-2*args[end][1]*args[end][2])/(args[end][1]^2 + args[end][2]^2)^2) # args are (field deps, parameters). Parameters are args[end] = (c, d, relax_timescale), and field deps are original velocity (args[end-2]), and xiS (args[end-1])
+    return Forcing(xiS_relaxation_func, parameters = (c, d, relax_timescale), field_dependencies = (vel_key, xiSkey))
+end
+
+#TODO
+"""
+- Add the relaxation argument to the config (Offline and online, though probably only useful offline)
+- Add docstrings for the above functions
+- Add option for spatial mask in relaxation functions
+- Initialise the xi fields with the new velocity scheme, should be careful with staggered grids. 
+
+Something like:
+# @inline sponge_mask_func(x, p) = 0.5*(tanh(0.5*p.sponge_slope*(x-xEnd)+(p.sponge_width)) - tanh(2*p.sponge_slope*(x-xStart)-(p.sponge_width)))+1
+@inline sponge_mask_func(x, p) = exp(-(x-(p.xEnd + 4*p.sponge_width))^2/(2*p.sponge_width^2))
+@inline ramp_forcing_func(t,p) = 0.5*(tanh((t-(0.5*p.ramp_timescale))/(0.25*p.ramp_timescale)) + 1)
+@inline ramp_forcing_func(t,p) = 1
+
+# Sponge forcing - to be added later
+@inline u_sponge_forcing_func(x, z, t, u, p) = sponge_mask_func(x,p) * (ramp_forcing_func(t,p) * U(z,p) - u)/p.restoring_time_scale
+
+But we'd like to allow a user defined mask func.
+
+
+"""
 """
     create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
@@ -601,9 +677,9 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
     filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
     label = config.label
+
     # Initialize dictionary
     gC_forcings_dict = Dict()
-    
 
     # Make a simple forcing function for original data forcing - the final argument is the field dependence.
     original_var_forcing_func(args...) = args[end]
@@ -619,7 +695,14 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
             # The forcing for gC is the sum of a filter forcing term and the original data forcing
             gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
             gC_original_var_forcing = Forcing(original_var_forcing_func,field_dependencies = (;var_key))
-            gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing)
+
+            if filter_config.boundary_relaxation
+                relax_timescale = filter_config.relax_timescale
+                gC_relaxation = _make_gC_relaxation(1, labelled_var_name, var_name, filter_params, relax_timescale)
+                gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing, gC_relaxation)
+            else
+                gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing)
+            end
         end
 
         # Check if we need xi forcing (implied by number of filtered_vars)
@@ -634,8 +717,14 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                 # term involving the corresponding velocity
                 gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
                 xiC_forcing = _make_xiC_forcing(1, vel_name, filter_params)
-                gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing)
 
+                if filter_config.boundary_relaxation
+                    relax_timescale = filter_config.relax_timescale
+                    xiC_relaxation = _make_xiC_relaxation(1, labelled_var_name, vel_name, filter_params, relax_timescale)
+                    gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing, xiC_relaxation)
+                else
+                    gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing)
+                end
             end
         end
 
@@ -654,11 +743,20 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                 # The forcing for gC is the sum of a filter forcing term and the original data forcing
                 gC_forcing_i = _make_gC_forcing(i, labelled_var_name, filter_params)
                 gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies= (;var_key))
-                gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
+                gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
 
-                # The forcing for gS is just a filter forcing term
-                gS_forcings_dict[gSkey] = _make_gS_forcing(i, labelled_var_name, filter_params)
+                if filter_config.boundary_relaxation
+                    relax_timescale = filter_config.relax_timescale
+                    gC_relaxation = _make_gC_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale)
+                    gS_relaxation = _make_gS_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale)
 
+                    gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing, gC_relaxation)
+                    gS_forcings_dict[gSkey] = (gS_forcing_i, gS_relaxation)
+                else
+                    gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
+                    # The forcing for gS is just a filter forcing term
+                    gS_forcings_dict[gSkey] = gS_forcing_i
+                end
             end
         end
 
@@ -676,12 +774,21 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
                     # term involving the corresponding velocity
                     gC_forcing_i = _make_gC_forcing(i, labelled_var_name, filter_params)
                     xiC_forcing_i = _make_xiC_forcing(i, vel_name, filter_params)
-                    gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
-
+                    
                     # The forcing for xiS also includes a term involving xiC and xiS and a term involving the corresponding velocity
                     gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
                     xiS_forcing_i = _make_xiS_forcing(i, vel_name, filter_params)
-                    gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i)
+
+                    if filter_config.boundary_relaxation
+                        relax_timescale = filter_config.relax_timescale
+                        xiC_relaxation = _make_xiC_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale)
+                        xiS_relaxation = _make_xiS_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale)
+                        gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i, xiC_relaxation)
+                        gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i, xiS_relaxation)
+                    else
+                        gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
+                        gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i)
+                    end
 
                 end
             end
@@ -865,15 +972,23 @@ function update_input_data!(model::AbstractModel, input_data::NamedTuple)
     original_var_timeseries = input_data.var_data
     t = model.clock.time
     
-    # Update the velocities
-    kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
-    set!(model; kwargs...)          
-
+    # Update the velocities 
+    # If we do this using this set! then the halo regions will be updated according to the boundary conditions. We'd rather just keep what we have.
+    # Originally (updates halos):
+    #  kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
+    # set!(model; kwargs...)   
+    for vel_fts in velocity_timeseries
+        field = getproperty(model.velocities, Symbol(vel_fts.name))
+        parent(field) .= parent(vel_fts[Time(t)]) # This also fills the halo regions, which we'll need to help with the filtered field boundaries
+    end
+    
     # We also update the saved original variables to be used for forcing - these are auxiliary fields so need to be set separately
     for original_var_fts in original_var_timeseries
-        set!(getproperty(model.auxiliary_fields, Symbol(original_var_fts.name)), original_var_fts[Time(t)])
-        # halo regions get filled automatically
+        field = getproperty(model.auxiliary_fields, Symbol(original_var_fts.name))
+        parent(field) .= parent(original_var_fts[Time(t)]) # This also fills the halo regions, which we'll need to help with the filtered field boundaries
     end
+
+    
 end
 
 """

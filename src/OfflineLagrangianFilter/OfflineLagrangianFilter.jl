@@ -105,6 +105,7 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     label::String
+    boundary_relaxation::Bool
 
 end
 
@@ -134,7 +135,8 @@ end
                         output_original_data::Bool = true,
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
-                        label::String = "")
+                        label::String = "",
+                        boundary_relaxation::Bool = false)
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -170,6 +172,7 @@ Keyword arguments
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
+  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
 # Example:
 
 ```jldoctest offline config
@@ -233,7 +236,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             output_original_data::Bool = true,
                             advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing,
-                            label::String = "")
+                            label::String = "",
+                            boundary_relaxation::Bool = false)
 
     # Check that the original file exists 
     if !isfile(original_data_filename)
@@ -466,7 +470,8 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             output_original_data,
                             advection,
                             grid,
-                            label)
+                            label,
+                            boundary_relaxation)
 
 end
 
