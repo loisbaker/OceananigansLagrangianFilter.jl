@@ -1055,14 +1055,14 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
     if config.map_to_mean || config.compute_mean_velocities
         for vel_fts in input_data.velocity_data
             vel_name = vel_fts.name
-            if N_coeffs == 0.5 # Special case of single exponential
+            if filter_params.N_coeffs == 0.5 # Special case of single exponential
                 filtered_map_C = Symbol("xi_", vel_name, label, "_C1")
                 c1 = filter_params.c1
                 field_C = getproperty(model.tracers, filtered_map_C)
                 initial_vel_centred = Field(@at (Center, Center, Center) vel_fts[Time(0)])
                 parent(field_C) .= (-1/c1^2)*parent(initial_vel_centred) 
             else
-                for i in 1:N_coeffs
+                for i in 1:filter_params.N_coeffs
                     filtered_map_C = Symbol("xi_", vel_name, label, "_C",i)
                     filtered_map_S = Symbol("xi_", vel_name, label, "_S",i)
                     ci = getproperty(filter_params,Symbol("c$i"))
