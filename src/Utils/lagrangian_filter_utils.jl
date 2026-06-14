@@ -1172,6 +1172,30 @@ function initialise_filtered_vars_from_model(model::AbstractModel, config::Abstr
 
 end
 
+function change_sign_of_map_variables!(model::AbstractModel, config::AbstractConfig)
+    vel_names = config.velocity_names
+    label = config.label
+    for vel_name in vel_names
+        if config.filter_params.N_coeffs == 0.5 # Special case of single exponential
+            filtered_map_C = Symbol("xi_", vel_name, label, "_C1")
+            map_C = getproperty(model.tracers, filtered_map_C)
+            parent(map_C) .= -parent(map_C)
+        else
+            for i in 1:config.filter_params.N_coeffs
+                filtered_map_C = Symbol("xi_", vel_name, label, "_C",i)
+                filtered_map_S = Symbol("xi_", vel_name, label, "_S",i)
+                map_C = getproperty(model.tracers, filtered_map_C)
+                map_S = getproperty(model.tracers, filtered_map_S)
+                parent(map_C) .= -parent(map_C)
+                parent(map_S) .= -parent(map_S)
+            end
+        end
+    end
+end
+
+
+
+
 """
     zero_closure_for_filtered_vars(config::AbstractConfig)
 
