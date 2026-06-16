@@ -1036,7 +1036,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             c1 = filter_params.c1
             field_C = getproperty(model.tracers, filtered_var_C)
-            parent(field_C) .= 1/c1*parent(original_var_fts[Time(t)]) # set halos too
+            parent(field_C) .= 1/c1*parent(original_var_fts[Time(0)]) # set halos too
         else
             for i in 1:filter_params.N_coeffs
                 filtered_var_C = Symbol(labelled_var_name,"_C",i)
