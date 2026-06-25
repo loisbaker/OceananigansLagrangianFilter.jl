@@ -564,8 +564,23 @@ function _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
     return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
 end
 
+"""
+    _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
+Create a relaxation term for the cosine component (gC) of a filtered variable. The function handles the special case of a single exponential filter where `d` is zero.  
 
-# Functions for relaxation. 
+# Arguments
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
+    including label if used.
+- `original_var_name::String`: The name of the original variable (e.g., "T").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
+- `relax_timescale::Real`: The timescale over which the relaxation occurs.
+- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
+- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
+
+# Returns
+- A `Forcing` object configured to compute the relaxation term for the gC field.
+"""
 function _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
     if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
         c = getproperty(filter_params, Symbol("c",i))
@@ -589,7 +604,24 @@ function _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_nam
     end
 end
 
-# Functions for relaxation. 
+"""
+    _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
+Create a relaxation term for the sine component (gS) of a filtered variable.
+    
+# Arguments
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
+    including label if used.
+- `original_var_name::String`: The name of the original variable (e.g., "T").
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
+- `relax_timescale::Real`: The timescale over which the relaxation occurs.
+- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
+- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
+
+# Returns
+- A `Forcing` object configured to compute the relaxation term for the gS field.
+
+"""
 function _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
     c = getproperty(filter_params, Symbol("c",i))
     d = getproperty(filter_params, Symbol("d",i))
@@ -602,7 +634,20 @@ function _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_nam
     return Forcing(gS_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (var_key,gSkey))
 end
 
-# Functions for relaxation. 
+"""
+    _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
+Create a relaxation term for the cosine component (xiC) of a map variable. The function handles the special case of a single exponential filter where `d` is zero.  
+
+# Arguments
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `labelled_var_name::String`: The name of the variable being filtered (e.g., "xi_u")
+    including label if used.
+- `vel_name::String`: The name of the velocity variable (e.g., "u"). 
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
+- `relax_timescale::Real`: The timescale over which the relaxation occurs.
+- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
+- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
+"""
 function _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
     if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
         c = getproperty(filter_params, Symbol("c",i))
@@ -626,7 +671,21 @@ function _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::Strin
     end
 end
 
-# Functions for relaxation. 
+
+"""
+    _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
+Create a relaxation term for the sine component (xiS) of a map variable.
+
+# Arguments
+- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
+- `labelled_var_name::String`: The name of the variable being filtered (e.g., "xi_u")
+    including label if used.
+- `vel_name::String`: The name of the velocity variable (e.g., "u"). 
+- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
+- `relax_timescale::Real`: The timescale over which the relaxation occurs.
+- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
+- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function
+"""
 function _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
     c = getproperty(filter_params, Symbol("c",i))
     d = getproperty(filter_params, Symbol("d",i))
@@ -639,9 +698,7 @@ function _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::Strin
     return Forcing(xiS_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (vel_key, xiSkey))
 end
 
-#TODO
-# - Add docstrings for the above functions
-# - Add tests for relaxation (and test on GPU). Different initialisation, so will need to update reference data. 
+
 """
     create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
