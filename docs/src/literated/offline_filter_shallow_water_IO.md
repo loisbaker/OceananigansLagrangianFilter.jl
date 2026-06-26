@@ -68,11 +68,11 @@ ShallowWaterModel{CPU, Float64}(time = 0 seconds, iteration = 0)
 ├── grid: 50×50×1 RectilinearGrid{Float64, Periodic, Periodic, Flat} on CPU with 3×3×0 halo
 ├── timestepper: RungeKutta3TimeStepper
 ├── advection scheme: 
-│   ├── momentum: WENO{3, Float64, Float32}(order=5)
-│   ├── mass: WENO{3, Float64, Float32}(order=5)
-│   └── T: WENO{3, Float64, Float32}(order=5)
+│   ├── momentum: WENO{3, Float64, Oceananigans.Utils.BackendOptimizedDivision}(order=5)
+│   ├── mass: WENO{3, Float64, Oceananigans.Utils.BackendOptimizedDivision}(order=5)
+│   └── T: WENO{3, Float64, Oceananigans.Utils.BackendOptimizedDivision}(order=5)
 ├── tracers: (:T,)
-└── coriolis: FPlane{Float64}
+└── coriolis: FPlane{Oceananigans.Advection.EnstrophyConserving{Float64}, Float64}
 ````
 
 ### Initial conditions
@@ -148,7 +148,7 @@ JLD2Writer scheduled on TimeInterval(100 ms):
 ├── filepath: SW_IO_with_tracer.jld2
 ├── 3 outputs: (u, v, T)
 ├── array_type: Array{Float32}
-├── including: [:grid, :coriolis, :closure]
+├── including: [:coriolis, :closure]
 ├── file_splitting: NoFileSplitting
 └── file size: 0 bytes (file not yet created)
 ````
@@ -162,9 +162,9 @@ run!(simulation)
 ````
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds, max(|uh|, |vh|, |h|): 6.28e-01, 0.00e+00, 1.00e+00 
-[ Info:     ... simulation initialization complete (4.342 seconds)
+[ Info:     ... simulation initialization complete (5.384 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (5.808 seconds).
+[ Info:     ... initial time step complete (5.390 seconds).
 [ Info: Simulation time: 990.000 ms, max(|uh|, |vh|, |h|): 3.45e-01, 5.25e-01, 1.00e+00 
 [ Info: Simulation time: 1.990 seconds, max(|uh|, |vh|, |h|): 2.56e-01, 5.74e-01, 1.00e+00 
 [ Info: Simulation time: 2.900 seconds, max(|uh|, |vh|, |h|): 6.10e-01, 1.50e-01, 1.00e+00 
@@ -186,7 +186,7 @@ run!(simulation)
 [ Info: Simulation time: 17.590 seconds, max(|uh|, |vh|, |h|): 1.92e-01, 5.98e-01, 1.00e+00 
 [ Info: Simulation time: 18.590 seconds, max(|uh|, |vh|, |h|): 6.07e-01, 1.61e-01, 1.00e+00 
 [ Info: Simulation time: 19.590 seconds, max(|uh|, |vh|, |h|): 4.64e-01, 4.24e-01, 1.00e+00 
-[ Info: Simulation is stopping after running for 1.258 minutes.
+[ Info: Simulation is stopping after running for 1.248 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 
 ````
@@ -218,13 +218,13 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
 ````
 
 ````
-OfflineFilterConfig("SW_IO_with_tracer.jld2", ("T",), ("u", "v"), 0.0, 20.0, 20.0, CPU(), 0.1, (a1 = 0.17677669529663687, b1 = 0.1767766952966369, c1 = 0.35355339059327373, d1 = 0.3535533905932738, N_coeffs = 1), 0.01, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "SW_IO_with_tracer_filtered.jld2", 5, true, true, true, true, true, WENO{3, Float64, Float32}(order=5)
-├── buffer_scheme: WENO{2, Float64, Float32}(order=3)
+OfflineFilterConfig("SW_IO_with_tracer.jld2", ("T",), ("u", "v"), 0.0, 20.0, 20.0, CPU(), 0.1, (a1 = 0.17677669529663687, b1 = 0.1767766952966369, c1 = 0.35355339059327373, d1 = 0.3535533905932738, N_coeffs = 1), 0.01, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "SW_IO_with_tracer_filtered.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 50×50×1 RectilinearGrid{Float64, Periodic, Periodic, Flat} on CPU with 3×3×0 halo
 ├── Periodic x ∈ [4.03717e-17, 6.28319) regularly spaced with Δx=0.125664
 ├── Periodic y ∈ [4.03717e-17, 6.28319) regularly spaced with Δy=0.125664
-└── Flat z                              , "offline", "")
+└── Flat z                              , "", false, nothing, nothing, nothing)
 ````
 
 ### Run the offline Lagrangian filter
@@ -244,9 +244,9 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (1.545 minutes)
+[ Info:     ... simulation initialization complete (1.637 minutes)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (19.100 seconds).
+[ Info:     ... initial time step complete (7.749 seconds).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -256,14 +256,14 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 5.971 minutes.
+[ Info: Simulation is stopping after running for 5.790 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (112.529 ms)
+[ Info:     ... simulation initialization complete (163.798 ms)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (148.799 ms).
+[ Info:     ... initial time step complete (183.380 ms).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -273,7 +273,7 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 4.049 minutes.
+[ Info: Simulation is stopping after running for 3.961 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Combined forward and backward contributions into SW_IO_with_tracer_filtered.jld2
