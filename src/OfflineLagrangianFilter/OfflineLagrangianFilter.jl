@@ -11,7 +11,7 @@ using JLD2
 
 using Oceananigans.DistributedComputations
 using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
-using Oceananigans.Grids: XYZRegularRG
+using Oceananigans.Grids: XYZRegularRG, topology, Flat
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
 using Oceananigans.OutputReaders: AbstractInMemoryBackend
@@ -105,6 +105,10 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     label::String
+    boundary_relaxation::Bool
+    relax_timescale::Union{Real, Nothing}
+    mask_params::Union{NamedTuple, Nothing}
+    mask_func::Union{Function, Nothing}
 
 end
 
@@ -134,7 +138,11 @@ end
                         output_original_data::Bool = true,
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
-                        label::String = "")
+                        label::String = "",
+                        boundary_relaxation::Bool = false,
+                        relax_timescale::Union{Real, Nothing} = nothing,
+                        mask_params::Union{NamedTuple, Nothing} = nothing,
+                        mask_func::Union{Function, Nothing} = nothing)
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -170,6 +178,10 @@ Keyword arguments
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
+  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
+  - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
+  - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
+  - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
 # Example:
 
 ```jldoctest offline config
@@ -191,19 +203,19 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
                                     compute_Eulerian_filter = true) 
 
 # output
-┌ Info: Advection for Lagrangian filtering will be performed using only velocities ("u", "w") - 
+┌ Info: Advection for Lagrangian filtering will be performed using only velocities ("u", "w") -
 │ any other velocity components will be zero by default. Maps for regridding to mean position will
 └ be computed corresponding to velocities: ("u", "w").
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Float32}(order=5)
-├── buffer_scheme: WENO{2, Float64, Float32}(order=3)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
-├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "offline", "")
+├── Flat y
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", false, nothing, nothing, nothing)
 
 ```
 
@@ -233,7 +245,12 @@ function OfflineFilterConfig(; original_data_filename::String,
                             output_original_data::Bool = true,
                             advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing,
-                            label::String = "")
+                            label::String = "",
+                            boundary_relaxation::Bool = false,
+                            relax_timescale::Union{Real, Nothing} = nothing,
+                            mask_params::Union{NamedTuple, Nothing} = nothing,
+                            mask_func::Union{Function, Nothing}  = nothing
+                            )
 
     # Check that the original file exists 
     if !isfile(original_data_filename)
@@ -442,6 +459,30 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
         compute_Eulerian_filter = false
     end
 
+    # Check relaxation fields are appropriate
+    if boundary_relaxation
+        if isnothing(relax_timescale)
+            error("A relax_timescale must be set if boundary_relaxation = true")
+        end
+        if isnothing(mask_params)
+            @warn "mask_params = nothing with boundary_relaxation = true. The mask function probably needs parameters."
+        end
+        if isnothing(mask_func)
+            error("A spatial mask_func must be set if boundary_relaxation = true")
+        else
+            # We should check that this function only has one method
+            if !(length(methods(mask_func)) ==1)
+                @warn "mask_func has multiple methods, that could cause issues"
+            end
+            # We'll also check the number of args is correct
+            num_args = first(methods(mask_func)).nargs - 2 # First argument is self, last is mask_params
+            num_non_flat = count(T -> T !== Flat, topology(grid))
+            if num_args != num_non_flat
+                error("mask_func has the wrong number of arguments")
+            end
+
+        end
+    end
     
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
@@ -466,7 +507,12 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             output_original_data,
                             advection,
                             grid,
-                            label)
+                            label,
+                            boundary_relaxation,
+                            relax_timescale,
+                            mask_params,
+                            mask_func
+                            )
 
 end
 

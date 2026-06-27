@@ -86,7 +86,8 @@ function run_offline_Lagrangian_filter(config)
     # Now, run it backwards. Switch the data direction on disk
     create_input_data_on_disk(config; direction = "backward")
 
-    # Tracers are initialised with their existing values 
+    # The filtered variabels are already well initialised for the backward run, but the maps need reversing.
+    change_sign_of_map_variables!(model, config)
   
     # Reset time
     reset!(model.clock)

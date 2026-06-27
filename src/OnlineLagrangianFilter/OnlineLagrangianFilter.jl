@@ -1,7 +1,7 @@
 module OnlineLagrangianFilter
 
 using ..OceananigansLagrangianFilter: AbstractConfig, AbstractOnlineConfig
-using Oceananigans.Grids: AbstractGrid, RectilinearGrid, LatitudeLongitudeGrid
+using Oceananigans.Grids: AbstractGrid, RectilinearGrid, LatitudeLongitudeGrid, topology, Flat
 using Oceananigans.Architectures
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
@@ -27,7 +27,10 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     compute_mean_velocities::Bool
     npad::Int
     label::String
-    
+    boundary_relaxation::Bool
+    relax_timescale::Union{Real, Nothing}
+    mask_params::Union{NamedTuple, Nothing}
+    mask_func::Union{Function, Nothing}
 end
 
 """
@@ -41,7 +44,12 @@ end
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            label::String = ""
+                            label::String = "",
+                            boundary_relaxation::Bool = false,
+                            relax_timescale::Union{Real, Nothing} = nothing,
+                            mask_params::Union{NamedTuple, Nothing} = nothing,
+                            mask_func::Union{Function, Nothing} = nothing
+
                             )
 
 Constructs a configuration object for online Lagrangian filtering of Oceananigans data.
@@ -63,6 +71,11 @@ Keyword arguments
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
+  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
+  - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
+  - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
+  - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+
 # Example:
 
 ```jldoctest online config
@@ -87,15 +100,15 @@ filter_config = OnlineFilterConfig( grid = grid,
                                     freq_c = 1e-4/2)
 
 # output
-┌ Info: Advection for Lagrangian filtering will be performed using full model velocities u, v, and w. 
+┌ Info: Advection for Lagrangian filtering will be performed using full model velocities u, v, and w.
 └         Maps for regridding to mean position will be computed corresponding to velocities: ("u", "w").
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Variables to be filtered: ("b", "T"). Ensure these are valid tracer or auxiliary field names in the simulation.
 [ Info: Setting filter parameters to use Butterworth order 2, cutoff frequency 5.0e-5
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
-├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "online", "")
+├── Flat y
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "", false, nothing, nothing, nothing)
 ```
 
 
@@ -110,7 +123,11 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             map_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
-                            label::String = ""
+                            label::String = "",
+                            boundary_relaxation::Bool = false,
+                            relax_timescale::Union{Real, Nothing} = nothing,
+                            mask_params::Union{NamedTuple, Nothing} = nothing,
+                            mask_func::Union{Function, Nothing}  = nothing
                             )
 
     # Check that velocities aren't in the var_names_to_filter
@@ -215,6 +232,31 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
         map_to_mean = false
     end
 
+    # Check relaxation fields are appropriate
+    if boundary_relaxation
+        if isnothing(relax_timescale)
+            error("A relax_timescale must be set if boundary_relaxation = true")
+        end
+        if isnothing(mask_params)
+            @warn "mask_params = nothing with boundary_relaxation = true. The mask function probably needs parameters."
+        end
+        if isnothing(mask_func)
+            error("A spatial mask_func must be set if boundary_relaxation = true")
+        else
+            # We should check that this function only has one method
+            if length(methods(mask_func)) != 1
+                @warn "mask_func has multiple methods, that could cause issues"
+            end
+            # We'll also check the number of args is correct
+            num_args = first(methods(mask_func)).nargs - 2 # First argument is self, last is mask_params
+            num_non_flat = count(T -> T !== Flat, topology(grid))
+            if num_args != num_non_flat
+                error("mask_func has the wrong number of arguments")
+            end
+
+        end
+    end
+
     return OnlineFilterConfig(grid,
                             output_filename,
                             var_names_to_filter,
@@ -223,7 +265,11 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             map_to_mean,
                             compute_mean_velocities,
                             npad,
-                            label
+                            label,
+                            boundary_relaxation,
+                            relax_timescale,
+                            mask_params,
+                            mask_func
                             )
  
 end
