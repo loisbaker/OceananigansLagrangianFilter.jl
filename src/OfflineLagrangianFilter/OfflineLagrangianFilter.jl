@@ -429,10 +429,12 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
         end
     end
 
-    # Finally, we can define the grid, if not given (as is typical)
-    example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
-    grid = isnothing(grid) ? example_timeseries.grid : grid
-
+    # If grid is not given, we can define it using the data file (this would be the typical behaviour for Oceananigans output)
+    if isnothing(grid)
+        example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
+        grid = example_timeseries.grid : grid
+    end
+    
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid
         @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
