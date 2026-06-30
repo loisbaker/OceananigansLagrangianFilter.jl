@@ -169,14 +169,22 @@ function _build_templates(source::JLD2DataSource, all_names, arch)
     return cpu_templates, gpu_templates
 end
 
-function _build_templates(::NetCDFDataSource, all_names, arch, grid, locations)
+function _build_templates(source::NetCDFDataSource, all_names, arch, grid, locations)
     cpu_templates = Dict{Symbol, Field}()
     gpu_templates = Dict{Symbol, Field}()
     for v in all_names
         vsym = Symbol(v)
-        loc  = get(locations, v, (Center, Center, Center))
-        cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
-        gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch,  grid))
+        if haskey(locations, v)
+            loc = locations[v]
+            cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
+            gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch,  grid))
+        else
+            # Infer location and grid from the NetCDF file attributes (written by Oceananigans NetCDFWriter)
+            fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(2))
+            loc = Oceananigans.Fields.location(fts)
+            cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(fts.grid)
+            gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, fts.grid))
+        end
     end
     return cpu_templates, gpu_templates
 end
