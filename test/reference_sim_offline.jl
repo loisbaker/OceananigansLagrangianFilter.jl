@@ -51,6 +51,9 @@ b = model.tracers.b
 simulation.output_writers[:jld2fields] = JLD2Writer(
     model, (; b, u, w), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
 
+simulation.output_writers[:ncfields] = NetCDFWriter(
+    model, (; b, u, w), filename = filename_stem * ".nc", schedule=TimeInterval(1hour), overwrite_existing=true)
+
 # ### Run simulation
 @info "Running the simulation..."
 
@@ -58,12 +61,11 @@ run!(simulation)
 
 @info "Simulation completed in " * prettytime(simulation.run_wall_time)
 
-
-# ## Perform Lagrangian filtering
+## Perform Lagrangian filtering
 # Now we set up and run the offline Lagrangian filter on the output of the above simulation.
 
 
-# ### Set up the filter configuration
+### Set up the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename="data/reference_sim.jld2", # Where the original simulation output is
                                     output_filename = "data/reference_offline_output.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("b",), # Which variables to filter
@@ -79,6 +81,6 @@ filter_config = OfflineFilterConfig(original_data_filename="data/reference_sim.j
                                     compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison
 
 
-# ### Run the offline Lagrangian filter
+### Run the offline Lagrangian filter
 run_offline_Lagrangian_filter(filter_config)
 
