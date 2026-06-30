@@ -2,7 +2,7 @@ module OceananigansLagrangianFilter
 
 
 using Reexport
-@reexport using Oceananigans  
+@reexport using Oceananigans
 
 # Define a supertype for all configuration objects.
 abstract type AbstractConfig end
@@ -10,11 +10,13 @@ abstract type AbstractOfflineConfig <: AbstractConfig end
 abstract type AbstractOnlineConfig  <: AbstractConfig end
 export AbstractConfig, AbstractOfflineConfig, AbstractOnlineConfig
 
-# Define submodules
+# Define submodules — DataIO must load before Utils so Utils can import BufferedDataReader.
+include("./DataIO/DataIO.jl")
 include("./Utils/Utils.jl")
 include("./OfflineLagrangianFilter/OfflineLagrangianFilter.jl")
 include("./OnlineLagrangianFilter/OnlineLagrangianFilter.jl")
 
+using .DataIO
 using .Utils
 using .OfflineLagrangianFilter
 using .OnlineLagrangianFilter
@@ -28,5 +30,9 @@ export create_original_vars, create_filtered_vars, create_forcing, create_output
 export update_input_data!, initialise_filtered_vars_from_data, initialise_filtered_vars_from_model, zero_closure_for_filtered_vars
 export sum_forward_backward_contributions!, regrid_to_mean_position!, change_sign_of_map_variables!
 export jld2_to_netcdf, get_weight_function, get_frequency_response, compute_Eulerian_filter!, compute_time_shift!
+
+# BufferedDataReader public API
+export BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!
+export JLD2DataSource, NetCDFDataSource
 
 end # module
