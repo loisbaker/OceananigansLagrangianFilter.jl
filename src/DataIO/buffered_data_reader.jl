@@ -13,7 +13,7 @@ Forward direction  : physical time = T_start + sim_t  (buffer scans file forward
 Backward direction : physical time = T_end   - sim_t  (buffer scans file backward;
                      velocity signs are negated during interpolation)
 """
-mutable struct BufferedDataReader{S <: AbstractDataSource}
+mutable struct BufferedDataReader{S <: AbstractDataSource, F, C}
     source    :: S
     direction :: Symbol          # :forward or :backward
     T_start   :: Float64
@@ -22,9 +22,9 @@ mutable struct BufferedDataReader{S <: AbstractDataSource}
     var_names :: Vector{String}
 
     # frames[slot][varname] → GPU Field
-    frames     :: NTuple{2, Dict{Symbol, Field}}
+    frames     :: F
     # cpu_frames[slot][varname] → CPU Field (staging area for disk reads)
-    cpu_frames :: NTuple{2, Dict{Symbol, Field}}
+    cpu_frames :: C
 
     lo_slot    :: Int   # which slot (1 or 2) holds the lo-time frame
     lo_src_idx :: Int   # index into source.stored_times for the lo frame
@@ -161,7 +161,7 @@ function _build_templates(source::JLD2DataSource, all_names, arch)
     for v in all_names
         vsym = Symbol(v)
         # One FieldTimeSeries per variable — reads metadata only, no frame data loaded.
-        fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(1))
+        fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(2))
         loc = Oceananigans.Fields.location(fts)
         cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(fts.grid)
         gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, fts.grid))
