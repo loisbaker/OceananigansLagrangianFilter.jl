@@ -152,23 +152,33 @@ end
 # Buffer field allocation helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-# For JLD2: use a temporary FieldTimeSeries to read the field location and grid
-# from the file's serialized metadata.
-function _make_buffer_field(source::JLD2DataSource, varname::String, arch)
-    fts = FieldTimeSeries(source.filename, varname;
-                          architecture = arch,
-                          backend      = InMemory(1))
-    loc = Oceananigans.Fields.location(fts)
-    return Field{loc[1], loc[2], loc[3]}(fts.grid)
+# Build one CPU template and one GPU template per variable, using a single
+# FieldTimeSeries call per variable (JLD2) or the config grid (NetCDF).
+# Returns (cpu_templates, gpu_templates) as Dict{Symbol, Field}.
+function _build_templates(source::JLD2DataSource, all_names, arch)
+    cpu_templates = Dict{Symbol, Field}()
+    gpu_templates = Dict{Symbol, Field}()
+    for v in all_names
+        vsym = Symbol(v)
+        # One FieldTimeSeries per variable — reads metadata only, no frame data loaded.
+        fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(1))
+        loc = Oceananigans.Fields.location(fts)
+        cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(fts.grid)
+        gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, fts.grid))
+    end
+    return cpu_templates, gpu_templates
 end
 
-# For NetCDF: use the grid from the config (no serialized metadata available).
-# All variables default to (Center, Center, Center); supply `locations` to override.
-function _make_buffer_field(::NetCDFDataSource, varname::String, arch,
-                            grid, locations)
-    loc      = get(locations, varname, (Center, Center, Center))
-    arch_grid = on_architecture(arch, grid)
-    return Field{loc[1], loc[2], loc[3]}(arch_grid)
+function _build_templates(::NetCDFDataSource, all_names, arch, grid, locations)
+    cpu_templates = Dict{Symbol, Field}()
+    gpu_templates = Dict{Symbol, Field}()
+    for v in all_names
+        vsym = Symbol(v)
+        loc  = get(locations, v, (Center, Center, Center))
+        cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
+        gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch,  grid))
+    end
+    return cpu_templates, gpu_templates
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -218,18 +228,15 @@ function create_buffered_reader(config::AbstractConfig;
               "Found $(length(stored_times(source))).")
     end
 
-    # Allocate two-slot GPU and CPU frame dictionaries ─────────────────────────
-    function _make_slot(a)
-        Dict{Symbol, Field}(
-            Symbol(v) => (source isa JLD2DataSource ?
-                          _make_buffer_field(source, v, a) :
-                          _make_buffer_field(source, v, a, config.grid, locations))
-            for v in all_names
-        )
-    end
+    # Build one template per variable (one FieldTimeSeries call per variable for JLD2),
+    # then use `similar` for both slots — no extra file I/O or metadata reads.
+    cpu_templates, gpu_templates =
+        source isa JLD2DataSource ?
+            _build_templates(source, all_names, arch) :
+            _build_templates(source, all_names, arch, config.grid, locations)
 
-    gpu_frames = (_make_slot(arch), _make_slot(arch))
-    cpu_frames = (_make_slot(CPU()), _make_slot(CPU()))
+    gpu_frames = ntuple(_ -> Dict(k => similar(v) for (k, v) in gpu_templates), 2)
+    cpu_frames = ntuple(_ -> Dict(k => similar(v) for (k, v) in cpu_templates), 2)
 
     reader = BufferedDataReader(source, direction,
                                 Float64(config.T_start), Float64(config.T_end),
