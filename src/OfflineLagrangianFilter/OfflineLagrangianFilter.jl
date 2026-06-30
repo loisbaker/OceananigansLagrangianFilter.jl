@@ -8,6 +8,7 @@ using Oceananigans.Utils
 using Oceananigans.Grids
 using Oceananigans.Solvers
 using JLD2
+using NCDatasets
 
 using Oceananigans.DistributedComputations
 using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
@@ -151,7 +152,7 @@ before creating the `OfflineFilterConfig` object.
 Keyword arguments
 =================
 
-  - `original_data_filename`: (required) The path to the JLD2 file containing the original Oceananigans output data.
+  - `original_data_filename`: (required) The path to the JLD2 or NetCDF file containing the original Oceananigans output data.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
   - `T_start`: Start time for the filter. Must be within the time range of the data. If not given, defaults to either T_end - T (if they are given), or the start time of the original data.
@@ -285,79 +286,86 @@ any other velocity components will be zero by default."
         @info "Mean velocities corresponding to $(velocity_names) will be computed."
     end
 
-    # Open up the file for some checks
-    jldopen(original_data_filename,"r") do original_file
-
-        # Check if velocities and tracers given are in the original_file
-        for var in (var_names_to_filter..., velocity_names...)
-            if !haskey(original_file["timeseries"], var)
-                error("Variable '$var' not found in original data file.")
+    # Open up the file for some checks — extract times and verify variables exist
+    times = if endswith(original_data_filename, ".nc")
+        NCDatasets.Dataset(original_data_filename, "r") do file
+            for var in (var_names_to_filter..., velocity_names...)
+                if !haskey(file, var)
+                    error("Variable '$var' not found in original data file.")
+                end
             end
+            Float64.(file["time"][:])
+        end
+    else  # JLD2
+        jldopen(original_data_filename, "r") do file
+            for var in (var_names_to_filter..., velocity_names...)
+                if !haskey(file["timeseries"], var)
+                    error("Variable '$var' not found in original data file.")
+                end
+            end
+            iterations = parse.(Int, keys(file["timeseries/t"]))
+            Float64.([file["timeseries/t/$iter"] for iter in iterations])
+        end
+    end
+
+    # Check for consistent T_start, T_end, T
+    if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
+        if T_start + T != T_end
+            error("Inconsistent time specifications: T_start + T != T_end")
+        elseif T_start > T_end
+            error("Inconsistent time specifications: T_start > T_end")
         end
 
-        # Check for consistent T_start, T_end, T
-        iterations = parse.(Int, keys(original_file["timeseries/t"]))
-        times = [original_file["timeseries/t/$iter"] for iter in iterations]
-
-        # If all are specified, make sure they're consistent and if not, throw an error
-        if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
-            if T_start + T != T_end
-                error("Inconsistent time specifications: T_start + T != T_end")
-            elseif T-start > T_end
-                error("Inconsistent time specifications: T_start > T_end")
-            end
-
-        # If 0,1, or 2 are specified, calculate the others
-        elseif isnothing(T_start)
-            if !isnothing(T_end) && !isnothing(T)
-                T_start = T_end - T
-            elseif !isnothing(T_end) && isnothing(T)
-                T_start = times[1]
-                T = T_end - T_start
-            elseif !isnothing(T) && isnothing(T_end)
-                T_start = times[1]
-                T_end = T_start + T
-            else # isnothing(T) && isnothing(T_end)
-                T_start = times[1]
-                T_end = times[end]
-                T = T_end - T_start
-            end
-        elseif isnothing(T_end)
-            if isnothing(T)
-                T_end = times[end]
-                T = T_end - T_start
-            else # !isnothing(T)
-                T_end = T_start + T
-            end
-        else # !isnothing(T)
+    # If 0, 1, or 2 are specified, calculate the others
+    elseif isnothing(T_start)
+        if !isnothing(T_end) && !isnothing(T)
+            T_start = T_end - T
+        elseif !isnothing(T_end) && isnothing(T)
+            T_start = times[1]
             T = T_end - T_start
-            if T < 0
-                error("Inconsistent time specifications: T_start > T_end")
-            end
+        elseif !isnothing(T) && isnothing(T_end)
+            T_start = times[1]
+            T_end = T_start + T
+        else # isnothing(T) && isnothing(T_end)
+            T_start = times[1]
+            T_end = times[end]
+            T = T_end - T_start
         end
-
-        # Check that T_start and T_end are found in the original_file
-        if T_start < times[1] || T_start > times[end]
-            error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+    elseif isnothing(T_end)
+        if isnothing(T)
+            T_end = times[end]
+            T = T_end - T_start
+        else # !isnothing(T)
+            T_end = T_start + T
         end
-
-        if T_end < times[1] || T_end > times[end]
-            error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+    else # !isnothing(T)
+        T = T_end - T_start
+        if T < 0
+            error("Inconsistent time specifications: T_start > T_end")
         end
+    end
 
-        @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
+    # Check that T_start and T_end are within the original data range
+    if T_start < times[1] || T_start > times[end]
+        error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+    end
 
-        # Now check T_out, set if necessary to same as input
-        if isnothing(T_out)
-            T_out = times[2] - times[1]
-            @info "T_out not set. Setting T_out = $T_out"
-        end
+    if T_end < times[1] || T_end > times[end]
+        error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+    end
 
-        # If Δt not set, set to T_out/10
-        if isnothing(Δt)
-            Δt = T_out / 10
-            @info "Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful"
-        end
+    @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
+
+    # Now check T_out, set if necessary to same as input
+    if isnothing(T_out)
+        T_out = times[2] - times[1]
+        @info "T_out not set. Setting T_out = $T_out"
+    end
+
+    # If Δt not set, set to T_out/10
+    if isnothing(Δt)
+        Δt = T_out / 10
+        @info "Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful"
     end
 
     # Make sure we have some filter parameters
