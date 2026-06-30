@@ -1315,3 +1315,103 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
     return filtered_closure
 end
 
+# ──────────────────────────────────────────────────────────────────────────────
+# BufferedDataReader dispatch methods
+# These replace the FieldTimeSeries-based pipeline with no intermediate file.
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    update_input_data!(model, reader::BufferedDataReader)
+
+Callback variant that reads directly from the source file via a two-frame
+GPU buffer. Calls `advance_buffer!` to slide the window if needed, then
+linearly interpolates into the model's velocity and auxiliary fields.
+"""
+function update_input_data!(model::AbstractModel, reader::BufferedDataReader)
+    t = model.clock.time
+    advance_buffer!(reader, t)
+    interpolate_to_model!(model, reader, t)
+    return nothing
+end
+
+"""
+    initialise_filtered_vars_from_data(model, reader::BufferedDataReader, config)
+
+`BufferedDataReader` variant of the initialisation function. Uses the two
+buffered frames at `sim_t = 0` (i.e. the physical start/end of the source
+data for forward/backward runs) to set initial tracer and map values.
+"""
+function initialise_filtered_vars_from_data(model::AbstractModel,
+                                            reader::BufferedDataReader,
+                                            config::AbstractConfig)
+    filter_params = config.filter_params
+    label         = config.label
+
+    # Buffer is already primed at t=0 by create_buffered_reader; safe to call again.
+    advance_buffer!(reader, 0.0)
+
+    times  = stored_times(reader.source)
+    t_phys = reader.direction == :forward ? reader.T_start : reader.T_end
+    t_lo   = times[reader.lo_src_idx]
+    t_hi   = times[reader.hi_src_idx]
+    α = (t_phys - t_lo) / (t_hi - t_lo)
+    β = 1 - α
+
+    lo_frames = reader.frames[reader.lo_slot]
+    hi_frames = reader.frames[3 - reader.lo_slot]
+
+    # ── Tracer initialisation ─────────────────────────────────────────────────
+    for var_name in reader.var_names
+        labelled = var_name * label
+        lo_f = lo_frames[Symbol(var_name)]
+        hi_f = hi_frames[Symbol(var_name)]
+
+        if filter_params.N_coeffs == 0.5
+            c1      = filter_params.c1
+            field_C = getproperty(model.tracers, Symbol(labelled, "_C1"))
+            parent(field_C) .= (1/c1) .* (β .* parent(lo_f) .+ α .* parent(hi_f))
+        else
+            for i in 1:filter_params.N_coeffs
+                ci      = getproperty(filter_params, Symbol("c", i))
+                di      = getproperty(filter_params, Symbol("d", i))
+                field_C = getproperty(model.tracers, Symbol(labelled, "_C", i))
+                field_S = getproperty(model.tracers, Symbol(labelled, "_S", i))
+                val = β .* parent(lo_f) .+ α .* parent(hi_f)
+                parent(field_C) .= (ci / (ci^2 + di^2)) .* val
+                parent(field_S) .= (di / (ci^2 + di^2)) .* val
+            end
+        end
+    end
+
+    # ── Map (xi) initialisation ───────────────────────────────────────────────
+    if config.map_to_mean || config.compute_mean_velocities
+        for vel_name in reader.vel_names
+            lo_v = lo_frames[Symbol(vel_name)]
+            hi_v = hi_frames[Symbol(vel_name)]
+
+            # Interpolate each buffered frame to cell-centre, then linearly combine.
+            lo_v_c = Field(@at (Center, Center, Center) lo_v)
+            hi_v_c = Field(@at (Center, Center, Center) hi_v)
+            compute!(lo_v_c)
+            compute!(hi_v_c)
+
+            if filter_params.N_coeffs == 0.5
+                c1      = filter_params.c1
+                field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C1"))
+                parent(field_C) .= (-1/c1^2) .* (β .* parent(lo_v_c) .+ α .* parent(hi_v_c))
+            else
+                for i in 1:filter_params.N_coeffs
+                    ci      = getproperty(filter_params, Symbol("c", i))
+                    di      = getproperty(filter_params, Symbol("d", i))
+                    field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C", i))
+                    field_S = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_S", i))
+                    val = β .* parent(lo_v_c) .+ α .* parent(hi_v_c)
+                    parent(field_C) .= ((di^2 - ci^2) / (ci^2 + di^2)^2) .* val
+                    parent(field_S) .= (-2*ci*di / (ci^2 + di^2)^2) .* val
+                end
+            end
+        end
+    end
+
+    return nothing
+end
