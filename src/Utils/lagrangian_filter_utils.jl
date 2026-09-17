@@ -259,7 +259,7 @@ function set_offline_BW2_filter_params(;N::Int=1,freq_c::Real=1)
     end
 
     freq_c = abs(freq_c) # Ensure freq_c is positive
-    if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
+    if N_coeffs == 0.5 # special case N=1, single exponential only has a cosine component
         a1 = freq_c/2 
         c1 = freq_c
         filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
@@ -329,7 +329,7 @@ function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1)
     end
 
     freq_c = abs(freq_c) # Ensure freq_c is positive
-    if N_coeffs == 0.5 # special case N=0, single exponential only has a cosine component
+    if N_coeffs == 0.5 # special case N=1, single exponential only has a cosine component
         a1 = freq_c
         c1 = freq_c
         filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
