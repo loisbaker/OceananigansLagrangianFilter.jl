@@ -80,7 +80,7 @@ prognostic_fields(model::LagrangianFilter) = model.tracers
 
 A configuration object for `apply_offline_filter`.
 """
-struct OfflineFilterConfig <: AbstractOfflineConfig
+struct OfflineFilterConfig{M} <: AbstractOfflineConfig
     original_data_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}}
@@ -109,6 +109,7 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     relax_timescale::Union{Real, Nothing}
     mask_params::Union{NamedTuple, Nothing}
     mask_func::Union{Function, Nothing}
+    cutoff_mask::M
 
 end
 
@@ -142,7 +143,8 @@ end
                         boundary_relaxation::Bool = false,
                         relax_timescale::Union{Real, Nothing} = nothing,
                         mask_params::Union{NamedTuple, Nothing} = nothing,
-                        mask_func::Union{Function, Nothing} = nothing)
+                        mask_func::Union{Function, Nothing} = nothing,
+                        cutoff_mask = 1)
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -182,6 +184,7 @@ Keyword arguments
   - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
   - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
   - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+  - `cutoff_mask`: A positive scalar or stationary Oceananigans `Field` defining the filter-clock rate `dτ/dt`. A mask constant along a trajectory multiplies the reference cutoff frequency; otherwise the filter adapts continuously along that trajectory. Field locations may be `Center` or `Nothing`. Do not mutate the mask during filtering. The default value `1` recovers the spatially uniform filter.
 # Example:
 
 ```jldoctest offline config
@@ -209,13 +212,13 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig{Nothing}("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", false, nothing, nothing, nothing, nothing)
 
 ```
 
@@ -249,7 +252,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             boundary_relaxation::Bool = false,
                             relax_timescale::Union{Real, Nothing} = nothing,
                             mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing
+                            mask_func::Union{Function, Nothing}  = nothing,
+                            cutoff_mask = 1
                             )
 
     # Check that the original file exists 
@@ -360,6 +364,30 @@ any other velocity components will be zero by default."
         end
     end
 
+    # A scalar cutoff mask is exactly equivalent to changing the scalar cutoff.
+    # Fold it into the reference filter parameters so that uniform filtering uses
+    # precisely the original code path. Spatial masks are handled during filtering.
+    if cutoff_mask isa Real
+        isfinite(cutoff_mask) && cutoff_mask > 0 ||
+            error("cutoff_mask must be finite and strictly positive")
+
+        if cutoff_mask != 1
+            if !isnothing(freq_c)
+                freq_c *= cutoff_mask
+            elseif !isnothing(filter_params)
+                names = keys(filter_params)
+                scaled_values = ntuple(length(filter_params)) do n
+                    names[n] === :N_coeffs ? filter_params[n] : cutoff_mask * filter_params[n]
+                end
+                filter_params = NamedTuple{names}(scaled_values)
+            end
+        end
+
+        cutoff_mask = nothing
+    elseif !(cutoff_mask isa Field)
+        error("cutoff_mask must be a positive scalar or an Oceananigans Field")
+    end
+
     # Make sure we have some filter parameters
     if !isnothing(filter_params) && (!isnothing(N) || !isnothing(freq_c))
         error("Specify either filter_params or N and freq_c, not both.")
@@ -424,6 +452,25 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
     # Finally, we can define the grid, if not given (as is typical)
     example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
     grid = isnothing(grid) ? example_timeseries.grid : grid
+
+    if !isnothing(cutoff_mask)
+        cutoff_mask.grid == grid ||
+            error("cutoff_mask must be defined on the same grid as the offline filter")
+
+        mask_location = location(cutoff_mask)
+        all(L -> L === Center || L === Nothing, mask_location) ||
+            error("cutoff_mask locations must be Center or Nothing, got $mask_location")
+
+        mask_min = minimum(interior(cutoff_mask))
+        mask_max = maximum(interior(cutoff_mask))
+        isfinite(mask_min) && isfinite(mask_max) && mask_min > 0 ||
+            error("cutoff_mask must contain only finite, strictly positive values")
+
+        compute_Eulerian_filter &&
+            error("A spatial cutoff_mask is not yet supported with compute_Eulerian_filter=true")
+
+        @info "Using spatial cutoff mask with range [$mask_min, $mask_max]"
+    end
 
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid
@@ -511,11 +558,11 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             boundary_relaxation,
                             relax_timescale,
                             mask_params,
-                            mask_func
+                            mask_func,
+                            cutoff_mask
                             )
 
 end
 
 
 end # module OfflineLagrangianFilter
-

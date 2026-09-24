@@ -1322,6 +1322,8 @@ Arguments
   names, and filter parameters.
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
+    isnothing(config.cutoff_mask) ||
+        error("compute_Eulerian_filter! does not support a spatial cutoff_mask")
     filter_params = config.filter_params
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
@@ -1394,6 +1396,8 @@ This new time series is stored in a new group called `timeseries/t_shifted` with
 
 """
 function compute_time_shift!(config::AbstractConfig)
+    isnothing(config.cutoff_mask) ||
+        error("compute_time_shift! has no single physical-time shift for a spatial cutoff_mask")
     if !(config isa AbstractOnlineConfig)
         @warn "Time shift computation is only relevant when filtering forward only. Offline forward-backward filtering
         has an even weight function, so time shift should be zero. This function will compute a time shift regardless, but 

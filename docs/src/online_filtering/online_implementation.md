@@ -26,6 +26,7 @@ using OceananigansLagrangianFilter.Utils
     - `velocity_names`: the velocity names that you want to use to compute Lagrangian trajectories. These are also the velocities that will be filtered if `compute_mean_velocities = true`.
     - `N` and `freq_c`: Can be provided together to give a Butterworth filter of order ``N`` with cutoff frequency `freq_c`. 
     - `filter_params`: a named tuple of coefficients `a1`, `b1`, `c1`, `d1`, `a2`, `b2`, `c2`, `d2`, etc defining a filter kernel (see [Choosing online filters](@ref "Choosing online filters")).
+    - `cutoff_mask`: a positive scalar or stationary centered field setting the filter-clock rate. A scalar scales `freq_c` or the supplied kernel coefficients; a field varies the cutoff along trajectories.
     - `map_to_mean`: A Bool determining whether to compute the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` and solve their equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")).
     - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `map_to_mean=false` and `compute_mean_velocities=true` the maps will still be computed. 
 
@@ -66,6 +67,8 @@ closure = (horizontal_closure, vertical_closure)
 ```
 
 - Define the model with the combined (original and filtered) `tracers`, `forcing` and `closure`. This should work with both `NonHydrostaticModel` and `HydrostaticFreeSurfaceModel`.
+
+  For a spatial `cutoff_mask`, also pass `auxiliary_fields = merge(your_auxiliary_fields, cutoff_mask_auxiliary_fields(filter_config))` to the model constructor. Merge the helper output for each labeled filter configuration if the model has more than one. The mask must stay fixed during filtering. Choose `Δt` for the largest local cutoff and allow enough spinup at the smallest one.
 
 - Initialise your model variables as normal
 
@@ -111,13 +114,17 @@ end
 - Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref "compute_Eulerian_filter!").
     
 ```julia
-compute_Eulerian_filter!(filter_config)
+if isnothing(filter_config.cutoff_mask)
+    compute_Eulerian_filter!(filter_config)
+end
 ```
 
 - Optionally compute a shifted time coordinate to give a more appropriate reference time for the average. The new reference time is calculated as the weighted mean of time: ``t_{shift} = \int_{-\infty}^t G(t-s)s\, \mathrm{d} s``
     
 ```julia
-compute_time_shift!(filter_config)
+if isnothing(filter_config.cutoff_mask)
+    compute_time_shift!(filter_config)
+end
 ```
 
 - Optionally output a final NetCDF file using [`jld2_to_netcdf`](@ref "jld2_to_netcdf"). This helper function should work for any `.jld2` Oceananigans output. 

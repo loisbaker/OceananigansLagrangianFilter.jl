@@ -86,8 +86,15 @@ function run_offline_Lagrangian_filter(config)
     # Now, run it backwards. Switch the data direction on disk
     create_input_data_on_disk(config; direction = "backward")
 
+    # Reload the reversed history. InMemory() retains every forward snapshot,
+    # so rewriting the file alone does not update the callback's cached data.
+    input_data = load_data(config)
+    simulation.callbacks[:update_input_data] = Callback(update_input_data!, callsite = UpdateStateCallsite(), parameters = input_data)
+
     # The filtered variables are already well initialised for the backward run, but the maps need reversing.
+    if config.map_to_mean || config.compute_mean_velocities
     change_sign_of_map_variables!(model, config)
+    end
   
     # Reset time
     reset!(model.clock)

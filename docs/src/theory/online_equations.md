@@ -124,3 +124,7 @@ The perturbation map equations are then given by
 ```
 and solved with initial conditions ``\vb*{\xi}_{Ck}(\vb*{x},0) = \vb*{\xi}_{Sk}(\vb*{x},0)=0``.
 
+For a stationary, positive spatial cutoff mask, the online filter uses the
+forward part of the [spatially varying cutoff equations](@ref "Spatially varying cutoff equations"):
+the filter clock advances at ``\mathrm{d}\tau/\mathrm{d}t=M``, and both the
+tracer input and filter decay are multiplied by ``M``.

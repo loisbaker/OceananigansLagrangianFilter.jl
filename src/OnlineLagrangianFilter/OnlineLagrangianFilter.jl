@@ -3,6 +3,8 @@ module OnlineLagrangianFilter
 using ..OceananigansLagrangianFilter: AbstractConfig, AbstractOnlineConfig
 using Oceananigans.Grids: AbstractGrid, RectilinearGrid, LatitudeLongitudeGrid, topology, Flat
 using Oceananigans.Architectures
+# Check that a spatial mask is a centered Field on this grid with valid values.
+using Oceananigans.Fields: Field, Center, location, interior
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
 
@@ -17,7 +19,7 @@ export OnlineFilterConfig
 
 A configuration object for online filtering.
 """
-struct OnlineFilterConfig <: AbstractOnlineConfig
+struct OnlineFilterConfig{M} <: AbstractOnlineConfig
     grid::AbstractGrid
     output_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
@@ -31,6 +33,7 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     relax_timescale::Union{Real, Nothing}
     mask_params::Union{NamedTuple, Nothing}
     mask_func::Union{Function, Nothing}
+    cutoff_mask::M
 end
 
 """
@@ -48,7 +51,8 @@ end
                             boundary_relaxation::Bool = false,
                             relax_timescale::Union{Real, Nothing} = nothing,
                             mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing} = nothing
+                            mask_func::Union{Function, Nothing} = nothing,
+                            cutoff_mask = 1
 
                             )
 
@@ -75,6 +79,7 @@ Keyword arguments
   - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
   - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
   - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+  - `cutoff_mask`: A positive scalar or stationary `Field` setting the local filter-clock rate. A field must be attached to the model with `cutoff_mask_auxiliary_fields(config)`. Default: `1`.
 
 # Example:
 
@@ -105,10 +110,10 @@ filter_config = OnlineFilterConfig( grid = grid,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Variables to be filtered: ("b", "T"). Ensure these are valid tracer or auxiliary field names in the simulation.
 [ Info: Setting filter parameters to use Butterworth order 2, cutoff frequency 5.0e-5
-OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
+OnlineFilterConfig{Nothing}(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "", false, nothing, nothing, nothing, nothing)
 ```
 
 
@@ -127,7 +132,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             boundary_relaxation::Bool = false,
                             relax_timescale::Union{Real, Nothing} = nothing,
                             mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing
+                            mask_func::Union{Function, Nothing}  = nothing,
+                            cutoff_mask = 1
                             )
 
     # Check that velocities aren't in the var_names_to_filter
@@ -156,6 +162,36 @@ function OnlineFilterConfig(; grid::AbstractGrid,
 
     # Warn that var_names_to_filter need to be existing tracers or auxiliary_fields
     @info "Variables to be filtered: $(var_names_to_filter). Ensure these are valid tracer or auxiliary field names in the simulation."
+
+    # A scalar changes the uniform kernel coefficients; only a Field needs
+    # per-cell forcing and must remain attached to the online model.
+    if cutoff_mask isa Real
+        isfinite(cutoff_mask) && cutoff_mask > 0 ||
+            error("cutoff_mask must be finite and strictly positive")
+        if cutoff_mask != 1
+            if !isnothing(freq_c)
+                freq_c *= cutoff_mask
+            elseif !isnothing(filter_params)
+                names = keys(filter_params)
+                scaled_values = ntuple(length(filter_params)) do n
+                    names[n] === :N_coeffs ? filter_params[n] : cutoff_mask * filter_params[n]
+                end
+                filter_params = NamedTuple{names}(scaled_values)
+            end
+        end
+        cutoff_mask = nothing
+    elseif cutoff_mask isa Field
+        cutoff_mask.grid == grid || error("cutoff_mask must be defined on the online model grid")
+        all(L -> L === Center || L === Nothing, location(cutoff_mask)) ||
+            error("cutoff_mask locations must be Center or Nothing")
+        mask_min = minimum(interior(cutoff_mask))
+        mask_max = maximum(interior(cutoff_mask))
+        isfinite(mask_min) && isfinite(mask_max) && mask_min > 0 ||
+            error("cutoff_mask must contain only finite, strictly positive values")
+        @info "Using spatial cutoff mask with range [$mask_min, $mask_max]"
+    else
+        error("cutoff_mask must be a positive scalar or an Oceananigans Field")
+    end
 
     # Make sure we have some filter parameters
     if !isnothing(filter_params) && (!isnothing(N) || !isnothing(freq_c))
@@ -269,12 +305,11 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             boundary_relaxation,
                             relax_timescale,
                             mask_params,
-                            mask_func
+                            mask_func,
+                            cutoff_mask
                             )
  
 end
 
 
 end # module OnlineLagrangianFilter
-
-
