@@ -1063,21 +1063,14 @@ end
 Copies saved data `data_field` into the model field `field`, including as much of the halo regions as both share.
 
 The model grid halo may be larger than the saved data halo if it was inflated for a high-order advection scheme.
-In that case the extra outer halo cells are left as they are (zero). This is safe because the velocities and
-auxiliary fields are only read at most one cell beyond the interior (velocities at the faces either side of
-each cell in the tracer advection and map forcing, auxiliary fields only in the interior by the forcing), which
-is within any saved halo. This would need revisiting if these fields were used with wider stencils, e.g. to
-compute velocity gradients for a closure.
+In that case the extra outer halo cells are left as they are (zero), see [`shared_halo_regions`](@ref). This is safe
+because the velocities and auxiliary fields are only read at most one cell beyond the interior (velocities at the
+faces either side of each cell in the tracer advection and map forcing, auxiliary fields only in the interior by the
+forcing), which is within any saved halo. This would need revisiting if these fields were used with wider stencils,
+e.g. to compute velocity gradients for a closure.
 """
 function copy_input_data!(field, data_field)
-    field_halo = halo_size(field.grid)
-    data_halo  = halo_size(data_field.grid)
-    halo = min.(field_halo, data_halo)                           # halo cells available in both
-    N = size(parent(field)) .- 2 .* field_halo                   # interior size of the parent array
-
-    field_region = map((h, H, n) -> (H - h + 1):(H + n + h), halo, field_halo, N)
-    data_region  = map((h, H, n) -> (H - h + 1):(H + n + h), halo, data_halo,  N)
-
+    field_region, data_region = shared_halo_regions(field, data_field)
     view(parent(field), field_region...) .= view(parent(data_field), data_region...)
     return nothing
 end
@@ -1397,16 +1390,16 @@ function initialise_filtered_vars_from_data(model::AbstractModel,
         if filter_params.N_coeffs == 0.5
             c1      = filter_params.c1
             field_C = getproperty(model.tracers, Symbol(labelled, "_C1"))
-            parent(field_C) .= (1/c1) .* (β .* parent(lo_f) .+ α .* parent(hi_f))
+            interior(field_C) .= (1/c1) .* (β .* interior(lo_f) .+ α .* interior(hi_f))
         else
             for i in 1:filter_params.N_coeffs
                 ci      = getproperty(filter_params, Symbol("c", i))
                 di      = getproperty(filter_params, Symbol("d", i))
                 field_C = getproperty(model.tracers, Symbol(labelled, "_C", i))
                 field_S = getproperty(model.tracers, Symbol(labelled, "_S", i))
-                val = β .* parent(lo_f) .+ α .* parent(hi_f)
-                parent(field_C) .= (ci / (ci^2 + di^2)) .* val
-                parent(field_S) .= (di / (ci^2 + di^2)) .* val
+                val = β .* interior(lo_f) .+ α .* interior(hi_f)
+                interior(field_C) .= (ci / (ci^2 + di^2)) .* val
+                interior(field_S) .= (di / (ci^2 + di^2)) .* val
             end
         end
     end
@@ -1426,16 +1419,16 @@ function initialise_filtered_vars_from_data(model::AbstractModel,
             if filter_params.N_coeffs == 0.5
                 c1      = filter_params.c1
                 field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C1"))
-                parent(field_C) .= (-1/c1^2) .* (β .* parent(lo_v_c) .+ α .* parent(hi_v_c))
+                interior(field_C) .= (-1/c1^2) .* (β .* interior(lo_v_c) .+ α .* interior(hi_v_c))
             else
                 for i in 1:filter_params.N_coeffs
                     ci      = getproperty(filter_params, Symbol("c", i))
                     di      = getproperty(filter_params, Symbol("d", i))
                     field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C", i))
                     field_S = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_S", i))
-                    val = β .* parent(lo_v_c) .+ α .* parent(hi_v_c)
-                    parent(field_C) .= ((di^2 - ci^2) / (ci^2 + di^2)^2) .* val
-                    parent(field_S) .= (-2*ci*di / (ci^2 + di^2)^2) .* val
+                    val = β .* interior(lo_v_c) .+ α .* interior(hi_v_c)
+                    interior(field_C) .= ((di^2 - ci^2) / (ci^2 + di^2)^2) .* val
+                    interior(field_S) .= (-2*ci*di / (ci^2 + di^2)^2) .* val
                 end
             end
         end

@@ -117,11 +117,31 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
+    shared_halo_regions(field, data_field)
+
+Return the index ranges of the parent arrays of `field` and `data_field` covering the interior plus the
+halo cells both share. The model grid halo may be larger than the saved data halo if it was inflated
+for a high-order advection scheme. The extra outer halo cells of `field` are then left untouched: the
+velocities and auxiliary fields are only read at most one cell beyond the interior, which is within any
+saved halo.
+"""
+function shared_halo_regions(field, data_field)
+    field_halo = halo_size(field.grid)
+    data_halo  = halo_size(data_field.grid)
+    halo = min.(field_halo, data_halo)                           # halo cells available in both
+    N = size(parent(field)) .- 2 .* field_halo                   # interior size of the parent array
+
+    field_region = map((h, H, n) -> (H - h + 1):(H + n + h), halo, field_halo, N)
+    data_region  = map((h, H, n) -> (H - h + 1):(H + n + h), halo, data_halo,  N)
+    return field_region, data_region
+end
+
+"""
     interpolate_to_model!(model, reader, sim_t)
 
 Linearly interpolate the two buffered frames at `sim_t` and write the result
-directly into `model.velocities` and `model.auxiliary_fields`, copying the
-full parent array (interior + halos) as the existing pipeline does.
+directly into `model.velocities` and `model.auxiliary_fields`, including the
+halo cells shared by the model and saved data grids (see [`shared_halo_regions`](@ref)).
 
 Velocities are negated for backward-direction filtering.
 """
@@ -136,13 +156,15 @@ function interpolate_to_model!(model, r::BufferedDataReader, sim_t)
     for vname in r.vel_names
         vsym = Symbol(vname)
         dest = getproperty(model.velocities, vsym)
-        parent(dest) .= vel_sign .* (β .* parent(lo[vsym]) .+ α .* parent(hi[vsym]))
+        fr, dr = shared_halo_regions(dest, lo[vsym])
+        view(parent(dest), fr...) .= vel_sign .* (β .* view(parent(lo[vsym]), dr...) .+ α .* view(parent(hi[vsym]), dr...))
     end
 
     for vname in r.var_names
         vsym = Symbol(vname)
         dest = getproperty(model.auxiliary_fields, vsym)
-        parent(dest) .= β .* parent(lo[vsym]) .+ α .* parent(hi[vsym])
+        fr, dr = shared_halo_regions(dest, lo[vsym])
+        view(parent(dest), fr...) .= β .* view(parent(lo[vsym]), dr...) .+ α .* view(parent(hi[vsym]), dr...)
     end
 
     return nothing

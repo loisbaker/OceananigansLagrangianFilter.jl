@@ -4,7 +4,7 @@ using Oceananigans
 using Oceananigans.Fields: interior, Field
 using Oceananigans.OutputReaders: InMemory, FieldTimeSeries
 using Oceananigans.BoundaryConditions: fill_halo_regions!
-using Oceananigans.Grids: on_architecture
+using Oceananigans.Grids: on_architecture, halo_size
 using Oceananigans.Grids: Center, Face
 using JLD2
 using NCDatasets
