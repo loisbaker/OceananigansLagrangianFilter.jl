@@ -303,7 +303,7 @@ any other velocity components will be zero by default."
         if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
             if T_start + T != T_end
                 error("Inconsistent time specifications: T_start + T != T_end")
-            elseif T-start > T_end
+            elseif T_start > T_end
                 error("Inconsistent time specifications: T_start > T_end")
             end
 
