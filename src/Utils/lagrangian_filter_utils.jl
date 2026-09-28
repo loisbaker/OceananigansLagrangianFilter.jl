@@ -1255,6 +1255,9 @@ function initialise_filtered_vars_from_model(model::AbstractModel, config::Abstr
 end
 
 function change_sign_of_map_variables!(model::AbstractModel, config::AbstractConfig)
+    # There are no map variables unless we are regridding to the mean position or computing mean velocities
+    (config.map_to_mean || config.compute_mean_velocities) || return nothing
+
     vel_names = config.velocity_names
     label = config.label
     for vel_name in vel_names
