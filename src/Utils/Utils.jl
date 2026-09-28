@@ -9,6 +9,7 @@ using JLD2: Group
 using Oceananigans
 using Oceananigans.Fields: Center
 using Oceananigans.Units: Time
+using Oceananigans.Grids: halo_size
 
 # Need to figure out how to get OfflineLagrangianFilter
 include("lagrangian_filter_utils.jl")

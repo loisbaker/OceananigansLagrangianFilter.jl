@@ -1045,16 +1045,41 @@ function update_input_data!(model::AbstractModel, input_data::NamedTuple)
     # set!(model; kwargs...)   
     for vel_fts in velocity_timeseries
         field = getproperty(model.velocities, Symbol(vel_fts.name))
-        parent(field) .= parent(vel_fts[Time(t)]) # This also fills the halo regions, which we'll need to help with the filtered field boundaries
+        copy_input_data!(field, vel_fts[Time(t)])
     end
     
     # We also update the saved original variables to be used for forcing - these are auxiliary fields so need to be set separately
     for original_var_fts in original_var_timeseries
         field = getproperty(model.auxiliary_fields, Symbol(original_var_fts.name))
-        parent(field) .= parent(original_var_fts[Time(t)]) # This also fills the halo regions, which we'll need to help with the filtered field boundaries
+        copy_input_data!(field, original_var_fts[Time(t)])
     end
 
-    
+
+end
+
+"""
+    copy_input_data!(field, data_field)
+
+Copies saved data `data_field` into the model field `field`, including as much of the halo regions as both share.
+
+The model grid halo may be larger than the saved data halo if it was inflated for a high-order advection scheme.
+In that case the extra outer halo cells are left as they are (zero). This is safe because the velocities and
+auxiliary fields are only read at most one cell beyond the interior (velocities at the faces either side of
+each cell in the tracer advection and map forcing, auxiliary fields only in the interior by the forcing), which
+is within any saved halo. This would need revisiting if these fields were used with wider stencils, e.g. to
+compute velocity gradients for a closure.
+"""
+function copy_input_data!(field, data_field)
+    field_halo = halo_size(field.grid)
+    data_halo  = halo_size(data_field.grid)
+    halo = min.(field_halo, data_halo)                           # halo cells available in both
+    N = size(parent(field)) .- 2 .* field_halo                   # interior size of the parent array
+
+    field_region = map((h, H, n) -> (H - h + 1):(H + n + h), halo, field_halo, N)
+    data_region  = map((h, H, n) -> (H - h + 1):(H + n + h), halo, data_halo,  N)
+
+    view(parent(field), field_region...) .= view(parent(data_field), data_region...)
+    return nothing
 end
 
 """
@@ -1093,7 +1118,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
             filtered_var_C = Symbol(labelled_var_name,"_C1",)
             c1 = filter_params.c1
             field_C = getproperty(model.tracers, filtered_var_C)
-            parent(field_C) .= 1/c1*parent(original_var_fts[Time(0)]) # set halos too
+            interior(field_C) .= 1/c1*interior(original_var_fts[Time(0)])
         else
             for i in 1:filter_params.N_coeffs
                 filtered_var_C = Symbol(labelled_var_name,"_C",i)
@@ -1102,8 +1127,8 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
                 di = getproperty(filter_params,Symbol("d$i"))
                 field_C = getproperty(model.tracers, filtered_var_C)
                 field_S = getproperty(model.tracers, filtered_var_S)
-                parent(field_C) .= ci/(ci^2 + di^2)*parent(original_var_fts[Time(0)])
-                parent(field_S) .= di/(ci^2 + di^2)*parent(original_var_fts[Time(0)])
+                interior(field_C) .= ci/(ci^2 + di^2)*interior(original_var_fts[Time(0)])
+                interior(field_S) .= di/(ci^2 + di^2)*interior(original_var_fts[Time(0)])
             end
         end
     end
@@ -1117,7 +1142,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
                 c1 = filter_params.c1
                 field_C = getproperty(model.tracers, filtered_map_C)
                 initial_vel_centred = Field(@at (Center, Center, Center) vel_fts[Time(0)])
-                parent(field_C) .= (-1/c1^2)*parent(initial_vel_centred) 
+                interior(field_C) .= (-1/c1^2)*interior(initial_vel_centred)
             else
                 for i in 1:filter_params.N_coeffs
                     filtered_map_C = Symbol("xi_", vel_name, label, "_C",i)
@@ -1127,8 +1152,8 @@ function initialise_filtered_vars_from_data(model::AbstractModel, input_data::Na
                     field_C = getproperty(model.tracers, filtered_map_C)
                     field_S = getproperty(model.tracers, filtered_map_S)
                     initial_vel_centred = Field(@at (Center, Center, Center) vel_fts[Time(0)])
-                    parent(field_C) .= ((di^2 - ci^2)/(ci^2 + di^2)^2)*parent(initial_vel_centred) 
-                    parent(field_S) .= (-2*ci*di/(ci^2 + di^2)^2)*parent(initial_vel_centred) 
+                    interior(field_C) .= ((di^2 - ci^2)/(ci^2 + di^2)^2)*interior(initial_vel_centred)
+                    interior(field_S) .= (-2*ci*di/(ci^2 + di^2)^2)*interior(initial_vel_centred)
                 end
             end
         end

@@ -190,12 +190,7 @@ function inflate_grid_halo_size(grid, tendency_terms...)
         if grid isa OrthogonalSphericalShellGrid
             error("Inflation of halo size on OrthogonalSphericalShellGrid not implemented, make sure user halo is set correctly")
         else
-            @warn "Inflating model grid halo size to ($Hx, $Hy, $Hz) and recreating grid. " *
-              "Note that an ImmersedBoundaryGrid requires an extra halo point in all non-flat directions compared to a non-immersed boundary grid."
-              "The model grid will be different from the input grid. To avoid this warning, " *
-              "pass halo=($Hx, $Hy, $Hz) when constructing the grid."
-
-        
+            @info "Inflating model grid halo size from $user_halo to $required_halo to accommodate the advection scheme."
             grid = with_halo((Hx, Hy, Hz), grid)
         end
     end
