@@ -97,13 +97,13 @@ T = model.tracers.T
 
 # For Lagrangian filtering
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, (; b, u, v, w, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; b, u, v, w, T), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_files=true)
 
 
 # NetCDF can be useful too for visualisation
 rm(filename_stem * ".nc",force=true)
 simulation.output_writers[:ncfields] = NetCDFWriter(
-    model, (; b, u, v, w, T), filename = filename_stem * ".nc", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; b, u, v, w, T), filename = filename_stem * ".nc", schedule=TimeInterval(1hour), overwrite_files=true)
     
 @info "Running the simulation..."
 

@@ -49,10 +49,10 @@ b = model.tracers.b
 
 # Output a jld2 file for Lagrangian filtering
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, (; b, u, w), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; b, u, w), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_files=true)
 
 simulation.output_writers[:ncfields] = NetCDFWriter(
-    model, (; b, u, w), filename = filename_stem * ".nc", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; b, u, w), filename = filename_stem * ".nc", schedule=TimeInterval(1hour), overwrite_files=true)
 
 # ### Run simulation
 @info "Running the simulation..."

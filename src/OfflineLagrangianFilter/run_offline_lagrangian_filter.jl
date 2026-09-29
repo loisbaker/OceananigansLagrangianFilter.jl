@@ -73,7 +73,7 @@ function run_offline_Lagrangian_filter(config)
     simulation.output_writers[:vars] = JLD2Writer(model, filtered_outputs,
                                                             filename = config.forward_output_filename,
                                                             schedule = TimeInterval(config.T_out),
-                                                            overwrite_existing = true)
+                                                            overwrite_files = true)
 
     # Run forward simulation
     run!(simulation)
@@ -99,7 +99,7 @@ function run_offline_Lagrangian_filter(config)
     simulation.output_writers[:vars] = JLD2Writer(model, filtered_outputs,
                                                             filename = config.backward_output_filename,
                                                             schedule = TimeInterval(config.T_out),
-                                                            overwrite_existing = true)
+                                                            overwrite_files = true)
 
     # Run the backward simulation
     run!(simulation)
