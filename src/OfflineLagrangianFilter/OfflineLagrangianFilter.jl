@@ -15,7 +15,7 @@ using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
 using Oceananigans.Grids: XYZRegularRG, topology, Flat
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
-using Oceananigans.OutputReaders: AbstractInMemoryBackend
+using Oceananigans.OutputReaders: InMemory
 using Oceananigans.Grids: AbstractGrid
 using Oceananigans.Architectures
 
@@ -92,7 +92,6 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     T_out::Real 
     filter_params::NamedTuple
     Δt::Real
-    backend::AbstractInMemoryBackend
     map_to_mean::Bool
     forward_output_filename::String
     backward_output_filename::String
@@ -126,7 +125,6 @@ end
                         freq_c::Union{Int, Nothing} = nothing,
                         filter_params::Union{NamedTuple, Nothing} = nothing,
                         Δt::Union{Real,Nothing} = nothing,
-                        backend::AbstractInMemoryBackend = InMemory(4),
                         map_to_mean::Bool = true,
                         forward_output_filename::String = "forward_output.jld2",
                         backward_output_filename::String = "backward_output.jld2",
@@ -164,7 +162,6 @@ Keyword arguments
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
-  - `backend`: The backend for loading `FieldTimeSeries` data. See `Oceananigans.Fields.FieldTimeSeries`. Default: `InMemory(4)`.
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
@@ -210,7 +207,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -233,7 +230,6 @@ function OfflineFilterConfig(; original_data_filename::String,
                             freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             Δt::Union{Real,Nothing} = nothing,
-                            backend::AbstractInMemoryBackend = InMemory(4),
                             map_to_mean::Bool = true,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
@@ -431,7 +427,7 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
 
     # If grid is not given, we can define it using the data file (this would be the typical behaviour for Oceananigans output)
     if isnothing(grid)
-        example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
+        example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend = InMemory(2)) # Only the grid is needed
         grid = example_timeseries.grid
     end
 
@@ -504,7 +500,6 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             T_out,
                             filter_params,
                             Δt,
-                            backend,
                             map_to_mean,
                             forward_output_filename,
                             backward_output_filename,

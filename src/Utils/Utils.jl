@@ -9,6 +9,7 @@ using JLD2: Group
 using Oceananigans
 using Oceananigans.Fields: Center
 using Oceananigans.Units: Time
+using Oceananigans.OutputReaders: InMemory
 
 using ..DataIO: BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!, stored_times, shared_halo_regions
 

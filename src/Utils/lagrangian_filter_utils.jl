@@ -226,12 +226,12 @@ function create_original_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     grid = config.grid
     architecture = config.architecture
-    backend = config.backend
     vars = Dict()
     original_data_filename = config.original_data_filename
 
     for var_name in var_names_to_filter
-        fts_data = FieldTimeSeries(original_data_filename, var_name, architecture=architecture,backend=backend)[1]
+        # Only the first frame is needed, so avoid loading the whole time series into memory
+        fts_data = FieldTimeSeries(original_data_filename, var_name; architecture, backend = InMemory(2))[1]
         vars[Symbol(var_name)] = fts_data
     end
     return NamedTuple(vars)
