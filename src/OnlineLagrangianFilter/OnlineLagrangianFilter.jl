@@ -78,7 +78,7 @@ Keyword arguments
 
 # Example:
 
-```jldoctest online config
+```jldoctest online_config
 using OceananigansLagrangianFilter
 using Oceananigans.Units
 

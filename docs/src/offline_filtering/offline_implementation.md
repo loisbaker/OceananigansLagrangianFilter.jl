@@ -4,6 +4,17 @@ The offline Lagrangian filter equations, which find Lagrangian filtered tracer(s
 
 The offline filter uses mostly the same functions as the online filter to define filtered fields and their forcings, but in this case most of the process is 'under the hood', as the user only needs to provide the simulation data and specify the configuration. An example is given in [`offline_filter_geostrophic_adjustment.jl`](https://github.com/loisbaker/OceananigansLagrangianFilter.jl/blob/main/examples/offline_filter_geostrophic_adjustment.jl), and more detail is given in [how it works](@ref "How it works").
 
+## Input data
+
+The original data can be a JLD2 or NetCDF file of Oceananigans output, given by `original_data_filename`. It must contain the velocities (`velocity_names`) and the variables to be filtered (`var_names_to_filter`), saved often enough to resolve the motions being filtered.
+
+- **JLD2** files written by Oceananigans' `JLD2Writer` can be used directly.
+- **NetCDF** files should be written by Oceananigans' `NetCDFWriter` (or have the same metadata), since the grid and the location of each variable are read from the file's attributes. The time coordinate must be called `time`.
+
+The data is read frame by frame directly from the original file, so memory use doesn't depend on the length of the dataset, and no intermediate copy of the data is written (see [How it works](@ref "How it works")).
+
+## Example
+
 A short example of how to implement offline filtering on a GPU is given below:
 
 ```julia

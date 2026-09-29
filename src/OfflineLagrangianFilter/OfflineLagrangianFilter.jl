@@ -182,7 +182,7 @@ Keyword arguments
   - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
 # Example:
 
-```jldoctest offline config
+```jldoctest offline_config
 using OceananigansLagrangianFilter
 using Oceananigans.Units
 path_to_sim = "../test/data/reference_sim.jld2"

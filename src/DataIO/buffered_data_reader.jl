@@ -141,7 +141,7 @@ end
 
 Linearly interpolate the two buffered frames at `sim_t` and write the result
 directly into `model.velocities` and `model.auxiliary_fields`, including the
-halo cells shared by the model and saved data grids (see [`shared_halo_regions`](@ref)).
+halo cells shared by the model and saved data grids (see `shared_halo_regions`).
 
 Velocities are negated for backward-direction filtering.
 """

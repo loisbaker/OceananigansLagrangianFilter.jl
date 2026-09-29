@@ -16,7 +16,7 @@ A set of tools to perform online or offline Lagrangian filtering on Oceananigans
 ---
 ## ✨ Features
 
-* **Offline Filtering:** Apply low-pass Lagrangian filters to existing Oceananigans output, saved in .jld2 format. 
+* **Offline Filtering:** Apply low-pass Lagrangian filters to existing Oceananigans output, saved in JLD2 or NetCDF format.
 
 * **Online Filtering:** Integrate filters directly into `Oceananigans.jl` simulations.
 
