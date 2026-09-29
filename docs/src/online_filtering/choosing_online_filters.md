@@ -10,7 +10,7 @@ G(t) =
 & 0 &t \leq 0 \,,
 \end{cases}
 ```
-where ``a_n``, ``b_n``, ``c_n``, and ``d_n`` are real scalars, ``c_n > 0``, and ``N`` should be even. ``N`` is the number of exponentials that are summed to form the weight function, and should be even as the exponentials come in complex conjugate pairs to keep calculations real. These coefficients can be provided to [`OnlineFilterConfig`](@ref "OnlineFilterConfig") inside the `NamedTuple` `filter_params`.
+where ``a_n``, ``b_n``, ``c_n``, and ``d_n`` are real scalars, ``c_n > 0``, and ``N`` should be even. ``N`` is the number of exponentials that are summed to form the weight function, and should be even as the exponentials come in complex conjugate pairs to keep calculations real. These coefficients can be provided to [`OnlineFilterConfig`](@ref) inside the `NamedTuple` `filter_params`.
 
 ```julia
 filter_params = (a1 = 1, b1 = 1, c1 = 1, d1 = 1)

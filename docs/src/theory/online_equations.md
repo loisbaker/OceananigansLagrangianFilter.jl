@@ -42,7 +42,7 @@ or equivalently, that ``\hat{G}(0) = 1``. This requires that
     \sum_{n=1}^{N/2} \frac{a_nc_n + b_n d_n}{c_n^2 + d_n^2} = 1\,.
 \end{equation}
 ```
-This normalisation is only strictly required when we define a map that computes the trajectory mean position (`map_to_mean = true` in [`OnlineFilterConfig`](@ref "OnlineFilterConfig")) but we keep the requirement for now.
+This normalisation is only strictly required when we define a map that computes the trajectory mean position (`map_to_mean = true` in [`OnlineFilterConfig`](@ref)) but we keep the requirement for now.
 
 We define a set of ``N`` weight functions. For ``k = 1,...,N/2`` we have
 ```math

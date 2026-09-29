@@ -19,7 +19,7 @@ using OceananigansLagrangianFilter.Utils
 
 - Setup your parameters, grid, tracers, and forcing as normal
 
-- Define your `filter_config` - an [`OnlineFilterConfig`](@ref "OnlineFilterConfig"). This takes as arguments:
+- Define your `filter_config` - an [`OnlineFilterConfig`](@ref). This takes as arguments:
     - `grid`: the grid you have already defined
     - `output_filename`: a filename to save filtered output to
     - `var_names_to_filter`: a tuple of strings defining the names of variables to filter. These can be any of your `tracers`. Velocities to filter don't need to be listed here (see below).
@@ -38,20 +38,20 @@ filter_config = OnlineFilterConfig( grid = grid,
                                     freq_c = f/2)
 ```
 
-- Create the filtered variables ``g_{Ck}``, ``g_{Sk}``, ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` using the function [`create_filtered_vars`](@ref "create_filtered_vars"), which only needs the `filter_config`. These filtered variables will be added to the model as tracers.
+- Create the filtered variables ``g_{Ck}``, ``g_{Sk}``, ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` using the function [`create_filtered_vars`](@ref), which only needs the `filter_config`. These filtered variables will be added to the model as tracers.
 
 ```julia
 filtered_vars = create_filtered_vars(filter_config)
 ```
 
-- Create forcing for these filtered variables using the function [`create_forcing`](@ref "create_forcing"). This implements the right-hand-sides of the tracer and map equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")). Merge this `filter_forcing` with your existing forcing. 
+- Create forcing for these filtered variables using the function [`create_forcing`](@ref). This implements the right-hand-sides of the tracer and map equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")). Merge this `filter_forcing` with your existing forcing. 
 
 ```julia
 filter_forcing = create_forcing(filtered_vars, filter_config)
 forcing = merge(forcing, filter_forcing);
 ```
 
-- If you're using a closure, you'll need to tell the filtered scalars not to use a closure (although they could be given a closure if necessary for stability - this has proved unecessary so far and is more accurate). A helper function [`zero_closure_for_filtered_vars`](@ref "zero_closure_for_filtered_vars") to set the diffusivity to zero for each of the filtered variables is provided.
+- If you're using a closure, you'll need to tell the filtered scalars not to use a closure (although they could be given a closure if necessary for stability - this has proved unecessary so far and is more accurate). A helper function [`zero_closure_for_filtered_vars`](@ref) to set the diffusivity to zero for each of the filtered variables is provided.
 
 ```julia
 zero_filtered_var_closure = zero_closure_for_filtered_vars(filter_config)
@@ -77,7 +77,7 @@ initialise_filtered_vars_from_model(model, filter_config)
 
 - Define the simulation, any callbacks, `conjure_time_step_wizard`, etc as normal
 
-- Use the [`create_output_fields`](@ref "create_output_fields") helper function to define the output fields (this defines the outputs ``f^*`` and ``\vb*{\Xi}`` so that all of the intermediate filter variables are not output by default, though they could be examined as for any other tracer)
+- Use the [`create_output_fields`](@ref) helper function to define the output fields (this defines the outputs ``f^*`` and ``\vb*{\Xi}`` so that all of the intermediate filter variables are not output by default, though they could be examined as for any other tracer)
 
 ```julia
 outputs = create_output_fields(model, filter_config)
@@ -100,7 +100,7 @@ outputs["w"] = model.velocities.w
 ```julia
 run!(simulation)
 ```
-- Optionally regrid to mean position using [`regrid_to_mean_position!`](@ref "regrid_to_mean_position!"). This adds a new field to the output data file.
+- Optionally regrid to mean position using [`regrid_to_mean_position!`](@ref). This adds a new field to the output data file.
 
 ```julia
 if filter_config.map_to_mean
@@ -108,7 +108,7 @@ if filter_config.map_to_mean
 end
 ```
 
-- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref "compute_Eulerian_filter!").
+- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref).
     
 ```julia
 compute_Eulerian_filter!(filter_config)
@@ -120,7 +120,7 @@ compute_Eulerian_filter!(filter_config)
 compute_time_shift!(filter_config)
 ```
 
-- Optionally output a final NetCDF file using [`jld2_to_netcdf`](@ref "jld2_to_netcdf"). This helper function should work for any `.jld2` Oceananigans output. 
+- Optionally output a final NetCDF file using [`jld2_to_netcdf`](@ref). This helper function should work for any `.jld2` Oceananigans output. 
 
 ```julia
 jld2_to_netcdf(filename_stem * ".jld2", filename_stem * ".nc")
