@@ -86,7 +86,7 @@ function run_online_filter_test(filename_stem::String; N::Int, freq_c::Real)
 
     # Output a .jld2 file:
     simulation.output_writers[:jld2fields] = JLD2Writer(
-        model, outputs, filename = filter_config.output_filename, schedule = TimeInterval(1hour), overwrite_existing = true)
+        model, outputs, filename = filter_config.output_filename, schedule = TimeInterval(1hour), overwrite_files = true)
 
     # Run the simulation
     @info "Running the simulation..."

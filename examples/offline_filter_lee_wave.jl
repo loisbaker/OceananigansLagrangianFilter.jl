@@ -150,7 +150,7 @@ b = model.tracers.b
 
 # Output a jld2 file for Lagrangian filtering
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, (; u, w, b), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; u, w, b), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_files=true)
 
 # ### Run simulation
 @info "Running the simulation..."

@@ -1,5 +1,5 @@
 using Oceananigans: UpdateStateCallsite
-using Oceananigans.Advection: update_advection_timestep!
+using Oceananigans.Advection: update_advection!
 using Oceananigans.BoundaryConditions
 using Oceananigans.BoundaryConditions: update_boundary_conditions! 
 using Oceananigans.TurbulenceClosures: compute_closure_fields!
@@ -46,7 +46,7 @@ function update_state!(model::LagrangianFilter, callbacks=[])
         callback.callsite isa UpdateStateCallsite && callback(model)
     end
 
-    update_advection_timestep!(model.advection, model.timestepper, model.clock)
+    update_advection!(model.advection, model)
     compute_tendencies!(model, callbacks)
 
     return nothing
@@ -64,5 +64,5 @@ function compute_auxiliaries!(model::LagrangianFilter; κ_parameters = :xyz)
     return nothing
 end
 
-step_closure_prognostics!(model::LagrangianFilter, Δt) =
+step_closure_prognostics!(model::LagrangianFilter, Δt::Number) =
     step_closure_prognostics!(model.closure_fields, model.closure, model, Δt)

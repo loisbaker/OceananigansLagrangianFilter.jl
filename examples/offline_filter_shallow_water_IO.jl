@@ -80,7 +80,7 @@ simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))
 simulation.output_writers[:fields_jld2] = JLD2Writer(model, (; u,v,T),
                                                         filename = filename_stem * ".jld2",
                                                         schedule = TimeInterval(0.1),
-                                                        overwrite_existing = true)
+                                                        overwrite_files = true)
 
 # ### And finally run the simulation.
 run!(simulation)
