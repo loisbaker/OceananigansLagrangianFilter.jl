@@ -1,3 +1,5 @@
+using JLD2
+
 @testset "Offline run test" begin
 
     # Test the offline filter on small saved simulation data, comparing against
@@ -57,6 +59,42 @@ end
         u_filtered = FieldTimeSeries(test_filename_stem * ".jld2", "u_Lagrangian_filtered")
         @test all(isfinite, u_filtered.data)
         @test any(!=(0), u_filtered.data)
+    finally
+        rm(test_filename_stem * ".jld2", force = true)
+    end
+end
+
+@testset "Offline run test: maps output without regridding" begin
+    # compute_maps = true with regrid_to_mean = false: the maps are written, but nothing is regridded
+    # to the mean position, and no mean velocities are computed. Kept short (T = 3hours).
+    test_filename_stem = "data/test_offline_output_maps_only"
+    try
+        filter_config = OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2",
+                                        output_filename = test_filename_stem * ".jld2",
+                                        var_names_to_filter = ("b",),
+                                        velocity_names = ("u", "w"),
+                                        architecture = CPU(),
+                                        Δt = 20minutes,
+                                        T = 3hours,
+                                        T_out = 1hour,
+                                        N = 2,
+                                        freq_c = 1e-4 / 4,
+                                        compute_maps = true,
+                                        regrid_to_mean = false,
+                                        compute_mean_velocities = false,
+                                        delete_intermediate_files = true)
+
+        run_offline_Lagrangian_filter(filter_config)
+
+        output_names = jldopen(file -> keys(file["timeseries"]), test_filename_stem * ".jld2")
+        @test "xi_u" in output_names && "xi_w" in output_names
+        @test "b_Lagrangian_filtered" in output_names
+        @test !any(endswith("_at_mean"), output_names)
+        @test !("u_Lagrangian_filtered" in output_names)
+
+        xi_u = FieldTimeSeries(test_filename_stem * ".jld2", "xi_u")
+        @test all(isfinite, xi_u.data)
+        @test any(!=(0), xi_u.data)
     finally
         rm(test_filename_stem * ".jld2", force = true)
     end

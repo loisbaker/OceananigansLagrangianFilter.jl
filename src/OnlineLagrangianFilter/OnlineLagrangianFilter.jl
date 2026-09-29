@@ -8,6 +8,7 @@ using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
 
 using ..Utils
+using ..Utils: resolve_map_options
 
 export OnlineFilterConfig
 """
@@ -23,7 +24,8 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}} 
     filter_params::NamedTuple
-    map_to_mean::Bool
+    compute_maps::Bool
+    regrid_to_mean::Bool
     compute_mean_velocities::Bool
     npad::Int
     label::String
@@ -41,7 +43,8 @@ end
                             N::Union{Int, Nothing} = nothing,
                             freq_c::Union{Int, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
-                            map_to_mean::Bool = true,
+                            compute_maps::Bool = true,
+                            regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             label::String = "",
@@ -65,8 +68,9 @@ Keyword arguments
   - `N`, `freq_c`: Parameters for a Butterworth filter. `N` is the order of the filter, and `freq_c` is the cutoff frequency. 
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
-  - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
-  - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
+  - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
+  - `regrid_to_mean`: A `Bool` indicating whether the filtered fields should be interpolated to the mean position after the simulation (i.e. calculate the generalised Lagrangian mean), using [`regrid_to_mean_position!`](@ref). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
+  - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
@@ -101,14 +105,14 @@ filter_config = OnlineFilterConfig( grid = grid,
 
 # output
 ┌ Info: Advection for Lagrangian filtering will be performed using full model velocities u, v, and w.
-└         Maps for regridding to mean position will be computed corresponding to velocities: ("u", "w").
+└         Maps (displacements from the mean position) will be computed corresponding to velocities: ("u", "w").
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Variables to be filtered: ("b", "T"). Ensure these are valid tracer or auxiliary field names in the simulation.
 [ Info: Setting filter parameters to use Butterworth order 2, cutoff frequency 5.0e-5
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, 5, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, true, 5, "", false, nothing, nothing, nothing)
 ```
 
 
@@ -120,14 +124,16 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             N::Union{Int, Nothing} = nothing,
                             freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
-                            map_to_mean::Bool = true,
+                            compute_maps::Bool = true,
+                            regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             label::String = "",
                             boundary_relaxation::Bool = false,
                             relax_timescale::Union{Real, Nothing} = nothing,
                             mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing
+                            mask_func::Union{Function, Nothing}  = nothing,
+                            map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
     # Check that velocities aren't in the var_names_to_filter
@@ -143,9 +149,9 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     end
     
     # Notify about the velocities that will be used
-    if map_to_mean
+    if compute_maps || regrid_to_mean
         @info "Advection for Lagrangian filtering will be performed using full model velocities u, v, and w. 
-        Maps for regridding to mean position will be computed corresponding to velocities: $(velocity_names)."
+        Maps (displacements from the mean position) will be computed corresponding to velocities: $(velocity_names)."
     else
         @info "Advection for Lagrangian filtering will be performed using full model velocities u, v, and w."
     end
@@ -201,11 +207,11 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     end
 
     # Check normalisation of filter coefficients
+    normalised = true
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1).
-You can continue, but setting `map_to_mean=false` as the map is now meaningless."
-            map_to_mean = false
+            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1)."
+            normalised = false
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
@@ -213,24 +219,22 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
         c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1.0)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1.
-You can continue, but setting `map_to_mean=false` as the map is now meaningless."
-            map_to_mean = false
+            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1."
+            normalised = false
         end
     end
 
     # Give a warning if the grid has an immersed boundary
-    if grid isa ImmersedBoundaryGrid
-        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
+    if grid isa ImmersedBoundaryGrid && regrid_to_mean
+        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting regrid_to_mean=false"
     end
-    
+
     underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
-    
-    # Give warning about interpolation if grid is not RectilinearGrid and turn off interpolation for now
-    if !underlying_rectilinear_grid && map_to_mean
-        @warn "The final interpolation to mean position currently only works for RectilinearGrids - setting map_to_mean=false"
-        map_to_mean = false
-    end
+
+    # Check and reconcile the options for the maps (e.g. no regridding for non-rectilinear grids)
+    compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
+                                                       lagrangian = true, normalised,
+                                                       rectilinear = underlying_rectilinear_grid)
 
     # Check relaxation fields are appropriate
     if boundary_relaxation
@@ -262,7 +266,8 @@ You can continue, but setting `map_to_mean=false` as the map is now meaningless.
                             var_names_to_filter,
                             velocity_names,
                             filter_params,
-                            map_to_mean,
+                            compute_maps,
+                            regrid_to_mean,
                             compute_mean_velocities,
                             npad,
                             label,

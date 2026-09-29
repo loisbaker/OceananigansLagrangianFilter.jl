@@ -116,7 +116,7 @@ function run_offline_Lagrangian_filter(config)
     end
 
     # Option to regrid to mean position
-    if config.map_to_mean
+    if config.regrid_to_mean
         regrid_to_mean_position!(config)
     end
 

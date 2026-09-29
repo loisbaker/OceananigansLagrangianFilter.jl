@@ -26,8 +26,9 @@ using OceananigansLagrangianFilter.Utils
     - `velocity_names`: the velocity names that you want to use to compute Lagrangian trajectories. These are also the velocities that will be filtered if `compute_mean_velocities = true`.
     - `N` and `freq_c`: Can be provided together to give a Butterworth filter of order ``N`` with cutoff frequency `freq_c`. 
     - `filter_params`: a named tuple of coefficients `a1`, `b1`, `c1`, `d1`, `a2`, `b2`, `c2`, `d2`, etc defining a filter kernel (see [Choosing online filters](@ref "Choosing online filters")).
-    - `map_to_mean`: A Bool determining whether to compute the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` and solve their equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")).
-    - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `map_to_mean=false` and `compute_mean_velocities=true` the maps will still be computed. 
+    - `compute_maps`: A Bool determining whether to compute and output the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` by solving their equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")). The maps are the displacements from the mean position.
+    - `regrid_to_mean`: A Bool determining whether the filtered fields should be interpolated to the mean position after the simulation (see below). This requires the maps, so if `regrid_to_mean=true` the maps will be computed.
+    - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `compute_maps=false` and `compute_mean_velocities=true` the maps will still be solved for (but not output). 
 
 ```julia
 filter_config = OnlineFilterConfig( grid = grid,
@@ -103,7 +104,7 @@ run!(simulation)
 - Optionally regrid to mean position using [`regrid_to_mean_position!`](@ref). This adds a new field to the output data file.
 
 ```julia
-if filter_config.map_to_mean
+if filter_config.regrid_to_mean
     regrid_to_mean_position!(filter_config)
 end
 ```

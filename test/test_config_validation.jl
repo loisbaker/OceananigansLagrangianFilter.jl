@@ -85,3 +85,33 @@ end
     @test config2.mask_func === good_mask
     @test config2.mask_params == (; a = 1)
 end
+
+@testset "Map options (compute_maps, regrid_to_mean)" begin
+
+    base = (; original_data_filename = "data/reference_sim.jld2", var_names_to_filter = ("b",),
+              velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
+
+    # By default, the maps are computed and the filtered fields are regridded to the mean position
+    config = OfflineFilterConfig(; base...)
+    @test config.compute_maps && config.regrid_to_mean && config.compute_mean_velocities
+
+    # The maps can be output without regridding
+    config = OfflineFilterConfig(; base..., compute_maps = true, regrid_to_mean = false)
+    @test config.compute_maps && !config.regrid_to_mean
+
+    # Regridding requires the maps, so they are turned on with a warning
+    config = @test_logs (:warn, r"requires the maps") match_mode=:any OfflineFilterConfig(; base..., compute_maps = false)
+    @test config.compute_maps && config.regrid_to_mean
+
+    # For the Eulerian filter the maps and mean velocities can still be computed, but not regridded
+    config = @test_logs (:warn, r"Eulerian") match_mode=:any OfflineFilterConfig(; base..., advection = nothing)
+    @test config.compute_maps && !config.regrid_to_mean && config.compute_mean_velocities
+
+    # Likewise for un-normalised filter coefficients
+    config = @test_logs (:warn, r"not normalised") match_mode=:any OfflineFilterConfig(; base..., N = nothing, freq_c = nothing,
+                                                                                         filter_params = (a1 = 1.0, c1 = 1.0))
+    @test config.compute_maps && !config.regrid_to_mean
+
+    # The removed option map_to_mean gives an error explaining what to use instead
+    @test_throws r"compute_maps" OfflineFilterConfig(; base..., map_to_mean = true)
+end

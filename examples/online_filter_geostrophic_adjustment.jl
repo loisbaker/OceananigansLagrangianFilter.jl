@@ -140,7 +140,7 @@ run!(simulation)
 @info "Simulation completed in " * prettytime(simulation.run_wall_time)
 
 # ### Option to regrid to mean position
-if filter_config.map_to_mean
+if filter_config.regrid_to_mean
     regrid_to_mean_position!(filter_config)
 end
 nothing #hide

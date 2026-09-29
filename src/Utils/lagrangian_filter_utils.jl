@@ -238,6 +238,62 @@ function create_original_vars(config::AbstractConfig)
 end
 
 """
+    resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear)
+
+Check and reconcile the options controlling the displacement maps ``\\vb*{\\xi}``, for both filter configs:
+
+- `compute_maps`: solve for and output the maps.
+- `regrid_to_mean`: interpolate the filtered fields to the mean position, which requires the maps.
+- `compute_mean_velocities` (not changed here): output the mean velocities, computed from the maps.
+
+The maps are only displacements from the mean position for a Lagrangian filter (`lagrangian`) with normalised
+filter coefficients (`normalised`), so otherwise `regrid_to_mean` is set to `false`. Regridding also currently
+requires a rectilinear grid (`rectilinear`). `map_to_mean` is the name of a removed option, and throws an error
+if given.
+
+Returns the reconciled `(compute_maps, regrid_to_mean)`.
+"""
+function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear)
+    if !isnothing(map_to_mean)
+        error("The option `map_to_mean` has been removed. Use `compute_maps` to solve for and output the " *
+              "displacement maps, and `regrid_to_mean` to interpolate the filtered fields to the mean position.")
+    end
+
+    if !lagrangian
+        compute_maps && @warn "Advection scheme is `nothing` (Eulerian filter), so the maps are not displacements from the mean position."
+        regrid_to_mean && @warn "Advection scheme is `nothing` (Eulerian filter), so setting regrid_to_mean = false."
+        regrid_to_mean = false
+    end
+
+    if !normalised
+        compute_maps && @warn "Filter coefficients are not normalised, so the maps are not displacements from the mean position."
+        regrid_to_mean && @warn "Filter coefficients are not normalised, so setting regrid_to_mean = false."
+        regrid_to_mean = false
+    end
+
+    if !rectilinear && regrid_to_mean
+        @warn "The final interpolation to mean position currently only works for RectilinearGrids, so setting regrid_to_mean = false."
+        regrid_to_mean = false
+    end
+
+    # Regridding uses the maps
+    if regrid_to_mean && !compute_maps
+        @warn "regrid_to_mean = true requires the maps, so setting compute_maps = true."
+        compute_maps = true
+    end
+
+    return compute_maps, regrid_to_mean
+end
+
+"""
+    maps_needed(config::AbstractConfig)
+
+Whether the map variables need to be solved for: they are output if `compute_maps`, and are used to compute
+the mean velocities if `compute_mean_velocities`. (`regrid_to_mean` implies `compute_maps`, see `resolve_map_options`.)
+"""
+maps_needed(config::AbstractConfig) = config.compute_maps || config.compute_mean_velocities
+
+"""
     create_filtered_vars(config::AbstractConfig)
 
 Creates a `Tuple` of `Symbol`s representing the names of the filtered tracer
@@ -249,7 +305,7 @@ variables.
   names for each coefficient, suffixed with `_C#` and `_S#`, where `#` is the
   coefficient index.
 
-If `map_to_mean` or `compute_mean_velocities` is enabled in the configuration,
+If `compute_maps` or `compute_mean_velocities` is enabled in the configuration,
 additional symbols are created for the spatial mapping variables corresponding
 to each velocity component, prefixed with `xi_` and suffixed with the corresponding
 coefficient names.
@@ -257,7 +313,7 @@ coefficient names.
 Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the names of the variables
-  to filter, the filter parameters, and the `map_to_mean` and `compute_mean_velocities` booleans.
+  to filter, the filter parameters, and the `compute_maps` and `compute_mean_velocities` booleans.
 
 Returns
 =======
@@ -269,7 +325,6 @@ function create_filtered_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
     filter_params = config.filter_params
-    map_to_mean = config.map_to_mean
     compute_mean_velocities = config.compute_mean_velocities
     N_coeffs = filter_params.N_coeffs
     label = config.label
@@ -280,7 +335,7 @@ function create_filtered_vars(config::AbstractConfig)
             push!(gC_symbols, Symbol(var_name, label, "_C1"))
         end
         # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
-        if map_to_mean || compute_mean_velocities
+        if maps_needed(config)
             for vel_name in velocity_names
                 push!(gC_symbols, Symbol("xi_", vel_name, label,"_C1"))
             end
@@ -300,7 +355,7 @@ function create_filtered_vars(config::AbstractConfig)
         end
 
         # May also need xi maps. We need one for every velocity dimension, so lets use the velocity names to name them
-        if map_to_mean || compute_mean_velocities
+        if maps_needed(config)
             for vel_name in velocity_names
                 for i in 1:N_coeffs
                     push!(gC_symbols, Symbol("xi_", vel_name, label, "_C", i))
@@ -556,7 +611,7 @@ The function handles two cases: a single-exponential filter
 
 * For standard filtered variables, the forcing is a combination of terms
   derived from the filter's coefficients and a term from the original data.
-* For spatial mapping variables (if `map_to_mean` or `compute_mean_velocities` is true), the forcing
+* For spatial mapping variables (if `compute_maps` or `compute_mean_velocities` is true), the forcing
   includes terms derived from the filter's coefficients and a term from the
   original velocity data.
 
@@ -745,7 +800,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
     velocity_names = config.velocity_names
     filter_params = config.filter_params
     N_coeffs = filter_params.N_coeffs
-    map_to_mean = config.map_to_mean
+    compute_maps = config.compute_maps
     compute_mean_velocities = config.compute_mean_velocities
     label = config.label
     outputs_dict = Dict()
@@ -782,8 +837,8 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
         end
     end
 
-    # Reconstruct the maps, if we map to mean
-    if map_to_mean
+    # Reconstruct the maps, if they are output
+    if compute_maps
         for vel_name in velocity_names
             labelled_var_name = "xi_" * vel_name * label
             if N_coeffs == 0.5
@@ -920,7 +975,7 @@ function initialise_filtered_vars_from_model(model::AbstractModel, config::Abstr
         end
     end
 
-    if config.map_to_mean || config.compute_mean_velocities
+    if maps_needed(config)
         for vel_name in vel_names
             if filter_params.N_coeffs == 0.5 # Special case of single exponential
                 filtered_map_C = Symbol("xi_", vel_name, label, "_C1")
@@ -950,7 +1005,7 @@ end
 
 function change_sign_of_map_variables!(model::AbstractModel, config::AbstractConfig)
     # There are no map variables unless we are regridding to the mean position or computing mean velocities
-    (config.map_to_mean || config.compute_mean_velocities) || return nothing
+    maps_needed(config) || return nothing
 
     vel_names = config.velocity_names
     label = config.label
@@ -999,7 +1054,6 @@ Arguments
 function zero_closure_for_filtered_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     N_coeffs = config.filter_params.N_coeffs
-    map_to_mean = config.map_to_mean
     compute_mean_velocities = config.compute_mean_velocities
     label = config.label
     dict = Dict()
@@ -1017,7 +1071,7 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
             end
         end
     end
-    if map_to_mean || compute_mean_velocities
+    if maps_needed(config)
         velocity_names = config.velocity_names
         for vel_name in velocity_names
             if N_coeffs == 0.5 # Special case of single exponential
@@ -1072,7 +1126,7 @@ point. The data is interpolated from the two buffered frames.
 - For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
   fields for each coefficient are initialised.
 
-If maps are being computed (`map_to_mean` or `compute_mean_velocities`), the
+If maps are being computed (`compute_maps` or `compute_mean_velocities`), the
 maps are initialised from the velocities in the same way.
 """
 function initialise_filtered_vars_from_data(model::AbstractModel,
@@ -1118,7 +1172,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel,
     end
 
     # ── Map (xi) initialisation ───────────────────────────────────────────────
-    if config.map_to_mean || config.compute_mean_velocities
+    if maps_needed(config)
         for vel_name in reader.vel_names
             lo_v = lo_frames[Symbol(vel_name)]
             hi_v = hi_frames[Symbol(vel_name)]
