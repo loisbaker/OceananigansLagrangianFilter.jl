@@ -21,7 +21,7 @@ For the weight function to be normalised (so that the mean of a constant is the 
 \sum_{n=1}^{N/2} \frac{a_nc_n + b_n d_n}{c_n^2 +d_n^2} = 1\,.
 ```
 
-Un-normalised filters can be used, but `map_to_mean` will be set to false as the maps no longer make sense. 
+Un-normalised filters can be used, but `regrid_to_mean` will be set to false as the maps are no longer displacements from the mean position. 
 
 For ``N/2`` sets of coefficients, the weight function is composed of ``N`` exponentials, and ``N`` filtered tracers are needed to find the Lagrangian mean of each tracer. The number of equations that the filtering simulation solves is therefore linear in ``N``, so beware making ``N`` too large. 
 

@@ -52,7 +52,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     T = config.T
     velocity_names = config.velocity_names
     var_names_to_filter = config.var_names_to_filter
-    map_to_mean = config.map_to_mean
+    compute_maps = config.compute_maps
     compute_mean_velocities = config.compute_mean_velocities
     label = config.label
     
@@ -65,7 +65,7 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
 
     # List the names of the fields that we will combine
     filtered_var_names = Tuple([var * label * filter_identifier for var in var_names_to_filter])
-    if map_to_mean
+    if compute_maps
         filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
     end
 

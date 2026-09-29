@@ -57,7 +57,8 @@ end
                                         freq_c = 1e-4 / 4,
                                         advection = WENO(order = 9), # Requires halo 5, larger than the saved data
                                         compute_mean_velocities = false,
-                                        map_to_mean = false,
+                                        compute_maps = false,
+                                        regrid_to_mean = false,
                                         delete_intermediate_files = true)
 
         run_offline_Lagrangian_filter(filter_config)

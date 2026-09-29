@@ -28,6 +28,7 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
+using ..Utils: resolve_map_options
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
@@ -92,7 +93,8 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     T_out::Real 
     filter_params::NamedTuple
     Δt::Real
-    map_to_mean::Bool
+    compute_maps::Bool
+    regrid_to_mean::Bool
     forward_output_filename::String
     backward_output_filename::String
     output_filename::String
@@ -125,7 +127,8 @@ end
                         freq_c::Union{Int, Nothing} = nothing,
                         filter_params::Union{NamedTuple, Nothing} = nothing,
                         Δt::Union{Real,Nothing} = nothing,
-                        map_to_mean::Bool = true,
+                        compute_maps::Bool = true,
+                        regrid_to_mean::Bool = true,
                         forward_output_filename::String = "forward_output.jld2",
                         backward_output_filename::String = "backward_output.jld2",
                         output_filename::String = "filtered_output.jld2",
@@ -162,12 +165,13 @@ Keyword arguments
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
-  - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
+  - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
+  - `regrid_to_mean`: A `Bool` indicating whether to interpolate the filtered fields to the mean position (i.e. calculate the generalised Lagrangian mean). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible for a Lagrangian filter with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
   - `output_filename`: The filename for the final combined and mapped output. Default: `"filtered_output.jld2"`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
-  - `compute_mean_velocities`: A `Bool` indicating whether to compute the mean velocities from the maps. Default: `true`.
+  - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
   - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `output_netcdf`: A `Bool` indicating whether to also convert the final JLD2 output file to a NetCDF file. Default: `false`.
@@ -202,12 +206,12 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 
 # output
 ┌ Info: Advection for Lagrangian filtering will be performed using only velocities ("u", "w") -
-│ any other velocity components will be zero by default. Maps for regridding to mean position will
+│ any other velocity components will be zero by default. Maps (displacements from the mean position) will
 └ be computed corresponding to velocities: ("u", "w").
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -230,7 +234,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             Δt::Union{Real,Nothing} = nothing,
-                            map_to_mean::Bool = true,
+                            compute_maps::Bool = true,
+                            regrid_to_mean::Bool = true,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
                             output_filename::String = "filtered_output.jld2",
@@ -246,7 +251,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             boundary_relaxation::Bool = false,
                             relax_timescale::Union{Real, Nothing} = nothing,
                             mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing
+                            mask_func::Union{Function, Nothing}  = nothing,
+                            map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
     # Check that the original file exists 
@@ -269,9 +275,9 @@ a different name in the original simulation.")
     end
 
     # Notify about the velocities that will be used
-    if map_to_mean
+    if compute_maps || regrid_to_mean
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
-any other velocity components will be zero by default. Maps for regridding to mean position will
+any other velocity components will be zero by default. Maps (displacements from the mean position) will
 be computed corresponding to velocities: $(velocity_names)."
     else
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
@@ -409,19 +415,20 @@ any other velocity components will be zero by default."
     end
 
     # Check normalisation of filter coefficients
+    normalised = true
     if filter_params.N_coeffs == 0.5
         if !(filter_params.a1*2 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1). 
-You can continue, but you should consider setting `map_to_mean=false` as the map may be meaningless."
+            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1)."
+            normalised = false
         end
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
         b_coeffs = [filter_params[Symbol("b",i)] for i in 1:filter_params.N_coeffs]
-        c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
+        c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs]
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
         if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1/2)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5
-You can continue, but you should consider setting `map_to_mean=false` as the map may be meaningless."
+            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5."
+            normalised = false
         end
     end
 
@@ -432,16 +439,11 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
     end
 
     # Give a warning if the grid has an immersed boundary
-    if grid isa ImmersedBoundaryGrid
-        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting map_to_mean=false"
+    if grid isa ImmersedBoundaryGrid && regrid_to_mean
+        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting regrid_to_mean=false"
     end
 
     underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
-
-    # Give warning about interpolation if grid is not RectilinearGrid and turn off interpolation for now
-    if !underlying_rectilinear_grid && map_to_mean
-        @warn "The final interpolation to mean position currently only works for RectilinearGrids - consider setting map_to_mean=false"
-    end
 
     underlying_latlon_grid = (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
 
@@ -450,14 +452,14 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
         output_netcdf = false
     end
 
-    # Make sure that map_to_mean is false if advection is nothing (Eulerian filter)
-
-    if isnothing(advection) && map_to_mean
-        @warn "Advection scheme is 'nothing' (Eulerian filter) so setting map_to_mean=false"
-        map_to_mean = false
-    elseif isnothing(advection) 
+    if isnothing(advection)
         @info "Advection scheme is 'nothing' so the Eulerian (not Lagrangian) filter will be computed."
     end
+
+    # Check and reconcile the options for the maps (e.g. no regridding for the Eulerian filter)
+    compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
+                                                       lagrangian = !isnothing(advection), normalised,
+                                                       rectilinear = underlying_rectilinear_grid)
 
     # Warn if Eulerian filter is being calculated twice
     if compute_Eulerian_filter && isnothing(advection)
@@ -500,7 +502,8 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             T_out,
                             filter_params,
                             Δt,
-                            map_to_mean,
+                            compute_maps,
+                            regrid_to_mean,
                             forward_output_filename,
                             backward_output_filename,
                             output_filename,
