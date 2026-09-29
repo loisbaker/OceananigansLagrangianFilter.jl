@@ -79,7 +79,7 @@ grid = ImmersedBoundaryGrid(underlying_grid, PartialCellBottom(bottom))
 
 ````
 100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo:
-├── immersed_boundary: PartialCellBottom(mean(zb)=-1979.4, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
+├── immersed_boundary: PartialCellBottom(mean(zb)=-1977.76, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
 ├── underlying_grid: 100×1×100 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── Periodic x ∈ [-20000.0, 20000.0) regularly spaced with Δx=400.0
 ├── Flat y                           
@@ -95,7 +95,7 @@ closure = (horizontal_closure, vertical_closure)
 ````
 
 ````
-(ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4152.85, κ=4152.85), VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=0.1))
+(ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4.05285e5, κ=4.05285e5), VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=0.1))
 ````
 
 ### Forcing
@@ -188,7 +188,7 @@ HydrostaticFreeSurfaceModel{CPU, ImmersedBoundaryGrid}(time = 0 seconds, iterati
 ├── timestepper: QuasiAdamsBashforth2TimeStepper
 ├── tracers: b
 ├── closure: Tuple with 2 closures:
-│   ├── ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4152.85, κ=(b=4152.85,))
+│   ├── ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4.05285e5, κ=(b=4.05285e5,))
 │   └── VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=(b=0.1,))
 ├── buoyancy: Oceananigans.BuoyancyFormulations.BuoyancyTracer with ĝ = NegativeZDirection()
 ├── free surface: Oceananigans.Models.HydrostaticFreeSurfaceModels.SplitExplicitFreeSurfaces.SplitExplicitFreeSurface with gravitational acceleration 9.80665 m s⁻²
@@ -278,7 +278,7 @@ Output a jld2 file for Lagrangian filtering
 
 ````julia
 simulation.output_writers[:jld2fields] = JLD2Writer(
-    model, (; u, w, b), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_existing=true)
+    model, (; u, w, b), filename = filename_stem * ".jld2", schedule=TimeInterval(1hour), overwrite_files=true)
 ````
 
 ````
@@ -304,50 +304,45 @@ run!(simulation)
 ````
 [ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, wall time: 7.916 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
-[ Info:     ... simulation initialization complete (9.158 seconds)
+[00.00%] i: 0, t: 0 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (30.090 seconds).
-[00.85%] i: 500, t: 3.049 hours, wall time: 38.104 seconds, max(u): (3.733e-01, 7.389e-02, 1.929e-02) m/s, next Δt: 24.200 seconds
-[01.78%] i: 1000, t: 6.403 hours, wall time: 2.421 seconds, max(u): (4.306e-01, 1.541e-01, 1.885e-02) m/s, next Δt: 26.620 seconds
-[02.80%] i: 1500, t: 10.081 hours, wall time: 2.129 seconds, max(u): (4.696e-01, 1.716e-01, 2.007e-02) m/s, next Δt: 29.282 seconds
-[03.93%] i: 2000, t: 14.146 hours, wall time: 2.259 seconds, max(u): (4.843e-01, 1.758e-01, 2.162e-02) m/s, next Δt: 32.210 seconds
-[05.17%] i: 2500, t: 18.608 hours, wall time: 2.210 seconds, max(u): (4.880e-01, 1.626e-01, 2.103e-02) m/s, next Δt: 35.431 seconds
-[06.53%] i: 3000, t: 23.512 hours, wall time: 2.302 seconds, max(u): (4.919e-01, 1.674e-01, 2.090e-02) m/s, next Δt: 38.974 seconds
-[08.02%] i: 3500, t: 1.204 days, wall time: 2.263 seconds, max(u): (5.099e-01, 1.763e-01, 2.151e-02) m/s, next Δt: 42.872 seconds
-[09.68%] i: 4000, t: 1.451 days, wall time: 2.074 seconds, max(u): (5.114e-01, 1.782e-01, 2.152e-02) m/s, next Δt: 47.159 seconds
-[11.48%] i: 4500, t: 1.722 days, wall time: 2.822 seconds, max(u): (5.038e-01, 1.748e-01, 2.107e-02) m/s, next Δt: 51.875 seconds
-[13.47%] i: 5000, t: 2.020 days, wall time: 2.193 seconds, max(u): (4.963e-01, 1.733e-01, 2.075e-02) m/s, next Δt: 57.062 seconds
-[15.63%] i: 5500, t: 2.345 days, wall time: 2.511 seconds, max(u): (5.005e-01, 1.719e-01, 2.094e-02) m/s, next Δt: 1.046 minutes
-[18.03%] i: 6000, t: 2.705 days, wall time: 2.322 seconds, max(u): (5.009e-01, 1.731e-01, 2.108e-02) m/s, next Δt: 1.151 minutes
-[20.66%] i: 6500, t: 3.099 days, wall time: 3.302 seconds, max(u): (4.899e-01, 1.703e-01, 2.099e-02) m/s, next Δt: 1.266 minutes
-[23.55%] i: 7000, t: 3.533 days, wall time: 2.880 seconds, max(u): (5.061e-01, 1.737e-01, 2.145e-02) m/s, next Δt: 1.392 minutes
-[26.71%] i: 7500, t: 4.006 days, wall time: 3.052 seconds, max(u): (5.007e-01, 1.715e-01, 2.085e-02) m/s, next Δt: 1.453 minutes
-[30.01%] i: 8000, t: 4.502 days, wall time: 2.691 seconds, max(u): (5.028e-01, 1.729e-01, 2.081e-02) m/s, next Δt: 1.451 minutes
-[33.32%] i: 8500, t: 4.999 days, wall time: 1.907 seconds, max(u): (4.986e-01, 1.717e-01, 2.087e-02) m/s, next Δt: 1.456 minutes
-[36.63%] i: 9000, t: 5.495 days, wall time: 1.914 seconds, max(u): (4.997e-01, 1.713e-01, 2.090e-02) m/s, next Δt: 1.453 minutes
-[39.94%] i: 9500, t: 5.991 days, wall time: 2.206 seconds, max(u): (5.012e-01, 1.723e-01, 2.089e-02) m/s, next Δt: 1.451 minutes
-[43.24%] i: 10000, t: 6.487 days, wall time: 1.896 seconds, max(u): (4.995e-01, 1.717e-01, 2.081e-02) m/s, next Δt: 1.456 minutes
-[46.55%] i: 10500, t: 6.983 days, wall time: 2.223 seconds, max(u): (5.009e-01, 1.724e-01, 2.091e-02) m/s, next Δt: 1.451 minutes
-[49.86%] i: 11000, t: 7.478 days, wall time: 2.270 seconds, max(u): (4.986e-01, 1.715e-01, 2.083e-02) m/s, next Δt: 1.457 minutes
-[53.16%] i: 11500, t: 7.975 days, wall time: 1.904 seconds, max(u): (5.011e-01, 1.723e-01, 2.091e-02) m/s, next Δt: 1.451 minutes
-[56.47%] i: 12000, t: 8.470 days, wall time: 1.903 seconds, max(u): (4.990e-01, 1.717e-01, 2.082e-02) m/s, next Δt: 1.457 minutes
-[59.78%] i: 12500, t: 8.966 days, wall time: 1.903 seconds, max(u): (5.008e-01, 1.722e-01, 2.089e-02) m/s, next Δt: 1.451 minutes
-[63.08%] i: 13000, t: 9.462 days, wall time: 1.903 seconds, max(u): (4.991e-01, 1.717e-01, 2.084e-02) m/s, next Δt: 1.456 minutes
-[66.39%] i: 13500, t: 9.958 days, wall time: 1.878 seconds, max(u): (5.005e-01, 1.721e-01, 2.088e-02) m/s, next Δt: 1.452 minutes
-[69.70%] i: 14000, t: 10.455 days, wall time: 1.886 seconds, max(u): (4.996e-01, 1.719e-01, 2.084e-02) m/s, next Δt: 1.455 minutes
-[73.01%] i: 14500, t: 10.951 days, wall time: 1.906 seconds, max(u): (5.001e-01, 1.720e-01, 2.087e-02) m/s, next Δt: 1.453 minutes
-[76.31%] i: 15000, t: 11.447 days, wall time: 1.913 seconds, max(u): (4.998e-01, 1.719e-01, 2.086e-02) m/s, next Δt: 1.454 minutes
-[79.62%] i: 15500, t: 11.943 days, wall time: 1.937 seconds, max(u): (5.000e-01, 1.719e-01, 2.086e-02) m/s, next Δt: 1.454 minutes
-[82.93%] i: 16000, t: 12.439 days, wall time: 1.927 seconds, max(u): (5.000e-01, 1.720e-01, 2.086e-02) m/s, next Δt: 1.454 minutes
-[86.23%] i: 16500, t: 12.935 days, wall time: 1.916 seconds, max(u): (4.998e-01, 1.719e-01, 2.085e-02) m/s, next Δt: 1.454 minutes
-[89.54%] i: 17000, t: 13.431 days, wall time: 1.912 seconds, max(u): (5.001e-01, 1.720e-01, 2.087e-02) m/s, next Δt: 1.453 minutes
-[92.85%] i: 17500, t: 13.927 days, wall time: 1.945 seconds, max(u): (4.998e-01, 1.719e-01, 2.086e-02) m/s, next Δt: 1.454 minutes
-[96.15%] i: 18000, t: 14.423 days, wall time: 1.952 seconds, max(u): (5.001e-01, 1.720e-01, 2.087e-02) m/s, next Δt: 1.453 minutes
-[99.46%] i: 18500, t: 14.919 days, wall time: 1.952 seconds, max(u): (4.998e-01, 1.719e-01, 2.086e-02) m/s, next Δt: 1.454 minutes
-[ Info: Simulation is stopping after running for 1.999 minutes.
+[00.85%] i: 500, t: 3.049 hours, max(u): (3.645e-01, 7.045e-02, 1.484e-02) m/s, next Δt: 24.200 seconds
+[01.78%] i: 1000, t: 6.403 hours, max(u): (4.274e-01, 1.448e-01, 1.736e-02) m/s, next Δt: 26.620 seconds
+[02.80%] i: 1500, t: 10.081 hours, max(u): (4.636e-01, 1.679e-01, 1.911e-02) m/s, next Δt: 29.282 seconds
+[03.93%] i: 2000, t: 14.146 hours, max(u): (4.768e-01, 1.776e-01, 1.981e-02) m/s, next Δt: 32.210 seconds
+[05.17%] i: 2500, t: 18.608 hours, max(u): (4.778e-01, 1.606e-01, 1.987e-02) m/s, next Δt: 35.431 seconds
+[06.53%] i: 3000, t: 23.512 hours, max(u): (4.809e-01, 1.505e-01, 1.976e-02) m/s, next Δt: 38.974 seconds
+[08.02%] i: 3500, t: 1.204 days, max(u): (4.967e-01, 1.525e-01, 2.022e-02) m/s, next Δt: 42.872 seconds
+[09.68%] i: 4000, t: 1.451 days, max(u): (4.975e-01, 1.535e-01, 2.017e-02) m/s, next Δt: 47.159 seconds
+[11.48%] i: 4500, t: 1.722 days, max(u): (4.914e-01, 1.520e-01, 1.980e-02) m/s, next Δt: 51.875 seconds
+[13.47%] i: 5000, t: 2.020 days, max(u): (4.852e-01, 1.519e-01, 1.959e-02) m/s, next Δt: 57.062 seconds
+[15.63%] i: 5500, t: 2.345 days, max(u): (4.894e-01, 1.502e-01, 1.983e-02) m/s, next Δt: 1.046 minutes
+[18.03%] i: 6000, t: 2.705 days, max(u): (4.913e-01, 1.501e-01, 1.981e-02) m/s, next Δt: 1.151 minutes
+[20.66%] i: 6500, t: 3.099 days, max(u): (4.833e-01, 1.481e-01, 1.961e-02) m/s, next Δt: 1.266 minutes
+[23.55%] i: 7000, t: 3.533 days, max(u): (4.940e-01, 1.512e-01, 1.988e-02) m/s, next Δt: 1.392 minutes
+[26.71%] i: 7500, t: 4.006 days, max(u): (4.873e-01, 1.492e-01, 1.956e-02) m/s, next Δt: 1.518 minutes
+[30.18%] i: 8000, t: 4.526 days, max(u): (4.899e-01, 1.502e-01, 1.967e-02) m/s, next Δt: 1.508 minutes
+[33.65%] i: 8500, t: 5.047 days, max(u): (4.869e-01, 1.492e-01, 1.959e-02) m/s, next Δt: 1.517 minutes
+[37.12%] i: 9000, t: 5.568 days, max(u): (4.898e-01, 1.501e-01, 1.970e-02) m/s, next Δt: 1.508 minutes
+[40.59%] i: 9500, t: 6.089 days, max(u): (4.874e-01, 1.495e-01, 1.958e-02) m/s, next Δt: 1.516 minutes
+[44.06%] i: 10000, t: 6.610 days, max(u): (4.893e-01, 1.501e-01, 1.967e-02) m/s, next Δt: 1.510 minutes
+[47.53%] i: 10500, t: 7.130 days, max(u): (4.878e-01, 1.495e-01, 1.961e-02) m/s, next Δt: 1.514 minutes
+[51.01%] i: 11000, t: 7.651 days, max(u): (4.889e-01, 1.500e-01, 1.965e-02) m/s, next Δt: 1.511 minutes
+[54.48%] i: 11500, t: 8.172 days, max(u): (4.882e-01, 1.496e-01, 1.962e-02) m/s, next Δt: 1.513 minutes
+[57.95%] i: 12000, t: 8.693 days, max(u): (4.885e-01, 1.498e-01, 1.964e-02) m/s, next Δt: 1.512 minutes
+[61.42%] i: 12500, t: 9.214 days, max(u): (4.885e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[64.90%] i: 13000, t: 9.735 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[68.37%] i: 13500, t: 10.255 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[71.84%] i: 14000, t: 10.776 days, max(u): (4.883e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[75.31%] i: 14500, t: 11.297 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[78.79%] i: 15000, t: 11.818 days, max(u): (4.884e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[82.26%] i: 15500, t: 12.339 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[85.73%] i: 16000, t: 12.860 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[89.20%] i: 16500, t: 13.380 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[92.68%] i: 17000, t: 13.901 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[96.15%] i: 17500, t: 14.422 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[99.62%] i: 18000, t: 14.943 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
 [ Info: Simulation time 15 days equals or exceeds stop time 15 days.
-[ Info: Simulation completed in 1.999 minutes
 
 ````
 
@@ -379,11 +374,11 @@ filter_config = OfflineFilterConfig(original_data_filename="lee_wave.jld2", # Wh
 ````
 
 ````
-OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("lee_wave.jld2", ("b",), ("u", "w"), 432000.0, 1.296e6, 864000.0, Oceananigans.Architectures.CPU(), 3600.0, (a1 = 4.783542904563622e-6, b1 = 1.1548494156391084e-5, c1 = 1.913417161825449e-5, d1 = 4.619397662556434e-5, a2 = 1.1548494156391084e-5, b2 = 4.783542904563623e-6, c2 = 4.619397662556434e-5, d2 = 1.9134171618254493e-5, N_coeffs = 2), 60.0, Oceananigans.OutputReaders.InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "lee_wave_offline_filtered.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("lee_wave.jld2", ("b",), ("u", "w"), 432000.0, 1.296e6, 864000.0, CPU(), 3600.0, (a1 = 4.783542904563622e-6, b1 = 1.1548494156391084e-5, c1 = 1.913417161825449e-5, d1 = 4.619397662556434e-5, a2 = 1.1548494156391084e-5, b2 = 4.783542904563623e-6, c2 = 4.619397662556434e-5, d2 = 1.9134171618254493e-5, N_coeffs = 2), 60.0, true, true, "forward_output.jld2", "backward_output.jld2", "lee_wave_offline_filtered.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo:
-├── immersed_boundary: PartialCellBottom(mean(zb)=-1979.4, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
+├── immersed_boundary: PartialCellBottom(mean(zb)=-1977.76, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
 ├── underlying_grid: 100×1×100 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── Periodic x ∈ [-20000.0, 20000.0) regularly spaced with Δx=400.0
 ├── Flat y                           
@@ -397,19 +392,17 @@ run_offline_Lagrangian_filter(filter_config)
 ````
 
 ````
-[ Info: Loaded data from lee_wave.jld2
 [ Info: Created original variables: (:b,)
 [ Info: Created filtered variables: (:b_C1, :b_C2, :xi_u_C1, :xi_u_C2, :xi_w_C1, :xi_w_C2, :b_S1, :b_S2, :xi_u_S1, :xi_u_S2, :xi_w_S1, :xi_w_S2)
 [ Info: Created forcing for filtered variables
 [ Info: Created model
+[ Info: Loaded forward input data from lee_wave.jld2
 [ Info: Initialised filtered variables
 [ Info: Defined outputs
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (24.933 minutes)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (32.720 seconds).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -419,14 +412,12 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
-[ Info: Simulation is stopping after running for 6.578 hours.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
+[ Info: Loaded backward input data from lee_wave.jld2
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (695.246 ms)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (2.206 seconds).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -436,7 +427,6 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
-[ Info: Simulation is stopping after running for 6.149 hours.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
 [ Info: Combined forward and backward contributions into lee_wave_offline_filtered.jld2
@@ -471,8 +461,8 @@ b_timeseries3 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_fil
 b_timeseries4 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_filtered_at_mean")
 
 times = timeseries1.times
-bottom_height = vec(timeseries1.grid.immersed_boundary.bottom_height)
 Nx = timeseries1.grid.underlying_grid.Nx
+bottom_height = vec(Array(timeseries1.grid.immersed_boundary.bottom_height[1:Nx, 1, 1]))
 x = Array(timeseries1.grid.underlying_grid.xᶜᵃᵃ[1:Nx])
 
 set_theme!(Theme(fontsize = 25))

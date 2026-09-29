@@ -201,8 +201,8 @@ b_timeseries3 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_fil
 b_timeseries4 = FieldTimeSeries(filter_config.output_filename, "b_Lagrangian_filtered_at_mean")
 
 times = timeseries1.times
-bottom_height = vec(timeseries1.grid.immersed_boundary.bottom_height)
 Nx = timeseries1.grid.underlying_grid.Nx
+bottom_height = vec(Array(timeseries1.grid.immersed_boundary.bottom_height[1:Nx, 1, 1]))
 x = Array(timeseries1.grid.underlying_grid.xᶜᵃᵃ[1:Nx])
 
 set_theme!(Theme(fontsize = 25))
