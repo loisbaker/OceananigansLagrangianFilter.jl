@@ -23,6 +23,8 @@ docs/Manifest.toml
 *.nc
 *.jld2
 *.mat
+# ...but keep the test reference data
+!test/data/reference_*
 
 # Checkpointer model serialization
 *.jlser
