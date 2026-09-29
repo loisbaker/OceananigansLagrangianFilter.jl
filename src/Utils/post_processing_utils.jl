@@ -29,21 +29,23 @@ The function performs the following steps:
     is then interpolated to match the time steps of the forward simulation,
     and the two datasets are summed and written to the combined output file.
 
+The outputs of each pass are that pass's contribution to the filtered fields (see
+[`create_output_fields`](@ref)), so all filtered fields, including the mean velocities, are summed.
+
 Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the file paths and
   variable names.
 - `extra_filtered_var_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
   filtered variable names that have been calculated by the filter and also need to be
-  combined.
-- `extra_filtered_velocity_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
-  filtered velocity names that have been calculated by the filter and also need to be
-  combined.
+  combined. The outputs of each pass should be defined as its contribution, so that they
+  are summed (e.g. negating quantities that change sign under time reversal in the
+  backward pass, as `create_output_fields` does for the mean velocities).
 - `extra_original_data_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
   original names that have been output and should be copied to the combined output file.
 """
-function sum_forward_backward_contributions!(config::AbstractConfig; extra_filtered_var_names::Tuple{Vararg{String}}=(), 
-    extra_filtered_velocity_names::Tuple{Vararg{String}}=(), extra_original_data_names::Tuple{Vararg{String}}=())
+function sum_forward_backward_contributions!(config::AbstractConfig; extra_filtered_var_names::Tuple{Vararg{String}}=(),
+    extra_original_data_names::Tuple{Vararg{String}}=())
     # Combine the forward and backward simulations by summing them into a single file
 
     output_filename = config.output_filename
@@ -69,18 +71,15 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
         filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
     end
 
-    # There might be some extra filtered variables that the user defined that we should combine too
-    filtered_var_names = Tuple(unique((filtered_var_names..., extra_filtered_var_names...)))
-
-    filtered_vel_names = ()
+    # The mean velocities are combined in the same way. The original velocities are copied if they were filtered
     vel_names_to_filter = ()
     if compute_mean_velocities
-        filtered_vel_names = Tuple([vel * label * filter_identifier for vel in velocity_names])
+        filtered_var_names = (filtered_var_names..., Tuple([vel * label * filter_identifier for vel in velocity_names])...)
         vel_names_to_filter = velocity_names
     end
 
-    # There might be some extra filtered velocities that the user defined that we should combine too
-    filtered_vel_names = Tuple(unique((filtered_vel_names..., extra_filtered_velocity_names...)))
+    # There might be some extra filtered variables that the user defined that we should combine too
+    filtered_var_names = Tuple(unique((filtered_var_names..., extra_filtered_var_names...)))
 
     jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
@@ -89,24 +88,19 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
             # Let's check and only try to copy the variables that exist in the forward file
             forward_file_all_names = keys(forward_file["timeseries"])
             missing_var_names = [var for var in filtered_var_names if !(var in forward_file_all_names)]
-            missing_vel_names = [var for var in filtered_vel_names if !(var in forward_file_all_names)]
             
             if length(missing_var_names) > 0
                 @warn "The following filtered variable names were not found in the forward output file and will be skipped: $(missing_var_names)"
             end
-            if length(missing_vel_names) > 0
-                @warn "The following filtered velocity names were not found in the forward output file and will be skipped: $(missing_vel_names)"
-            end
 
             filtered_var_names = Tuple([var for var in filtered_var_names if var in forward_file_all_names])
-            filtered_vel_names = Tuple([var for var in filtered_vel_names if var in forward_file_all_names])
 
 
             # First copy the forward file metadata and file structure
             if config.output_original_data
-                names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...)
+                names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names...)
             else
-                names_to_copy = (filtered_var_names..., filtered_vel_names...)
+                names_to_copy = filtered_var_names
             end
 
             # There might be some extra variables provided to copy too
@@ -144,22 +138,6 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
                     
                     # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
                     combined_file["timeseries/$var_name/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data)
-                end
-            end
-
-            # Mean velocities get subtracted instead
-            for vel_name in filtered_vel_names
-                
-                # Open the backward data as a FieldTimeSeries, so we can interpolate to match times
-                fts_backward = FieldTimeSeries(backward_output_filename, vel_name)
-
-                # Loop over forward times and add the backward data
-                for iter in forward_iterations
-                    forward_time = forward_file["timeseries/t/$iter"]
-                    forward_data = forward_file["timeseries/$vel_name/$iter"] # Load in data
-                    
-                    # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
-                    combined_file["timeseries/$vel_name/$iter"] = forward_data .- parent(fts_backward[Time(T-forward_time)].data)
                 end
             end
 

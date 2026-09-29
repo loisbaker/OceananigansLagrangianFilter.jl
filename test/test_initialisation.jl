@@ -117,6 +117,37 @@ end
     @test interior(model.tracers.b_C1) ≈ b_C1_before
 end
 
+@testset "create_output_fields: forward and backward contributions" begin
+    grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
+                            topology = (Periodic, Flat, Bounded))
+
+    filter_config = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
+                                        velocity_names = ("u", "w"), N = 2, freq_c = 1e-4)
+    filtered_vars = create_filtered_vars(filter_config)
+    forcing = create_forcing(filtered_vars, filter_config)
+    model = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b),
+                                forcing = forcing, buoyancy = BuoyancyTracer())
+
+    set!(model, b = (x, z) -> x + z, u = (x, z) -> 1 + x * z)
+    set!(model.velocities.w, (x, z) -> x)
+    initialise_filtered_vars_from_model(model, filter_config)
+
+    forward_outputs  = create_output_fields(model, filter_config)
+    backward_outputs = create_output_fields(model, filter_config; direction = :backward)
+    @test keys(forward_outputs) == keys(backward_outputs)
+
+    # The backward pass runs with the velocities negated, so its mean velocity outputs are negated
+    # to give its contribution to the filtered field. The other outputs are unchanged.
+    for name in keys(forward_outputs)
+        forward  = interior(Field(forward_outputs[name]))
+        backward = interior(Field(backward_outputs[name]))
+        sign = name in ("u_Lagrangian_filtered", "w_Lagrangian_filtered") ? -1 : 1
+        @test backward == sign .* forward
+    end
+
+    @test_throws ErrorException create_output_fields(model, filter_config; direction = :sideways)
+end
+
 @testset "create_forcing wires in a relaxation term when boundary_relaxation = true" begin
     grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
                             topology = (Periodic, Flat, Bounded))

@@ -766,7 +766,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
 end
 
 """
-    create_output_fields(model::AbstractModel, config::AbstractConfig)
+    create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
 
 Reconstructs the final output fields from the model's tracers and auxiliary
 fields. This function performs the following steps:
@@ -783,6 +783,11 @@ fields. This function performs the following steps:
     dictionary for comparison and analysis if `config.output_original_data`
     is true.
 
+For the offline filter, the outputs of each pass are defined as that pass's contribution
+to the filtered fields, so that the forward and backward outputs are summed (see
+[`sum_forward_backward_contributions!`](@ref)). The backward pass is run with the velocities
+negated, so its mean velocity outputs are negated (`direction = :backward`).
+
 Arguments
 =========
 - `model`: An instance of an `AbstractModel` containing the tracer and
@@ -790,13 +795,19 @@ Arguments
 - `config`: An instance of `AbstractConfig` with the names of the variables,
   velocity components, and filter parameters.
 
+Keyword arguments
+=================
+- `direction`: `:forward` (default, also used for the online filter) or `:backward`, the
+  direction of the offline filter pass that the outputs are for.
+
 Returns
 =======
 A `Dict` where keys are the names of the output fields (e.g.,
 `var_name_Lagrangian_filtered`, `xi_vel_name`, `var_name`) and values are the
 corresponding reconstructed `Field`s.
 """
-function create_output_fields(model::AbstractModel, config::AbstractConfig)
+function create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
+    direction in (:forward, :backward) || error("direction must be :forward or :backward, got :$direction")
 
     var_names_to_filter = config.var_names_to_filter
     velocity_names = config.velocity_names
@@ -875,7 +886,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                 # Special case, single exponential only has a cosine component
                 xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
                 g_total = - filter_params.a1 * filter_params.c1 * xiC1
-                outputs_dict[vel_name * label * filter_identifier] = g_total
+                outputs_dict[vel_name * label * filter_identifier] = time_reversed(g_total, direction)
             else
                 # Start with the first coefficient
                 xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
@@ -893,7 +904,7 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
                     xiSi = getproperty(model.tracers,Symbol(labelled_var_name * "_S$i"))
                     g_total += (-a * c + b * d) * xiCi + (-a * d - b * c) * xiSi
                 end
-                outputs_dict[vel_name * label * filter_identifier] = g_total
+                outputs_dict[vel_name * label * filter_identifier] = time_reversed(g_total, direction)
             end
         end
     end
@@ -911,6 +922,10 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
 
     return outputs_dict
 end
+
+# The backward pass of the offline filter runs with the velocities negated, so its outputs of quantities that
+# change sign under time reversal (the mean velocities) are negated to give its contribution to the filtered field.
+time_reversed(output, direction) = direction === :backward ? -output : output
 
 """
     initialise_filtered_vars_from_model(model::AbstractModel,config::AbstractConfig)
