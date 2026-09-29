@@ -8,13 +8,14 @@ using Oceananigans.Utils
 using Oceananigans.Grids
 using Oceananigans.Solvers
 using JLD2
+using NCDatasets
 
 using Oceananigans.DistributedComputations
 using Oceananigans.DistributedComputations: reconstruct_global_grid, Distributed
 using Oceananigans.Grids: XYZRegularRG, topology, Flat
 using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 using Oceananigans.Utils: sum_of_velocities
-using Oceananigans.OutputReaders: AbstractInMemoryBackend
+using Oceananigans.OutputReaders: InMemory
 using Oceananigans.Grids: AbstractGrid
 using Oceananigans.Architectures
 
@@ -91,7 +92,6 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     T_out::Real 
     filter_params::NamedTuple
     Δt::Real
-    backend::AbstractInMemoryBackend
     map_to_mean::Bool
     forward_output_filename::String
     backward_output_filename::String
@@ -125,7 +125,6 @@ end
                         freq_c::Union{Int, Nothing} = nothing,
                         filter_params::Union{NamedTuple, Nothing} = nothing,
                         Δt::Union{Real,Nothing} = nothing,
-                        backend::AbstractInMemoryBackend = InMemory(4),
                         map_to_mean::Bool = true,
                         forward_output_filename::String = "forward_output.jld2",
                         backward_output_filename::String = "backward_output.jld2",
@@ -151,7 +150,7 @@ before creating the `OfflineFilterConfig` object.
 Keyword arguments
 =================
 
-  - `original_data_filename`: (required) The path to the JLD2 file containing the original Oceananigans output data.
+  - `original_data_filename`: (required) The path to the JLD2 or NetCDF file containing the original Oceananigans output data.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
   - `T_start`: Start time for the filter. Must be within the time range of the data. If not given, defaults to either T_end - T (if they are given), or the start time of the original data.
@@ -163,7 +162,6 @@ Keyword arguments
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
-  - `backend`: The backend for loading `FieldTimeSeries` data. See `Oceananigans.Fields.FieldTimeSeries`. Default: `InMemory(4)`.
   - `map_to_mean`: A `Bool` indicating whether to map filtered data to the mean position (i.e. calculate generalised Lagrangian mean). Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
@@ -184,7 +182,7 @@ Keyword arguments
   - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
 # Example:
 
-```jldoctest offline config
+```jldoctest offline_config
 using OceananigansLagrangianFilter
 using Oceananigans.Units
 path_to_sim = "../test/data/reference_sim.jld2"
@@ -209,7 +207,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, InMemory{Int64}(1, 4), true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -232,7 +230,6 @@ function OfflineFilterConfig(; original_data_filename::String,
                             freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             Δt::Union{Real,Nothing} = nothing,
-                            backend::AbstractInMemoryBackend = InMemory(4),
                             map_to_mean::Bool = true,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
@@ -285,79 +282,86 @@ any other velocity components will be zero by default."
         @info "Mean velocities corresponding to $(velocity_names) will be computed."
     end
 
-    # Open up the file for some checks
-    jldopen(original_data_filename,"r") do original_file
-
-        # Check if velocities and tracers given are in the original_file
-        for var in (var_names_to_filter..., velocity_names...)
-            if !haskey(original_file["timeseries"], var)
-                error("Variable '$var' not found in original data file.")
+    # Open up the file for some checks — extract times and verify variables exist
+    times = if endswith(original_data_filename, ".nc")
+        NCDatasets.Dataset(original_data_filename, "r") do file
+            for var in (var_names_to_filter..., velocity_names...)
+                if !haskey(file, var)
+                    error("Variable '$var' not found in original data file.")
+                end
             end
+            Float64.(file["time"][:])
+        end
+    else  # JLD2
+        jldopen(original_data_filename, "r") do file
+            for var in (var_names_to_filter..., velocity_names...)
+                if !haskey(file["timeseries"], var)
+                    error("Variable '$var' not found in original data file.")
+                end
+            end
+            iterations = parse.(Int, keys(file["timeseries/t"]))
+            Float64.([file["timeseries/t/$iter"] for iter in iterations])
+        end
+    end
+
+    # Check for consistent T_start, T_end, T
+    if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
+        if T_start + T != T_end
+            error("Inconsistent time specifications: T_start + T != T_end")
+        elseif T_start > T_end
+            error("Inconsistent time specifications: T_start > T_end")
         end
 
-        # Check for consistent T_start, T_end, T
-        iterations = parse.(Int, keys(original_file["timeseries/t"]))
-        times = [original_file["timeseries/t/$iter"] for iter in iterations]
-
-        # If all are specified, make sure they're consistent and if not, throw an error
-        if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
-            if T_start + T != T_end
-                error("Inconsistent time specifications: T_start + T != T_end")
-            elseif T_start > T_end
-                error("Inconsistent time specifications: T_start > T_end")
-            end
-
-        # If 0,1, or 2 are specified, calculate the others
-        elseif isnothing(T_start)
-            if !isnothing(T_end) && !isnothing(T)
-                T_start = T_end - T
-            elseif !isnothing(T_end) && isnothing(T)
-                T_start = times[1]
-                T = T_end - T_start
-            elseif !isnothing(T) && isnothing(T_end)
-                T_start = times[1]
-                T_end = T_start + T
-            else # isnothing(T) && isnothing(T_end)
-                T_start = times[1]
-                T_end = times[end]
-                T = T_end - T_start
-            end
-        elseif isnothing(T_end)
-            if isnothing(T)
-                T_end = times[end]
-                T = T_end - T_start
-            else # !isnothing(T)
-                T_end = T_start + T
-            end
-        else # !isnothing(T)
+    # If 0, 1, or 2 are specified, calculate the others
+    elseif isnothing(T_start)
+        if !isnothing(T_end) && !isnothing(T)
+            T_start = T_end - T
+        elseif !isnothing(T_end) && isnothing(T)
+            T_start = times[1]
             T = T_end - T_start
-            if T < 0
-                error("Inconsistent time specifications: T_start > T_end")
-            end
+        elseif !isnothing(T) && isnothing(T_end)
+            T_start = times[1]
+            T_end = T_start + T
+        else # isnothing(T) && isnothing(T_end)
+            T_start = times[1]
+            T_end = times[end]
+            T = T_end - T_start
         end
-
-        # Check that T_start and T_end are found in the original_file
-        if T_start < times[1] || T_start > times[end]
-            error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+    elseif isnothing(T_end)
+        if isnothing(T)
+            T_end = times[end]
+            T = T_end - T_start
+        else # !isnothing(T)
+            T_end = T_start + T
         end
-
-        if T_end < times[1] || T_end > times[end]
-            error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+    else # !isnothing(T)
+        T = T_end - T_start
+        if T < 0
+            error("Inconsistent time specifications: T_start > T_end")
         end
+    end
 
-        @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
+    # Check that T_start and T_end are within the original data range
+    if T_start < times[1] || T_start > times[end]
+        error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+    end
 
-        # Now check T_out, set if necessary to same as input
-        if isnothing(T_out)
-            T_out = times[2] - times[1]
-            @info "T_out not set. Setting T_out = $T_out"
-        end
+    if T_end < times[1] || T_end > times[end]
+        error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+    end
 
-        # If Δt not set, set to T_out/10
-        if isnothing(Δt)
-            Δt = T_out / 10
-            @info "Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful"
-        end
+    @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
+
+    # Now check T_out, set if necessary to same as input
+    if isnothing(T_out)
+        T_out = times[2] - times[1]
+        @info "T_out not set. Setting T_out = $T_out"
+    end
+
+    # If Δt not set, set to T_out/10
+    if isnothing(Δt)
+        Δt = T_out / 10
+        @info "Δt (filter simulation timestep) not set. Setting Δt = $Δt, but be careful"
     end
 
     # Make sure we have some filter parameters
@@ -421,9 +425,11 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
         end
     end
 
-    # Finally, we can define the grid, if not given (as is typical)
-    example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend=backend)
-    grid = isnothing(grid) ? example_timeseries.grid : grid
+    # If grid is not given, we can define it using the data file (this would be the typical behaviour for Oceananigans output)
+    if isnothing(grid)
+        example_timeseries = FieldTimeSeries(original_data_filename, velocity_names[1]; architecture=architecture, backend = InMemory(2)) # Only the grid is needed
+        grid = example_timeseries.grid
+    end
 
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid
@@ -494,7 +500,6 @@ You can continue, but you should consider setting `map_to_mean=false` as the map
                             T_out,
                             filter_params,
                             Δt,
-                            backend,
                             map_to_mean,
                             forward_output_filename,
                             backward_output_filename,

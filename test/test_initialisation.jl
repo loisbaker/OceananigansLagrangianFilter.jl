@@ -61,23 +61,23 @@ end
 
 @testset "initialise_filtered_vars_from_data" begin
 
-    # Build the input_data NamedTuple the same way load_data does, but straight from
-    # the small saved reference simulation rather than a derived "_filter_input.jld2" file.
+    # Initialise from a BufferedDataReader on the small saved reference simulation. The expected
+    # values come independently from FieldTimeSeries.
     b_fts = FieldTimeSeries("data/reference_sim.jld2", "b")
     u_fts = FieldTimeSeries("data/reference_sim.jld2", "u")
     w_fts = FieldTimeSeries("data/reference_sim.jld2", "w")
-    input_data = (var_data = (b_fts,), velocity_data = (u_fts, w_fts))
 
     grid = b_fts.grid
     filter_config = OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2",
                                         var_names_to_filter = ("b",), velocity_names = ("u", "w"),
                                         N = 1, freq_c = 1e-4, grid = grid)
+    reader = create_buffered_reader(filter_config; direction = :forward)
     filtered_vars = create_filtered_vars(filter_config)
     forcing = create_forcing(filtered_vars, filter_config)
     model = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b),
                                 forcing = forcing, buoyancy = BuoyancyTracer())
 
-    initialise_filtered_vars_from_data(model, input_data, filter_config)
+    initialise_filtered_vars_from_data(model, reader, filter_config)
 
     c1 = filter_config.filter_params.c1
     b₀ = interior(b_fts[Time(0)])

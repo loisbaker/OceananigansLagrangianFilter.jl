@@ -60,162 +60,6 @@ function _copy_jld2_recursive!(source::JLD2.JLDFile, dest::JLD2.JLDFile, path::S
 end
 
 """
-    create_input_data_on_disk(config::AbstractConfig; direction::String="forward")
-
-Prepares a new JLD2 file on disk with the time-filtered data for a forward or
-backward Lagrangian simulation.
-
-This function performs the following steps:
-1.  **Validates `direction`**: Ensures the direction is either `"forward"`
-    or `"backward"`.
-2.  **Creates a new file**: A new JLD2 file is created with the suffix
-    `_filter_input.jld2` and any existing file with the same name is deleted.
-3.  **Copies metadata**: Key metadata from the original file (e.g., `grid`
-    information) is copied to the new file to maintain consistency.
-4.  **Time truncation**: The data is truncated to the time range specified by
-    `config.T_start` and `config.T_end`.
-5.  **Time shifting**:
-    -   For `"forward"` filtering, a new time variable is created, shifted so
-        that `t=0` corresponds to `config.T_start`.
-    -   For `"backward"` filtering, the data is re-ordered and a new time
-        variable is created, shifted so that `t=0` corresponds to `config.T_end`.
-6.  **Velocity reversal**: For `"backward"` filtering, the velocity fields
-    (`u`, `v`, `w`) are negated to correctly simulate backward advection.
-
-Arguments
-=========
-
-- `config`: An instance of `AbstractConfig` containing the file paths,
-  variable names, and time specifications.
-
-Keyword Arguments
-=================
-
-- `direction`: A `String` indicating the simulation direction. It must be
-  either `"forward"` (the default) or `"backward"`.
-"""
-function create_input_data_on_disk(config::AbstractConfig; direction::String="forward")
-    
-    original_data_filename = config.original_data_filename
-    var_names_to_filter = config.var_names_to_filter
-    velocity_names = config.velocity_names
-    T_start = config.T_start
-    T_end = config.T_end
-
-    # Check that a valid direction has been given
-    if direction ∉ ("backward", "forward")
-        error("Invalid direction: $direction. Must be 'backward' or 'forward'.")
-    end
-
-    # Create a new filename and delete any file that already has that name
-    new_filename = original_data_filename[1:end-5]*"_filter_input.jld2"
-    if isfile(new_filename)
-        rm(new_filename)
-    end
-
-    # Open the original file for reading 
-    jldopen(original_data_filename,"r") do original_file
-
-        # Check if T_start and T_end are found in the original_file
-        iterations = parse.(Int, keys(original_file["timeseries/t"]))
-        times = [original_file["timeseries/t/$iter"] for iter in iterations]
-        
-        # Create a truncated iterations variable with just the times to copy
-        iterations_truncated = iterations[(times .>= T_start) .& (times .<= T_end)]
-
-        # Create a new filename for the filtered input data
-        jldopen(new_filename, "w") do new_file
-
-            # We need to copy the standard metadata from the old file to the new file
-            copy_file_metadata!(original_file, new_file, (var_names_to_filter..., velocity_names...))
-
-            # Add an indicator of the direction 
-            new_file["direction"] = direction
-
-            # Add an old (t_simulation) and a new (t) time variable 
-            t_sim_group = JLD2.Group(new_file, "timeseries/t_simulation")
-            t_group = JLD2.Group(new_file, "timeseries/t")
-
-            if direction == "forward"
-
-                # First write times, starting from T_start
-                for iter in iterations_truncated
-                    t_sim_group["$iter"] = original_file["timeseries/t/$iter"]
-                    t_group["$iter"] = original_file["timeseries/t/$iter"] - T_start
-                end
-
-                # Then write in data, as in original file
-                for var in (var_names_to_filter..., velocity_names...)
-                    for iter in iterations_truncated
-                        new_file["timeseries/$var/$iter"] = original_file["timeseries/$var/$iter"]
-                    end
-                end
-
-            elseif direction == "backward"
-
-                # First write times, starting from T_end
-                for iter in reverse(iterations_truncated)
-                    t_sim_group["$iter"] = original_file["timeseries/t/$iter"]
-                    t_group["$iter"] = T_end - original_file["timeseries/t/$iter"]
-                end
-
-                # Then write in data (as in original file for tracers and negated for velocities)
-                for var in var_names_to_filter
-                    for iter in reverse(iterations_truncated)
-                        new_file["timeseries/$var/$iter"] = original_file["timeseries/$var/$iter"]
-                    end
-                end
-
-                for var in velocity_names
-                    for iter in reverse(iterations_truncated)
-                        new_file["timeseries/$var/$iter"] = -original_file["timeseries/$var/$iter"]
-                    end
-                end
-
-                
-            end
-
-        end
-    end
-end
-
-"""
-    load_data(config::AbstractConfig)
-
-Loads the velocity and tracer data from the intermediate input file created by
-`create_input_data_on_disk`. The data for each variable is loaded as a `FieldTimeSeries`
-and returned as a single `NamedTuple`.
-
-Arguments
-=========
-
-- `config`: An instance of `AbstractConfig` containing the file path, variable names, 
-architecture, and backend.
-
-Returns
-=======
-
-A `NamedTuple` with fields `velocity_data` and `var_data`, where each field
-contains a `Tuple` of `FieldTimeSeries` objects.
-"""
-function load_data(config::AbstractConfig)
-
-    original_data_filename = config.original_data_filename
-    var_names_to_filter = config.var_names_to_filter
-    velocity_names = config.velocity_names
-    architecture = config.architecture
-    backend = config.backend
-
-    input_data_filename = original_data_filename[1:end-5] * "_filter_input.jld2"
-    
-    velocity_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in velocity_names)
-    var_timeseries = Tuple(FieldTimeSeries(input_data_filename, name; architecture=architecture, backend=backend) for name in var_names_to_filter)
-    input_data = (velocity_data = velocity_timeseries, var_data = var_timeseries)
-    return input_data
-end
-
-
-"""
     set_offline_BW2_filter_params(; N::Int=1, freq_c::Real=1)
 
 Calculates the coefficients for a filter that has a frequency response given by a
@@ -382,12 +226,12 @@ function create_original_vars(config::AbstractConfig)
     var_names_to_filter = config.var_names_to_filter
     grid = config.grid
     architecture = config.architecture
-    backend = config.backend
     vars = Dict()
     original_data_filename = config.original_data_filename
 
     for var_name in var_names_to_filter
-        fts_data = FieldTimeSeries(original_data_filename, var_name, architecture=architecture,backend=backend)[1]
+        # Only the first frame is needed, so avoid loading the whole time series into memory
+        fts_data = FieldTimeSeries(original_data_filename, var_name; architecture, backend = InMemory(2))[1]
         vars[Symbol(var_name)] = fts_data
     end
     return NamedTuple(vars)
@@ -1012,156 +856,6 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
 end
 
 """
-    update_input_data!(model::AbstractModel, input_data::NamedTuple)
-
-Updates the velocity and auxiliary fields of a simulation at the current
-simulation time `t`. This function is designed to be used as a callback in an
-Oceananigans `Simulation` at callsite UpdateStateCallsite().
-
-The function performs two main tasks:
-1.  **Updates velocities**: It sets the `u`, `v`, and `w` velocity fields of
-    the `model` to the corresponding data from the `velocity_data`
-    `FieldTimeSeries` at the current simulation time.
-2.  **Updates auxiliary fields**: It updates the auxiliary fields of the
-    `model` with the original data from the `var_data` `FieldTimeSeries`, which
-    are used for forcing terms.
-
-Arguments
-=========
-
-- `model`: The model.
-- `input_data`: A `NamedTuple` containing `velocity_data` and `var_data`,
-  where each field is a `Tuple` of `FieldTimeSeries` objects.
-"""
-function update_input_data!(model::AbstractModel, input_data::NamedTuple)
-    velocity_timeseries = input_data.velocity_data
-    original_var_timeseries = input_data.var_data
-    t = model.clock.time
-    
-    # Update the velocities 
-    # If we do this using this set! then the halo regions will be updated according to the boundary conditions. We'd rather just keep what we have.
-    # Originally (updates halos):
-    #  kwargs = (; (Symbol(vel_fts.name) => vel_fts[Time(t)] for vel_fts in velocity_timeseries)...)
-    # set!(model; kwargs...)   
-    for vel_fts in velocity_timeseries
-        field = getproperty(model.velocities, Symbol(vel_fts.name))
-        copy_input_data!(field, vel_fts[Time(t)])
-    end
-    
-    # We also update the saved original variables to be used for forcing - these are auxiliary fields so need to be set separately
-    for original_var_fts in original_var_timeseries
-        field = getproperty(model.auxiliary_fields, Symbol(original_var_fts.name))
-        copy_input_data!(field, original_var_fts[Time(t)])
-    end
-
-
-end
-
-"""
-    copy_input_data!(field, data_field)
-
-Copies saved data `data_field` into the model field `field`, including as much of the halo regions as both share.
-
-The model grid halo may be larger than the saved data halo if it was inflated for a high-order advection scheme.
-In that case the extra outer halo cells are left as they are (zero). This is safe because the velocities and
-auxiliary fields are only read at most one cell beyond the interior (velocities at the faces either side of
-each cell in the tracer advection and map forcing, auxiliary fields only in the interior by the forcing), which
-is within any saved halo. This would need revisiting if these fields were used with wider stencils, e.g. to
-compute velocity gradients for a closure.
-"""
-function copy_input_data!(field, data_field)
-    field_halo = halo_size(field.grid)
-    data_halo  = halo_size(data_field.grid)
-    halo = min.(field_halo, data_halo)                           # halo cells available in both
-    N = size(parent(field)) .- 2 .* field_halo                   # interior size of the parent array
-
-    field_region = map((h, H, n) -> (H - h + 1):(H + n + h), halo, field_halo, N)
-    data_region  = map((h, H, n) -> (H - h + 1):(H + n + h), halo, data_halo,  N)
-
-    view(parent(field), field_region...) .= view(parent(data_field), data_region...)
-    return nothing
-end
-
-"""
-    initialise_filtered_vars_from_data(model::AbstractModel, saved_original_vars::Tuple,
-                             config::AbstractConfig)
-
-Initializes the model's tracer fields, which represent the components of the
-filtered variables. This function sets the initial values of the filtered
-variables to the (scaled) first timestep of the original data. This improves
-the "spin-up" of the filter simulation by providing a good starting point.
-
-The initialization formula depends on the number of filter coefficients
-(`N_coeffs`):
-
-- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
-  tracer exists and is initialized.
-- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
-  fields for each coefficient are initialized.
-
-Both the filtered_variables and the maps are initialised.
-
-Arguments
-=========
-- `model`: The `AbstractModel` whose tracers are to be initialized.
-- `saved_original_vars`: A `Tuple` of `FieldTimeSeries` objects containing
-  the original data for each variable.
-- `config`: An instance of `AbstractConfig` with the filter parameters.
-"""
-function initialise_filtered_vars_from_data(model::AbstractModel, input_data::NamedTuple, config::AbstractConfig)
-    filter_params = config.filter_params
-    label = config.label
-    for original_var_fts in input_data.var_data
-        var_name = original_var_fts.name
-        labelled_var_name = var_name * label
-        if filter_params.N_coeffs == 0.5 # Special case of single exponential
-            filtered_var_C = Symbol(labelled_var_name,"_C1",)
-            c1 = filter_params.c1
-            field_C = getproperty(model.tracers, filtered_var_C)
-            interior(field_C) .= 1/c1*interior(original_var_fts[Time(0)])
-        else
-            for i in 1:filter_params.N_coeffs
-                filtered_var_C = Symbol(labelled_var_name,"_C",i)
-                filtered_var_S = Symbol(labelled_var_name,"_S",i)
-                ci = getproperty(filter_params,Symbol("c$i"))
-                di = getproperty(filter_params,Symbol("d$i"))
-                field_C = getproperty(model.tracers, filtered_var_C)
-                field_S = getproperty(model.tracers, filtered_var_S)
-                interior(field_C) .= ci/(ci^2 + di^2)*interior(original_var_fts[Time(0)])
-                interior(field_S) .= di/(ci^2 + di^2)*interior(original_var_fts[Time(0)])
-            end
-        end
-    end
-
-    # If we are solving for maps, we'll initialise them with the saved velocity fields
-    if config.map_to_mean || config.compute_mean_velocities
-        for vel_fts in input_data.velocity_data
-            vel_name = vel_fts.name
-            if filter_params.N_coeffs == 0.5 # Special case of single exponential
-                filtered_map_C = Symbol("xi_", vel_name, label, "_C1")
-                c1 = filter_params.c1
-                field_C = getproperty(model.tracers, filtered_map_C)
-                initial_vel_centred = Field(@at (Center, Center, Center) vel_fts[Time(0)])
-                interior(field_C) .= (-1/c1^2)*interior(initial_vel_centred)
-            else
-                for i in 1:filter_params.N_coeffs
-                    filtered_map_C = Symbol("xi_", vel_name, label, "_C",i)
-                    filtered_map_S = Symbol("xi_", vel_name, label, "_S",i)
-                    ci = getproperty(filter_params,Symbol("c$i"))
-                    di = getproperty(filter_params,Symbol("d$i"))
-                    field_C = getproperty(model.tracers, filtered_map_C)
-                    field_S = getproperty(model.tracers, filtered_map_S)
-                    initial_vel_centred = Field(@at (Center, Center, Center) vel_fts[Time(0)])
-                    interior(field_C) .= ((di^2 - ci^2)/(ci^2 + di^2)^2)*interior(initial_vel_centred)
-                    interior(field_S) .= (-2*ci*di/(ci^2 + di^2)^2)*interior(initial_vel_centred)
-                end
-            end
-        end
-    end
-
-end
-
-"""
     initialise_filtered_vars_from_model(model::AbstractModel,config::AbstractConfig)
 
 
@@ -1343,3 +1037,115 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
     return filtered_closure
 end
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Reading input data
+# Input data is read through a BufferedDataReader, directly from the original file.
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    update_input_data!(model, reader::BufferedDataReader)
+
+Callback that reads directly from the source file via a two-frame
+GPU buffer. Calls `advance_buffer!` to slide the window if needed, then
+linearly interpolates into the model's velocity and auxiliary fields.
+Designed to be used at callsite `UpdateStateCallsite()`, so that the fields are
+updated at each substep of multi-stage time steppers.
+"""
+function update_input_data!(model::AbstractModel, reader::BufferedDataReader)
+    t = model.clock.time
+    advance_buffer!(reader, t)
+    interpolate_to_model!(model, reader, t)
+    return nothing
+end
+
+"""
+    initialise_filtered_vars_from_data(model, reader::BufferedDataReader, config)
+
+Initialises the model's tracer fields, which represent the components of the
+filtered variables, to the (scaled) original data at `sim_t = 0` (i.e. the
+physical start/end of the filter interval for forward/backward runs). This
+improves the "spin-up" of the filter simulation by providing a good starting
+point. The data is interpolated from the two buffered frames.
+
+- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
+  tracer exists and is initialised.
+- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
+  fields for each coefficient are initialised.
+
+If maps are being computed (`map_to_mean` or `compute_mean_velocities`), the
+maps are initialised from the velocities in the same way.
+"""
+function initialise_filtered_vars_from_data(model::AbstractModel,
+                                            reader::BufferedDataReader,
+                                            config::AbstractConfig)
+    filter_params = config.filter_params
+    label         = config.label
+
+    # Buffer is already primed at t=0 by create_buffered_reader; safe to call again.
+    advance_buffer!(reader, 0.0)
+
+    times  = stored_times(reader.source)
+    t_phys = reader.direction == :forward ? reader.T_start : reader.T_end
+    t_lo   = times[reader.lo_src_idx]
+    t_hi   = times[reader.hi_src_idx]
+    α = (t_phys - t_lo) / (t_hi - t_lo)
+    β = 1 - α
+
+    lo_frames = reader.frames[reader.lo_slot]
+    hi_frames = reader.frames[3 - reader.lo_slot]
+
+    # ── Tracer initialisation ─────────────────────────────────────────────────
+    for var_name in reader.var_names
+        labelled = var_name * label
+        lo_f = lo_frames[Symbol(var_name)]
+        hi_f = hi_frames[Symbol(var_name)]
+
+        if filter_params.N_coeffs == 0.5
+            c1      = filter_params.c1
+            field_C = getproperty(model.tracers, Symbol(labelled, "_C1"))
+            interior(field_C) .= (1/c1) .* (β .* interior(lo_f) .+ α .* interior(hi_f))
+        else
+            for i in 1:filter_params.N_coeffs
+                ci      = getproperty(filter_params, Symbol("c", i))
+                di      = getproperty(filter_params, Symbol("d", i))
+                field_C = getproperty(model.tracers, Symbol(labelled, "_C", i))
+                field_S = getproperty(model.tracers, Symbol(labelled, "_S", i))
+                val = β .* interior(lo_f) .+ α .* interior(hi_f)
+                interior(field_C) .= (ci / (ci^2 + di^2)) .* val
+                interior(field_S) .= (di / (ci^2 + di^2)) .* val
+            end
+        end
+    end
+
+    # ── Map (xi) initialisation ───────────────────────────────────────────────
+    if config.map_to_mean || config.compute_mean_velocities
+        for vel_name in reader.vel_names
+            lo_v = lo_frames[Symbol(vel_name)]
+            hi_v = hi_frames[Symbol(vel_name)]
+
+            # Interpolate each buffered frame to cell-centre, then linearly combine.
+            lo_v_c = Field(@at (Center, Center, Center) lo_v)
+            hi_v_c = Field(@at (Center, Center, Center) hi_v)
+            compute!(lo_v_c)
+            compute!(hi_v_c)
+
+            if filter_params.N_coeffs == 0.5
+                c1      = filter_params.c1
+                field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C1"))
+                interior(field_C) .= (-1/c1^2) .* (β .* interior(lo_v_c) .+ α .* interior(hi_v_c))
+            else
+                for i in 1:filter_params.N_coeffs
+                    ci      = getproperty(filter_params, Symbol("c", i))
+                    di      = getproperty(filter_params, Symbol("d", i))
+                    field_C = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_C", i))
+                    field_S = getproperty(model.tracers, Symbol("xi_", vel_name, label, "_S", i))
+                    val = β .* interior(lo_v_c) .+ α .* interior(hi_v_c)
+                    interior(field_C) .= ((di^2 - ci^2) / (ci^2 + di^2)^2) .* val
+                    interior(field_S) .= (-2*ci*di / (ci^2 + di^2)^2) .* val
+                end
+            end
+        end
+    end
+
+    return nothing
+end

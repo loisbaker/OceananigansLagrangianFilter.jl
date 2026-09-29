@@ -16,6 +16,13 @@ Modules = [OceananigansLagrangianFilter.OfflineLagrangianFilter]
 Private = false
 ```
 
+## OceananigansLagrangianFilter.DataIO
+
+```@autodocs
+Modules = [OceananigansLagrangianFilter.DataIO]
+Private = false
+```
+
 ## OceananigansLagrangianFilter.Utils
 
 ```@autodocs

@@ -1,8 +1,12 @@
 using Oceananigans.Grids: halo_size
 
-@testset "copy_input_data! with inflated model halo" begin
-    # copy_input_data! is internal (not exported)
-    copy_input_data! = OceananigansLagrangianFilter.Utils.copy_input_data!
+@testset "shared_halo_regions with inflated model halo" begin
+    # shared_halo_regions is internal (not exported). Copy through the regions it returns, as interpolate_to_model! does.
+    shared_halo_regions = OceananigansLagrangianFilter.DataIO.shared_halo_regions
+    function copy_input_data!(field, data_field)
+        field_region, data_region = shared_halo_regions(field, data_field)
+        view(parent(field), field_region...) .= view(parent(data_field), data_region...)
+    end
 
     Nx, Nz = 6, 5
     topology = (Periodic, Flat, Bounded)
