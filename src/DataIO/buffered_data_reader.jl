@@ -2,8 +2,8 @@
     BufferedDataReader
 
 Reads simulation output frame-by-frame from disk into a two-slot GPU buffer,
-interpolating in time on demand. Replaces the intermediate `_filter_input.jld2`
-file and the `FieldTimeSeries`-based input pipeline.
+interpolating in time on demand. Data is read directly from the original file,
+with no intermediate file.
 
 Two buffer slots each hold a full set of GPU `Field`s (one per variable). As
 the simulation advances, the slot holding the older frame is recycled: the swap
