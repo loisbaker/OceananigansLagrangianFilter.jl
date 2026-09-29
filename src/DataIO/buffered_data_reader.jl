@@ -177,16 +177,18 @@ end
 # Build one CPU template and one GPU template per variable, using a single
 # FieldTimeSeries call per variable (JLD2) or the config grid (NetCDF).
 # Returns (cpu_templates, gpu_templates) as Dict{Symbol, Field}.
-function _build_templates(source::JLD2DataSource, all_names, arch)
+function _build_templates(source::JLD2DataSource, all_names, arch, grid)
     cpu_templates = Dict{Symbol, Field}()
     gpu_templates = Dict{Symbol, Field}()
     for v in all_names
         vsym = Symbol(v)
-        # One FieldTimeSeries per variable — reads metadata only, no frame data loaded.
-        fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(2))
+        # One FieldTimeSeries per variable to read its location (no frame data loaded). The grid and boundary
+        # conditions are not read from the file, since those saved by older Oceananigans versions may not be
+        # readable: the grid comes from the config, and the buffer fields use default boundary conditions.
+        fts = FieldTimeSeries(source.filename, v; grid = on_architecture(CPU(), grid), backend = InMemory(2), boundary_conditions = nothing)
         loc = Oceananigans.Fields.location(fts)
-        cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(fts.grid)
-        gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, fts.grid))
+        cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
+        gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, grid))
     end
     return cpu_templates, gpu_templates
 end
@@ -201,11 +203,11 @@ function _build_templates(source::NetCDFDataSource, all_names, arch, grid, locat
             cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
             gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch,  grid))
         else
-            # Infer location and grid from the NetCDF file attributes (written by Oceananigans NetCDFWriter)
-            fts = FieldTimeSeries(source.filename, v; architecture = CPU(), backend = InMemory(2))
+            # Infer location from the NetCDF file attributes (written by Oceananigans NetCDFWriter); the grid comes from the config
+            fts = FieldTimeSeries(source.filename, v; grid = on_architecture(CPU(), grid), backend = InMemory(2), boundary_conditions = nothing)
             loc = Oceananigans.Fields.location(fts)
-            cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(fts.grid)
-            gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, fts.grid))
+            cpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(CPU(), grid))
+            gpu_templates[vsym] = Field{loc[1], loc[2], loc[3]}(on_architecture(arch, grid))
         end
     end
     return cpu_templates, gpu_templates
@@ -262,7 +264,7 @@ function create_buffered_reader(config::AbstractConfig;
     # then use `similar` for both slots — no extra file I/O or metadata reads.
     cpu_templates, gpu_templates =
         source isa JLD2DataSource ?
-            _build_templates(source, all_names, arch) :
+            _build_templates(source, all_names, arch, config.grid) :
             _build_templates(source, all_names, arch, config.grid, locations)
 
     gpu_frames = ntuple(_ -> Dict(k => similar(v) for (k, v) in gpu_templates), 2)

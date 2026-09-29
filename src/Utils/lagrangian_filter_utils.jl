@@ -230,8 +230,10 @@ function create_original_vars(config::AbstractConfig)
     original_data_filename = config.original_data_filename
 
     for var_name in var_names_to_filter
-        # Only the first frame is needed, so avoid loading the whole time series into memory
-        fts_data = FieldTimeSeries(original_data_filename, var_name; architecture, backend = InMemory(2))[1]
+        # Only the first frame is needed, so avoid loading the whole time series into memory. The grid and
+        # boundary conditions are not read from the file, since those saved by older Oceananigans versions may
+        # not be readable (see `_build_templates`); the model uses default boundary conditions.
+        fts_data = FieldTimeSeries(original_data_filename, var_name; grid, architecture, backend = InMemory(2), boundary_conditions = nothing)[1]
         vars[Symbol(var_name)] = fts_data
     end
     return NamedTuple(vars)
