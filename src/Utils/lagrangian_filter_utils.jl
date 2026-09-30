@@ -1016,6 +1016,24 @@ end
 filter_terms(filter_params) = filter_params.N_coeffs == 0.5 ? [(1, filter_params.a1 != 0, false)] :
     [(i, getproperty(filter_params, Symbol("a$i")) != 0, getproperty(filter_params, Symbol("b$i")) != 0) for i in 1:filter_params.N_coeffs]
 
+# The coefficients of each term of a filter that is output separately, as a single-term filter, with the suffix of
+# its output names (see filtered_output_names)
+function separate_term_params(filter_params)
+    _, sine_parity = filter_output_options(filter_params)
+    terms = Tuple{String, NamedTuple}[]
+    for (i, has_cosine, has_sine) in filter_terms(filter_params)
+        a, c = getproperty(filter_params, Symbol("a$i")), getproperty(filter_params, Symbol("c$i"))
+        if filter_params.N_coeffs == 0.5
+            push!(terms, ("_C1_scaled", (; a1 = a, c1 = c, N_coeffs = 0.5)))
+        else
+            b, d = getproperty(filter_params, Symbol("b$i")), getproperty(filter_params, Symbol("d$i"))
+            has_cosine && push!(terms, ("_C$(i)_scaled", (; a1 = a, b1 = zero(b), c1 = c, d1 = d, N_coeffs = 1, sine_parity)))
+            has_sine   && push!(terms, ("_S$(i)_scaled", (; a1 = zero(a), b1 = b, c1 = c, d1 = d, N_coeffs = 1, sine_parity)))
+        end
+    end
+    return terms
+end
+
 """
     filtered_output_names(config::AbstractConfig)
 

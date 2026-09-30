@@ -104,7 +104,8 @@ end
     # Two short runs (T = 3hours) with the same Butterworth filter and odd sine terms, output combined and separately.
     # The separate outputs of each pass, and so of the summed forward and backward passes, add up to the combined
     # outputs. This checks the backward-pass sign of the odd sine terms for both kinds of output. Only the variable
-    # is filtered, to keep the runs quick (the maps and mean velocities are tested in test_initialisation.jl).
+    # is filtered, to keep the runs quick (the maps and mean velocities are tested in test_initialisation.jl). The
+    # Eulerian filters for comparison add up in the same way.
     stems = Dict(:combined => "data/test_offline_output_combined_odd", :separate => "data/test_offline_output_separate_odd")
     butterworth = merge(set_offline_BW2_filter_params(N = 2, freq_c = 1e-4 / 4), (sine_parity = :odd,))
     filter_params = Dict(:combined => butterworth, :separate => merge(butterworth, (outputs = :separate,)))
@@ -116,7 +117,7 @@ end
                                                 architecture = CPU(), Δt = 20minutes, T = 3hours, T_out = 1hour,
                                                 filter_params = filter_params[options],
                                                 compute_maps = false, regrid_to_mean = false, compute_mean_velocities = false,
-                                                delete_intermediate_files = true)
+                                                compute_Eulerian_filter = true, delete_intermediate_files = true)
             run_offline_Lagrangian_filter(filter_config)
         end
 
@@ -125,6 +126,10 @@ end
         @test isapprox(output(:separate, "b_C1_scaled") .+ output(:separate, "b_S1_scaled"),
                        output(:combined, "b_Lagrangian_filtered"); rtol = 1e-6)
         @test all(isfinite, output(:separate, "b_S1_scaled"))
+
+        # Likewise for the Eulerian filter for comparison, which filters with each term's weight function
+        @test isapprox(output(:separate, "b_Eulerian_filtered_C1_scaled") .+ output(:separate, "b_Eulerian_filtered_S1_scaled"),
+                       output(:combined, "b_Eulerian_filtered"); rtol = 1e-6)
     finally
         for stem in values(stems)
             rm(stem * ".jld2", force = true)

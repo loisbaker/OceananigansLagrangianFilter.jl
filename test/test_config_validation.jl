@@ -136,11 +136,10 @@ end
     without_N_coeffs = Base.structdiff(butterworth, (; N_coeffs = nothing))
     @test OfflineFilterConfig(; base..., filter_params = without_N_coeffs).filter_params.N_coeffs == 1
 
-    # Separate outputs can't be regridded, and don't yet work with the Eulerian filter for comparison
+    # Separate outputs can't be regridded
     separate = merge(butterworth, (outputs = :separate,))
     config = @test_logs (:warn, r"no combined fields") match_mode=:any OfflineFilterConfig(; base..., filter_params = separate)
     @test config.compute_maps && !config.regrid_to_mean
-    @test_throws r"not yet supported" OfflineFilterConfig(; base..., filter_params = separate, compute_Eulerian_filter = true)
 
     # Odd sine terms integrate to zero, so they don't count towards the normalisation: this term has
     # gain 2ac/(c^2 + d^2) = 1 with odd sine terms, but 2(ac + bd)/(c^2 + d^2) = 2 with even ones

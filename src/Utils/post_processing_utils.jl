@@ -1235,6 +1235,12 @@ The function iterates through each variable to be filtered:
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
+If the filter outputs its terms separately (`outputs = :separate`), each term is Eulerian filtered with its own
+weight function, and named like the Lagrangian outputs with `_Eulerian_filtered` in the stem, e.g.
+`b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`. The outputs are only divided by the integral
+of the weight function (correcting for it being cut off at the ends of the data) if the whole filter is normalised,
+in which case every term is divided by the same integral, so that the terms add up to the combined output.
+
 The method uses data saved to the filter output file - incase we decide to save this
 at lower frequency than the original data, it should be rewritten to use the original
 data file instead.
@@ -1247,9 +1253,6 @@ Arguments
 function compute_Eulerian_filter!(config::AbstractConfig)
     filter_params = config.filter_params
     outputs, _ = filter_output_options(filter_params)
-    if outputs === :separate
-        error("compute_Eulerian_filter! is not yet supported for filters that output their terms separately (outputs = :separate).")
-    end
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
     compute_mean_velocities = config.compute_mean_velocities
@@ -1268,8 +1271,12 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     end
 
     # Dividing by the discrete integral of the weight function corrects for it being cut off at the ends of the
-    # data, which only makes sense for a normalised filter (for a band-pass filter, it can be close to zero)
+    # data, which only makes sense for a normalised filter, whether its terms are output combined or separately
+    # (for a band-pass filter, it can be close to zero)
     normalised = zero_frequency_gain(filter_params, direction) ≈ 1
+
+    # The weight functions to filter with: the whole filter, or each of its terms if they are output separately
+    weights = outputs === :combined ? [("", filter_params)] : separate_term_params(filter_params)
 
     # Open existing file
     jldopen(output_filename,"r+") do file
@@ -1281,30 +1288,36 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         for var_name in var_names_to_Eulerian_filter
             @info "Computing Eulerian filter for variable $var_name"
 
-            # Create group for filtered data
-            g_EF = Group(file, "timeseries/$(var_name * label *"_Eulerian_filtered")")
-
-            # Copy over serialized properties
-            g_EF_serialized = Group(file, "timeseries/$(var_name * label * "_Eulerian_filtered")/serialized") 
-            for property in keys(file["timeseries/$var_name/serialized"])
-                g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
+            # Create a group for each filtered output, copying over the serialized properties
+            groups = map(weights) do (suffix, _)
+                name = var_name * label * "_Eulerian_filtered" * suffix
+                g_EF = Group(file, "timeseries/$name")
+                g_EF_serialized = Group(file, "timeseries/$name/serialized")
+                for property in keys(file["timeseries/$var_name/serialized"])
+                    g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
+                end
+                g_EF
             end
 
-            # Loop over times to compute filtered field at each time
+            # Loop over times to compute filtered fields at each time
             for (i, t) in enumerate(times)
+                # Every output is normalised by the whole filter's weight function, so the terms add up to the whole
                 G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
-                
-                # Initialise with zeros
-                mean_field = file["timeseries/$(var_name)/$(iterations[1])"]*0.0
-
                 normalisation = sum(G[1:end-1] .* diff(times))
-                # Construct mean sequentially
+                Gs = [get_weight_function(t = times, tref = t, filter_params = p, direction = direction) for (_, p) in weights]
+
+                # Construct the means sequentially, reading each field once
+                mean_fields = [file["timeseries/$(var_name)/$(iterations[1])"]*0.0 for _ in weights]
                 for j in 1:length(times)
                     field = file["timeseries/$(var_name)/$(iterations[j])"]
                     dt = j < length(times) ? times[j+1] - times[j] : dt
-                    mean_field .+= G[j] .* field .* dt 
+                    for (mean_field, Gk) in zip(mean_fields, Gs)
+                        mean_field .+= Gk[j] .* field .* dt
+                    end
                 end
-                g_EF["$(iterations[i])"] = normalised ? mean_field./normalisation : mean_field
+                for (g_EF, mean_field) in zip(groups, mean_fields)
+                    g_EF["$(iterations[i])"] = normalised ? mean_field./normalisation : mean_field
+                end
             end
         end
     end

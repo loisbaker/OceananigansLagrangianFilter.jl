@@ -459,11 +459,6 @@ any other velocity components will be zero by default."
                                                        rectilinear = underlying_rectilinear_grid,
                                                        combined_outputs = outputs === :combined)
 
-    # The Eulerian filter for comparison doesn't yet support separately output terms
-    if compute_Eulerian_filter && outputs === :separate
-        error("compute_Eulerian_filter = true is not yet supported for filters that output their terms separately (outputs = :separate).")
-    end
-
     # Warn if Eulerian filter is being calculated twice
     if compute_Eulerian_filter && isnothing(advection)
         @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice, so you should probably set compute_Eulerian_filter=false."
