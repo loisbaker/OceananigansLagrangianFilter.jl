@@ -2,7 +2,7 @@
 
 ## General form
 
-The offline filter uses weight functions of the form
+The online filter uses weight functions of the form
 ```math
 G(t) = 
 \begin{cases}
@@ -21,7 +21,11 @@ For the weight function to be normalised (so that the mean of a constant is the 
 \sum_{n=1}^{N/2} \frac{a_nc_n + b_n d_n}{c_n^2 +d_n^2} = 1\,.
 ```
 
-Un-normalised filters can be used, but `regrid_to_mean` will be set to false as the maps are no longer displacements from the mean position. 
+Un-normalised filters can be used (for example the spectral filter below), but `regrid_to_mean` will be set to false as the maps are no longer displacements from the mean position. 
+
+`filter_params` can also contain the option `outputs`: `:combined` (default), to output each filtered quantity as the sum of its terms (e.g. `b_Lagrangian_filtered`), or `:separate`, to output each term separately, named after its filtered tracer with a `_scaled` suffix (e.g. `b_C1_scaled` and `b_S1_scaled`, the ``a_1`` and ``b_1`` terms of the filtered ``b``). Separate outputs can't be regridded to the mean position. (The option `sine_parity` of the offline filter has no effect here, since the online weight function is only used for ``t > 0``.)
+
+To check a filter, [`get_weight_function`](@ref) and [`get_frequency_response`](@ref) (with `direction = :forward`) compute its weight function and frequency response, for the whole filter or a single term (e.g. `term = "C1"`).
 
 For ``N/2`` sets of coefficients, the weight function is composed of ``N`` exponentials, and ``N`` filtered tracers are needed to find the Lagrangian mean of each tracer. The number of equations that the filtering simulation solves is therefore linear in ``N``, so beware making ``N`` too large. 
 
@@ -48,3 +52,29 @@ Instead of providing the individual parameters in `filter_params`, the user can 
 
 This is a Butterworth order-``N`` filter.
 
+## Spectral filter
+
+A spectral filter, [`set_online_spectrum_filter_params`](@ref), is the causal version of the offline spectral filter (see [Choosing offline filters](@ref)). It extracts the signal in a narrow band around each of a set of frequencies ``\omega_n``, using an exponential window over the past that lasts a time of about ``1/\alpha``:
+
+```julia
+filter_params = set_online_spectrum_filter_params(alpha = 1e-5, freqs = [1e-4, 2e-4], normalisation = :unit_gain)
+```
+
+The weight functions at each frequency are, for ``t > 0``,
+```math
+\begin{align}
+    G_{Cn}(t) &= A_n e^{-\alpha t}\cos{\omega_n t}\,, \\
+    G_{Sn}(t) &= A_n e^{-\alpha t}\sin{\omega_n t}\,,
+\end{align}
+```
+so that ``a_n = b_n = A_n``, ``c_n = \alpha`` and ``d_n = \omega_n``. Each term is output separately (`outputs = :separate`), e.g. `b_C1_scaled` and `b_S1_scaled` for a filtered variable `b` at ``\omega_1``. Because the window only uses the past, changes in the amplitude of the signal show up in the outputs after a delay of about ``1/\alpha``.
+
+There are two normalisations:
+- `:spectral` (default): ``A_n = \sqrt{2\alpha}``, so that the (one-sided) window has unit energy. Then, as for the offline filter, the sum of the squares of the two outputs at ``\omega_n`` (e.g. `b_C1_scaled^2 + b_S1_scaled^2`) estimates the (two-sided) power spectral density of the signal at ``\omega_n``.
+- `:unit_gain`: ``A_n = \alpha\sqrt{\alpha^2 + 4\omega_n^2}/\sqrt{\alpha^2 + \omega_n^2}``, so that the cosine term (e.g. `b_C1_scaled`) passes a signal at exactly ``\omega_n`` with its amplitude preserved. Its frequency response is
+```math
+\hat{G}_{Cn}(\omega) = \frac{A_n}{2}\left(\frac{1}{\alpha + i(\omega - \omega_n)} + \frac{1}{\alpha + i(\omega + \omega_n)}\right)\,,
+```
+and ``A_n`` is chosen so that ``|\hat{G}_{Cn}(\omega_n)| = 1``. Unlike the offline filter, ``\hat{G}_{Cn}(\omega_n)`` is complex, since the weight function is one-sided, so the phase of the signal is shifted slightly, by about ``\alpha/(2\omega_n)`` radians.
+
+The Eulerian filter for comparison ([`compute_Eulerian_filter!`](@ref)) also outputs the terms separately, e.g. `b_Eulerian_filtered_C1_scaled`.

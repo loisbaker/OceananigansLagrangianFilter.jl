@@ -89,8 +89,9 @@ Arguments
 
 Returns
 =======
-- A `NamedTuple` containing the filter coefficients and `N_coeffs`, the number
-  of coefficient pairs.
+- A `NamedTuple` containing the filter coefficients, `N_coeffs` (the number
+  of coefficient pairs), and the output options `outputs = :combined` and
+  `sine_parity = :even` (the defaults, see `filter_output_options`).
 """
 function set_offline_BW2_filter_params(;N::Int=1,freq_c::Real=1) 
     if N == 1
@@ -106,7 +107,7 @@ function set_offline_BW2_filter_params(;N::Int=1,freq_c::Real=1)
     if N_coeffs == 0.5 # special case N=1, single exponential only has a cosine component
         a1 = freq_c/2 
         c1 = freq_c
-        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
+        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs, outputs = :combined, sine_parity = :even)
         return filter_params
 
     else
@@ -122,7 +123,7 @@ function set_offline_BW2_filter_params(;N::Int=1,freq_c::Real=1)
             filter_params = merge(filter_params,temp_params)
         end
 
-        return merge(filter_params, (; N_coeffs = N_coeffs))
+        return merge(filter_params, (; N_coeffs = N_coeffs, outputs = :combined, sine_parity = :even))
     end
 end
 
@@ -159,8 +160,9 @@ Arguments
 
 Returns
 =======
-- A `NamedTuple` containing the filter coefficients and `N_coeffs`, the number
-  of coefficient pairs.
+- A `NamedTuple` containing the filter coefficients, `N_coeffs` (the number
+  of coefficient pairs), and the output option `outputs = :combined` (the default,
+  see `filter_output_options`).
 """
 function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1) 
     if N == 1
@@ -176,7 +178,7 @@ function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1)
     if N_coeffs == 0.5 # special case N=1, single exponential only has a cosine component
         a1 = freq_c
         c1 = freq_c
-        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs)
+        filter_params = (; a1 = a1, c1 = c1, N_coeffs = N_coeffs, outputs = :combined)
         return filter_params
 
     else
@@ -200,8 +202,121 @@ function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1)
             filter_params = merge(filter_params,temp_params)
         end
 
-        return merge(filter_params, (; N_coeffs = N_coeffs))
+        return merge(filter_params, (; N_coeffs = N_coeffs, outputs = :combined))
     end
+end
+
+"""
+    set_offline_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+
+Coefficients for an exponentially-windowed spectral filter, which extracts the signal in a narrow band
+around each frequency in `freqs`. The window is `w(t) = exp(-alpha*|t|)`, giving the in-phase (`C`) and
+quadrature (`S`) weight functions at each frequency `omega_n`:
+
+    C(t) = A_n exp(-alpha*|t|) cos(omega_n*t)
+    S(t) = A_n exp(-alpha*|t|) sin(omega_n*t)
+
+so that `a_n = b_n = A_n`, `c_n = alpha` and `d_n = omega_n`. The `S` weight functions are odd in `t`
+(`sine_parity = :odd`), and each term is output separately (`outputs = :separate`).
+
+`alpha` sets the frequency resolution: the window lasts about `1/alpha`, so frequencies closer than
+about `alpha` are not resolved.
+
+Two normalisations are available:
+- `:spectral` (default): `A_n = sqrt(alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
+  Then `C^2 + S^2` estimates the (two-sided) power spectral density of the signal at `omega_n`,
+  normalised so that the variance is `∫ S(omega) domega / 2π`.
+- `:unit_gain`: `A_n = alpha (alpha^2 + 4omega_n^2) / (2alpha^2 + 4omega_n^2)`, so that `C` passes a signal at
+  exactly `omega_n` through unchanged: `C` is the band-passed signal, and `S` is its quadrature (a quarter
+  period later). Then `sqrt(C^2 + S^2)` is its envelope and `atan(S, C)` its instantaneous phase (`omega_n*t`
+  plus the phase of the signal). `S` has gain `4omega_n^2 / (2alpha^2 + 4omega_n^2)`, so the envelope and phase
+  are accurate to about `alpha^2 / (2omega_n^2)`. At `omega_n = 0` this reduces to `alpha/2`, the single
+  exponential of `set_offline_BW2_filter_params(N = 1)`.
+
+The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero. See
+[`set_online_spectrum_filter_params`](@ref) for the online filter.
+
+Arguments
+=========
+- `alpha`: Decay rate of the exponential window. Must be positive.
+- `freqs`: Frequencies (radians per unit time) at which to extract the signal.
+- `normalisation`: `:spectral` (default) or `:unit_gain`.
+
+Returns
+=======
+- A `NamedTuple` of coefficients, `N_coeffs`, `outputs = :separate` and `sine_parity = :odd`.
+"""
+function set_offline_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+    amplitude(omega) = normalisation === :spectral ? sqrt(alpha) :
+                       alpha * (alpha^2 + 4omega^2) / (2alpha^2 + 4omega^2) # Unit gain at omega
+    filter_params = spectrum_filter_coefficients(amplitude; alpha, freqs, normalisation)
+    return merge(filter_params, (; sine_parity = :odd))
+end
+
+"""
+    set_online_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+
+Coefficients for an exponentially-windowed spectral filter for the online filter: the causal version of
+[`set_offline_spectrum_filter_params`](@ref), which only uses the past. The window is `w(t) = exp(-alpha*t)`
+for `t > 0` (the time before the present), giving the in-phase (`C`) and quadrature (`S`) weight functions
+at each frequency `omega_n`:
+
+    C(t) = A_n exp(-alpha*t) cos(omega_n*t)
+    S(t) = A_n exp(-alpha*t) sin(omega_n*t)
+
+so that `a_n = b_n = A_n`, `c_n = alpha` and `d_n = omega_n`, and each term is output separately
+(`outputs = :separate`).
+
+`alpha` sets the frequency resolution: the window lasts about `1/alpha`, so frequencies closer than
+about `alpha` are not resolved. Because the window only uses the past, changes in the amplitude of the
+signal show up in the envelope `sqrt(C^2 + S^2)` after a delay of about `1/alpha` (so `t - 1/alpha` is the time
+for the envelope or power, rather than the time computed by [`compute_time_shift!`](@ref)).
+
+Two normalisations are available:
+- `:spectral` (default): `A_n = sqrt(2alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
+  Then, as for the offline filter, `C^2 + S^2` estimates the (two-sided) power spectral density of the
+  signal at `omega_n`, normalised so that the variance is `∫ S(omega) domega / 2π`.
+- `:unit_gain`: `A_n = alpha sqrt(alpha^2 + 4omega_n^2) / sqrt(alpha^2 + omega_n^2)`, so that `C` passes a
+  signal at exactly `omega_n` with its amplitude preserved, and `S` gives its quadrature with gain
+  `omega_n / sqrt(alpha^2 + omega_n^2)`. Then `sqrt(C^2 + S^2)` is its envelope and `atan(S, C)` its
+  instantaneous phase (`omega_n*t` plus the phase of the signal). Unlike the offline filter, the one-sided
+  window shifts the phases slightly: `C` lags the signal and `S` leads its quadrature, each by about
+  `alpha / (2omega_n)` radians, so the envelope and phase have a ripple of relative size about
+  `alpha / (2omega_n)` at twice the frequency (for a ripple below 1%, use `alpha ≲ 0.02 omega_n`). At
+  `omega_n = 0` this reduces to `alpha`, the single exponential of `set_online_BW_filter_params(N = 1)`.
+
+The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero.
+
+Arguments
+=========
+- `alpha`: Decay rate of the exponential window. Must be positive.
+- `freqs`: Frequencies (radians per unit time) at which to extract the signal.
+- `normalisation`: `:spectral` (default) or `:unit_gain`.
+
+Returns
+=======
+- A `NamedTuple` of coefficients, `N_coeffs` and `outputs = :separate`.
+"""
+function set_online_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+    amplitude(omega) = normalisation === :spectral ? sqrt(2alpha) :
+                       alpha * sqrt(alpha^2 + 4omega^2) / sqrt(alpha^2 + omega^2) # Unit gain at omega
+    return spectrum_filter_coefficients(amplitude; alpha, freqs, normalisation)
+end
+
+# Coefficients of a spectral filter with an exponential window decaying at rate alpha, with a_n = b_n = amplitude(omega_n),
+# c_n = alpha and d_n = omega_n at each frequency omega_n in freqs, whose terms are output separately
+function spectrum_filter_coefficients(amplitude::Function; alpha::Real, freqs::AbstractVector, normalisation::Symbol)
+    alpha > 0 || error("alpha must be positive.")
+    length(freqs) > 0 || error("freqs must contain at least one frequency.")
+    normalisation in (:spectral, :unit_gain) || error("normalisation must be :spectral or :unit_gain, got $(repr(normalisation))")
+
+    filter_params = NamedTuple()
+    for (n, omega) in enumerate(freqs)
+        A = amplitude(omega)
+        coefficients = NamedTuple{(Symbol("a$n"), Symbol("b$n"), Symbol("c$n"), Symbol("d$n"))}((A, A, alpha, omega))
+        filter_params = merge(filter_params, coefficients)
+    end
+    return merge(filter_params, (; N_coeffs = length(freqs), outputs = :separate))
 end
 
 """
@@ -240,7 +355,7 @@ function create_original_vars(config::AbstractConfig)
 end
 
 """
-    resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear)
+    resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear, combined_outputs)
 
 Check and reconcile the options controlling the displacement maps ``\\vb*{\\xi}``, for both filter configs:
 
@@ -250,12 +365,13 @@ Check and reconcile the options controlling the displacement maps ``\\vb*{\\xi}`
 
 The maps are only displacements from the mean position for a Lagrangian filter (`lagrangian`) with normalised
 filter coefficients (`normalised`), so otherwise `regrid_to_mean` is set to `false`. Regridding also currently
-requires a rectilinear grid (`rectilinear`). `map_to_mean` is the name of a removed option, and throws an error
-if given.
+requires a rectilinear grid (`rectilinear`), and filtered fields that are output combined rather than as separate
+terms (`combined_outputs`, see `filter_output_options`). `map_to_mean` is the name of a removed option, and throws
+an error if given.
 
 Returns the reconciled `(compute_maps, regrid_to_mean)`.
 """
-function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear)
+function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear, combined_outputs)
     if !isnothing(map_to_mean)
         error("The option `map_to_mean` has been removed. Use `compute_maps` to solve for and output the " *
               "displacement maps, and `regrid_to_mean` to interpolate the filtered fields to the mean position.")
@@ -278,6 +394,11 @@ function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagran
         regrid_to_mean = false
     end
 
+    if !combined_outputs && regrid_to_mean
+        @warn "The filter outputs its terms separately (outputs = :separate), so there are no combined fields to regrid. Setting regrid_to_mean = false."
+        regrid_to_mean = false
+    end
+
     # Regridding uses the maps
     if regrid_to_mean && !compute_maps
         @warn "regrid_to_mean = true requires the maps, so setting compute_maps = true."
@@ -294,6 +415,9 @@ Whether the map variables need to be solved for: they are output if `compute_map
 the mean velocities if `compute_mean_velocities`. (`regrid_to_mean` implies `compute_maps`, see `resolve_map_options`.)
 """
 maps_needed(config::AbstractConfig) = config.compute_maps || config.compute_mean_velocities
+
+# The number of filter coefficients (a1, b1, c1, d1, a2, ...) in filter_params, not counting its other fields
+number_of_coefficient_fields(filter_params::NamedTuple) = count(k -> occursin(r"^[abcd][0-9]+$", String(k)), keys(filter_params))
 
 """
     create_filtered_vars(config::AbstractConfig)
@@ -766,7 +890,7 @@ function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractCo
 end
 
 """
-    create_output_fields(model::AbstractModel, config::AbstractConfig)
+    create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
 
 Reconstructs the final output fields from the model's tracers and auxiliary
 fields. This function performs the following steps:
@@ -783,6 +907,17 @@ fields. This function performs the following steps:
     dictionary for comparison and analysis if `config.output_original_data`
     is true.
 
+By default (`outputs = :combined` in `filter_params`), each filtered quantity is output as a
+single field. With `outputs = :separate`, each (cosine or sine) term of the filter is output
+separately, named after its tracer with a `_scaled` suffix, e.g. `b_C1_scaled`, `xi_u_C1_scaled`,
+and `u_C1_scaled` for the mean velocities. With `sine_parity = :odd`, the sine terms are odd in
+time, so their backward-pass contributions are negated. See `filter_output_options`.
+
+For the offline filter, the outputs of each pass are defined as that pass's contribution
+to the filtered fields, so that the forward and backward outputs are summed (see
+[`sum_forward_backward_contributions!`](@ref)). The backward pass is run with the velocities
+negated, so its mean velocity outputs are negated (`direction = :backward`).
+
 Arguments
 =========
 - `model`: An instance of an `AbstractModel` containing the tracer and
@@ -790,22 +925,74 @@ Arguments
 - `config`: An instance of `AbstractConfig` with the names of the variables,
   velocity components, and filter parameters.
 
+Keyword arguments
+=================
+- `direction`: `:forward` (default, also used for the online filter) or `:backward`, the
+  direction of the offline filter pass that the outputs are for.
+
 Returns
 =======
 A `Dict` where keys are the names of the output fields (e.g.,
 `var_name_Lagrangian_filtered`, `xi_vel_name`, `var_name`) and values are the
 corresponding reconstructed `Field`s.
 """
-function create_output_fields(model::AbstractModel, config::AbstractConfig)
+function create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
+    direction in (:forward, :backward) || error("direction must be :forward or :backward, got :$direction")
 
-    var_names_to_filter = config.var_names_to_filter
-    velocity_names = config.velocity_names
     filter_params = config.filter_params
-    N_coeffs = filter_params.N_coeffs
-    compute_maps = config.compute_maps
-    compute_mean_velocities = config.compute_mean_velocities
-    label = config.label
+    outputs, sine_parity = filter_output_options(filter_params)
+
+    # Odd sine terms have weight functions that are odd in time, so change sign in the backward pass
+    s = (direction === :backward && sine_parity === :odd) ? -1 : 1
+
     outputs_dict = Dict()
+    for q in filtered_output_quantities(config)
+        add_filtered_outputs!(outputs_dict, model.tracers, filter_params, q, s, outputs, direction)
+    end
+
+    # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
+    if (config isa AbstractOfflineConfig) && config.output_original_data
+        for var_name in config.var_names_to_filter
+            outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
+        end
+        for vel_name in config.velocity_names
+            outputs_dict[vel_name] = getproperty(model.velocities, Symbol(vel_name))
+        end
+    end
+ 
+
+    return outputs_dict
+end
+
+# The backward pass of the offline filter runs with the velocities negated, so its outputs of quantities that
+# change sign under time reversal (the mean velocities) are negated to give its contribution to the filtered field.
+time_reversed(output, direction) = direction === :backward ? -output : output
+
+"""
+    filter_output_options(filter_params::NamedTuple)
+
+Return the output options `(outputs, sine_parity)` of a filter, with their defaults if not given:
+
+- `outputs`: `:combined` (default), to output each filtered quantity as a single field, or `:separate`, to
+  output each (cosine or sine) term of the filter separately, named after its tracer with a `_scaled` suffix.
+- `sine_parity`: `:even` (default), if the sine terms of the weight function are `sin(d|t|)`, or `:odd`, if they
+  are `sin(dt)`. Odd sine terms change sign in the backward pass of the offline filter.
+"""
+function filter_output_options(filter_params::NamedTuple)
+    outputs     = get(filter_params, :outputs, :combined)
+    sine_parity = get(filter_params, :sine_parity, :even)
+    outputs in (:combined, :separate) || error("filter_params.outputs must be :combined or :separate, got $(repr(outputs))")
+    sine_parity in (:even, :odd)      || error("filter_params.sine_parity must be :even or :odd, got $(repr(sine_parity))")
+    return outputs, sine_parity
+end
+
+# The filtered quantities that are output, one NamedTuple for each with fields
+#   quantity:      :tracer (a filtered variable or map) or :velocity (a mean velocity, computed from the maps)
+#   combined_name: the name of the combined output
+#   separate_stem: the start of the names of the separate outputs (<separate_stem>_C1_scaled, ...)
+#   tracer_stem:   the start of the names of the tracers it is computed from (<tracer_stem>_C1, ...)
+function filtered_output_quantities(config::AbstractConfig)
+    label = config.label
 
     # When offline filtering, we can turn off advection to get Eulerian filtered fields
     if (config isa AbstractOfflineConfig) && config.advection === nothing
@@ -814,101 +1001,120 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig)
         filter_identifier = "_Lagrangian_filtered"
     end
 
-    for var_name in var_names_to_filter
-        labelled_var_name = var_name * label
-        if N_coeffs == 0.5
-            # Special case, single exponential only has a cosine component
-            gC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
-            g_total = filter_params.a1 * gC1
-            outputs_dict[labelled_var_name * filter_identifier] = g_total
+    row(quantity, combined_name, separate_stem, tracer_stem) = (; quantity, combined_name, separate_stem, tracer_stem)
+
+    quantities = [row(:tracer, var * label * filter_identifier, var * label, var * label) for var in config.var_names_to_filter]
+    if config.compute_maps
+        append!(quantities, [row(:tracer, "xi_" * vel * label, "xi_" * vel * label, "xi_" * vel * label) for vel in config.velocity_names])
+    end
+    if config.compute_mean_velocities
+        append!(quantities, [row(:velocity, vel * label * filter_identifier, vel * label, "xi_" * vel * label) for vel in config.velocity_names])
+    end
+    return quantities
+end
+
+# The terms (i, has_cosine, has_sine) of a filter that are output separately: terms with a zero coefficient are skipped
+filter_terms(filter_params) = filter_params.N_coeffs == 0.5 ? [(1, filter_params.a1 != 0, false)] :
+    [(i, getproperty(filter_params, Symbol("a$i")) != 0, getproperty(filter_params, Symbol("b$i")) != 0) for i in 1:filter_params.N_coeffs]
+
+# The coefficients of each term of a filter that is output separately, as a single-term filter, with the suffix of
+# its output names (see filtered_output_names)
+function separate_term_params(filter_params)
+    _, sine_parity = filter_output_options(filter_params)
+    terms = Tuple{String, NamedTuple}[]
+    for (i, has_cosine, has_sine) in filter_terms(filter_params)
+        a, c = getproperty(filter_params, Symbol("a$i")), getproperty(filter_params, Symbol("c$i"))
+        if filter_params.N_coeffs == 0.5
+            push!(terms, ("_C1_scaled", (; a1 = a, c1 = c, N_coeffs = 0.5)))
         else
-            # Reconstruct the filtered tracer fields, starting with the first coefficient
-            gC1 = getproperty(model.tracers, Symbol(labelled_var_name * "_C1"))
-            gS1 = getproperty(model.tracers, Symbol(labelled_var_name * "_S1"))
-            g_total = filter_params.a1 * gC1 + filter_params.b1 * gS1
-
-            # Then add the other coefficients
-            for i in 2:N_coeffs
-                a = getproperty(filter_params,Symbol("a$i"))
-                b = getproperty(filter_params,Symbol("b$i"))
-                gCi = getproperty(model.tracers,Symbol(labelled_var_name * "_C$i" ))
-                gSi = getproperty(model.tracers,Symbol(labelled_var_name * "_S$i" ))
-                g_total += a * gCi + b * gSi
-            end
-            outputs_dict[labelled_var_name * filter_identifier] = g_total
+            b, d = getproperty(filter_params, Symbol("b$i")), getproperty(filter_params, Symbol("d$i"))
+            has_cosine && push!(terms, ("_C$(i)_scaled", (; a1 = a, b1 = zero(b), c1 = c, d1 = d, N_coeffs = 1, sine_parity)))
+            has_sine   && push!(terms, ("_S$(i)_scaled", (; a1 = zero(a), b1 = b, c1 = c, d1 = d, N_coeffs = 1, sine_parity)))
         end
     end
+    return terms
+end
 
-    # Reconstruct the maps, if they are output
-    if compute_maps
-        for vel_name in velocity_names
-            labelled_var_name = "xi_" * vel_name * label
-            if N_coeffs == 0.5
-                # Special case, single exponential only has a cosine component
-                xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
-                g_total = filter_params.a1 * xiC1
-                outputs_dict[labelled_var_name] = g_total
-            else
-                # Start with the first coefficient
-                xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
-                xiS1 = getproperty(model.tracers,Symbol(labelled_var_name * "_S1"))
-                g_total = filter_params.a1 * xiC1 + filter_params.b1 * xiS1
+# The coefficients of one term of a filter, labelled as in the names of its separate outputs (e.g. term = "C1" for
+# b_C1_scaled, or "S2"), or of the whole filter if term = nothing
+function select_term(filter_params::NamedTuple, term)
+    isnothing(term) && return filter_params
+    terms = Dict(suffix => params for (suffix, params) in separate_term_params(filter_params))
+    key = "_" * String(term) * "_scaled"
+    haskey(terms, key) || error("term must be one of $(join(sort([k[2:end-7] for k in keys(terms)]), ", ")) (or nothing, " *
+                                "for the whole filter), got $(repr(term))")
+    return terms[key]
+end
 
-                # Then add the other coefficients
-                for i in 2:N_coeffs
-                    a = getproperty(filter_params,Symbol("a$i"))
-                    b = getproperty(filter_params,Symbol("b$i"))
-                    xiCi = getproperty(model.tracers,Symbol(labelled_var_name * "_C$i"))
-                    xiSi = getproperty(model.tracers,Symbol(labelled_var_name * "_S$i"))
-                    g_total += a * xiCi + b * xiSi
-                end
-                outputs_dict[labelled_var_name] = g_total
+"""
+    filtered_output_names(config::AbstractConfig)
+
+Names of the filtered fields output by [`create_output_fields`](@ref), which are combined by
+[`sum_forward_backward_contributions!`](@ref).
+"""
+function filtered_output_names(config::AbstractConfig)
+    outputs, _ = filter_output_options(config.filter_params)
+    names = String[]
+    for q in filtered_output_quantities(config)
+        if outputs === :combined
+            push!(names, q.combined_name)
+        else
+            for (i, has_cosine, has_sine) in filter_terms(config.filter_params)
+                has_cosine && push!(names, q.separate_stem * "_C$(i)_scaled")
+                has_sine   && push!(names, q.separate_stem * "_S$(i)_scaled")
             end
         end
     end
+    return Tuple(names)
+end
 
-    # Reconstruct the mean velocities
-    if compute_mean_velocities
-        for vel_name in velocity_names
-            labelled_var_name = "xi_" * vel_name * label
-            if N_coeffs == 0.5
-                # Special case, single exponential only has a cosine component
-                xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
-                g_total = - filter_params.a1 * filter_params.c1 * xiC1
-                outputs_dict[vel_name * label * filter_identifier] = g_total
-            else
-                # Start with the first coefficient
-                xiC1 = getproperty(model.tracers,Symbol(labelled_var_name * "_C1"))
-                xiS1 = getproperty(model.tracers,Symbol(labelled_var_name * "_S1"))
-                g_total = ((-filter_params.a1 *filter_params.c1 + filter_params.b1 * filter_params.d1) * xiC1 
-                + (-filter_params.a1 * filter_params.d1 - filter_params.b1 * filter_params.c1) * xiS1)
+# Coefficients of the C and S tracers in the cosine and sine terms of component i, for a filtered variable or map
+# (quantity = :tracer), or a mean velocity computed from the maps (quantity = :velocity, found by integrating the
+# filtered velocity by parts). The sine terms are multiplied by s. For s = 1, adding the cosine and sine coefficients
+# gives exactly the same floating point operations as the expressions for the combined outputs.
+function term_coefficients(filter_params, i, quantity, s)
+    a = getproperty(filter_params, Symbol("a$i"))
+    c = getproperty(filter_params, Symbol("c$i"))
+    if filter_params.N_coeffs == 0.5 # Single exponential: only a cosine term
+        return quantity === :tracer ? ((a, 0), nothing) : ((-a * c, 0), nothing)
+    end
+    b = getproperty(filter_params, Symbol("b$i"))
+    d = getproperty(filter_params, Symbol("d$i"))
+    if quantity === :tracer
+        return (a, 0), (0, s * b)
+    else
+        return (-a * c, -a * d), (s * b * d, -(s * b) * c)
+    end
+end
 
-                # Then add the other coefficients
-                for i in 2:N_coeffs
-                    a = getproperty(filter_params,Symbol("a$i"))
-                    b = getproperty(filter_params,Symbol("b$i"))
-                    c = getproperty(filter_params,Symbol("c$i"))
-                    d = getproperty(filter_params,Symbol("d$i"))
-                    xiCi = getproperty(model.tracers,Symbol(labelled_var_name * "_C$i"))
-                    xiSi = getproperty(model.tracers,Symbol(labelled_var_name * "_S$i"))
-                    g_total += (-a * c + b * d) * xiCi + (-a * d - b * c) * xiSi
-                end
-                outputs_dict[vel_name * label * filter_identifier] = g_total
-            end
+# The linear combination of the C and S tracers with the given coefficients, leaving out zero coefficients
+scaled_tracers((cC, cS), gC, gS) = cS == 0 ? cC * gC : cC == 0 ? cS * gS : cC * gC + cS * gS
+
+# Add the outputs for one filtered quantity `q` (see filtered_output_quantities) to `outputs_dict`, either combined
+# or separately for each term
+function add_filtered_outputs!(outputs_dict, tracers, filter_params, q, s, outputs, direction)
+    N_coeffs = filter_params.N_coeffs
+    gC(i) = getproperty(tracers, Symbol(q.tracer_stem, "_C", i))
+    gS(i) = getproperty(tracers, Symbol(q.tracer_stem, "_S", i))
+    sign_for_time_reversal(output) = q.quantity === :velocity ? time_reversed(output, direction) : output
+
+    if outputs === :combined
+        total = nothing
+        for i in 1:ceil(Int, N_coeffs)
+            cosine, sine = term_coefficients(filter_params, i, q.quantity, s)
+            term = isnothing(sine) ? cosine[1] * gC(i) :
+                                     (cosine[1] + sine[1]) * gC(i) + (cosine[2] + sine[2]) * gS(i)
+            total = isnothing(total) ? term : total + term
+        end
+        outputs_dict[q.combined_name] = sign_for_time_reversal(total)
+    else
+        for (i, has_cosine, has_sine) in filter_terms(filter_params)
+            cosine, sine = term_coefficients(filter_params, i, q.quantity, s)
+            gSi = N_coeffs == 0.5 ? nothing : gS(i)
+            has_cosine && (outputs_dict[q.separate_stem * "_C$(i)_scaled"] = sign_for_time_reversal(scaled_tracers(cosine, gC(i), gSi)))
+            has_sine   && (outputs_dict[q.separate_stem * "_S$(i)_scaled"] = sign_for_time_reversal(scaled_tracers(sine, gC(i), gSi)))
         end
     end
-
-    # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
-    if (config isa AbstractOfflineConfig) && config.output_original_data
-        for var_name in var_names_to_filter
-            outputs_dict[var_name] = getproperty(model.auxiliary_fields, Symbol(var_name))
-        end
-        for vel_name in velocity_names
-            outputs_dict[vel_name] = getproperty(model.velocities, Symbol(vel_name))
-        end
-    end
- 
-
     return outputs_dict
 end
 

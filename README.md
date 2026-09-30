@@ -16,11 +16,11 @@ A set of tools to perform online or offline Lagrangian filtering on Oceananigans
 ---
 ## ✨ Features
 
-* **Offline Filtering:** Apply low-pass Lagrangian filters to existing Oceananigans output, saved in JLD2 or NetCDF format.
+* **Offline Filtering:** Apply Lagrangian filters (low-pass or spectral) to existing Oceananigans output, saved in JLD2 or NetCDF format.
 
 * **Online Filtering:** Integrate filters directly into `Oceananigans.jl` simulations.
 
-* **Multiple Filter Types:** Supports custom filter shapes, with 'optimal' default Butterworth-type filters easily implemented.
+* **Multiple Filter Types:** Supports custom filter shapes, with Butterworth-type low-pass filters and exponentially windowed spectral filters built in.
 
 * **Easy Integration:** Designed to work directly with `Oceananigans.jl` data formats.
 
@@ -58,7 +58,7 @@ add https://github.com/loisbaker/OceananigansLagrangianFilter.jl.git
 
 ### Offline Filtering
 
-Offline filtering (whereby the data is processed after simulation time) allows for better filter shapes, since for a given reference time, data from the past and the future is available. The filters implemented here have real frequency response, and therefore have linear phase shift. If the exact properties of the filter shape are important, then offline filtering is preferable. 
+Offline filtering (whereby the data is processed after simulation time) allows for better filter shapes, since for a given reference time, data from the past and the future is available. The default filters have an even weight function, so their frequency response is real and they don't shift the phase of the signal. If the exact properties of the filter shape are important, then offline filtering is preferable. 
 
 Here is a simple example of how to filter a pre-existing dataset.
 
@@ -70,7 +70,7 @@ using CUDA
 
 # Define the filter configuration
 filter_config = OfflineFilterConfig(original_data_filename = "my_simulation.jld2", # Where the original simulation output is
-                                    output_filename = "my_filtered_simulation.jld2" # Where to save the filtered output
+                                    output_filename = "my_filtered_simulation.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","v"), # Velocities to use for remapping
                                     architecture = GPU(), # CPU() or GPU()
@@ -87,11 +87,11 @@ run_offline_Lagrangian_filter(filter_config)
 
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
-You can find an example of a simple simulation of geostrophic adjustment in `/examples/geostrophic_adjustment.jl`. The filtering is then performed using `/examples/offline_filter_geostrophic_adjustment.jl`.
+You can find an example of a simple simulation of geostrophic adjustment, filtered offline, in `/examples/offline_filter_geostrophic_adjustment.jl`.
 
 ### Online Filtering
 
-For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See an example corresponding to the above online filtering in `/examples/online_filter_geostrophic_adjustment.jl`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
+For online filtering, you would integrate the filter directly into your `Oceananigans.jl` setup, using the helper functions provided. See the same geostrophic adjustment simulation, filtered online, in `/examples/online_filter_geostrophic_adjustment.jl`. The filtered values are then computed as your simulation runs, avoiding the need to save data at high frequency. 
 
 ---
 # Learn more
@@ -105,7 +105,7 @@ We welcome contributions! See [contributing.md](contributing.md).
 ---
 ## 🤝 Support
 
-If you encounter any issues, questions, or requests for functionality, it would be very helpful if you could raise an issue on the [GitHub repository](https://github.com/loisbaker/OceananigansLagrangianFilter/issues).
+If you encounter any issues, questions, or requests for functionality, it would be very helpful if you could raise an issue on the [GitHub repository](https://github.com/loisbaker/OceananigansLagrangianFilter.jl/issues).
 
 ---
 ## 📜 License

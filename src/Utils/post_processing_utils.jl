@@ -29,21 +29,23 @@ The function performs the following steps:
     is then interpolated to match the time steps of the forward simulation,
     and the two datasets are summed and written to the combined output file.
 
+The outputs of each pass are that pass's contribution to the filtered fields (see
+[`create_output_fields`](@ref)), so all filtered fields, including the mean velocities, are summed.
+
 Arguments
 =========
 - `config`: An instance of `AbstractConfig` containing the file paths and
   variable names.
 - `extra_filtered_var_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
   filtered variable names that have been calculated by the filter and also need to be
-  combined.
-- `extra_filtered_velocity_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
-  filtered velocity names that have been calculated by the filter and also need to be
-  combined.
+  combined. The outputs of each pass should be defined as its contribution, so that they
+  are summed (e.g. negating quantities that change sign under time reversal in the
+  backward pass, as `create_output_fields` does for the mean velocities).
 - `extra_original_data_names::Tuple{Vararg{String}}=()`: Optional tuple of additional
   original names that have been output and should be copied to the combined output file.
 """
-function sum_forward_backward_contributions!(config::AbstractConfig; extra_filtered_var_names::Tuple{Vararg{String}}=(), 
-    extra_filtered_velocity_names::Tuple{Vararg{String}}=(), extra_original_data_names::Tuple{Vararg{String}}=())
+function sum_forward_backward_contributions!(config::AbstractConfig; extra_filtered_var_names::Tuple{Vararg{String}}=(),
+    extra_original_data_names::Tuple{Vararg{String}}=())
     # Combine the forward and backward simulations by summing them into a single file
 
     output_filename = config.output_filename
@@ -52,35 +54,16 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     T = config.T
     velocity_names = config.velocity_names
     var_names_to_filter = config.var_names_to_filter
-    compute_maps = config.compute_maps
     compute_mean_velocities = config.compute_mean_velocities
-    label = config.label
     
-    # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if (config isa AbstractOfflineConfig) && config.advection === nothing
-        filter_identifier = "_Eulerian_filtered"
-    else
-        filter_identifier = "_Lagrangian_filtered"
-    end
+    # The names of the filtered fields output by each pass (see create_output_fields), which we will combine
+    filtered_var_names = filtered_output_names(config)
 
-    # List the names of the fields that we will combine
-    filtered_var_names = Tuple([var * label * filter_identifier for var in var_names_to_filter])
-    if compute_maps
-        filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
-    end
+    # The original velocities are copied if the mean velocities were computed
+    vel_names_to_filter = compute_mean_velocities ? velocity_names : ()
 
     # There might be some extra filtered variables that the user defined that we should combine too
     filtered_var_names = Tuple(unique((filtered_var_names..., extra_filtered_var_names...)))
-
-    filtered_vel_names = ()
-    vel_names_to_filter = ()
-    if compute_mean_velocities
-        filtered_vel_names = Tuple([vel * label * filter_identifier for vel in velocity_names])
-        vel_names_to_filter = velocity_names
-    end
-
-    # There might be some extra filtered velocities that the user defined that we should combine too
-    filtered_vel_names = Tuple(unique((filtered_vel_names..., extra_filtered_velocity_names...)))
 
     jldopen(output_filename,"w") do combined_file
         jldopen(forward_output_filename,"r") do forward_file
@@ -89,24 +72,19 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
             # Let's check and only try to copy the variables that exist in the forward file
             forward_file_all_names = keys(forward_file["timeseries"])
             missing_var_names = [var for var in filtered_var_names if !(var in forward_file_all_names)]
-            missing_vel_names = [var for var in filtered_vel_names if !(var in forward_file_all_names)]
             
             if length(missing_var_names) > 0
                 @warn "The following filtered variable names were not found in the forward output file and will be skipped: $(missing_var_names)"
             end
-            if length(missing_vel_names) > 0
-                @warn "The following filtered velocity names were not found in the forward output file and will be skipped: $(missing_vel_names)"
-            end
 
             filtered_var_names = Tuple([var for var in filtered_var_names if var in forward_file_all_names])
-            filtered_vel_names = Tuple([var for var in filtered_vel_names if var in forward_file_all_names])
 
 
             # First copy the forward file metadata and file structure
             if config.output_original_data
-                names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names..., filtered_vel_names...)
+                names_to_copy = (var_names_to_filter..., vel_names_to_filter..., filtered_var_names...)
             else
-                names_to_copy = (filtered_var_names..., filtered_vel_names...)
+                names_to_copy = filtered_var_names
             end
 
             # There might be some extra variables provided to copy too
@@ -144,22 +122,6 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
                     
                     # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
                     combined_file["timeseries/$var_name/$iter"] = forward_data .+ parent(fts_backward[Time(T-forward_time)].data)
-                end
-            end
-
-            # Mean velocities get subtracted instead
-            for vel_name in filtered_vel_names
-                
-                # Open the backward data as a FieldTimeSeries, so we can interpolate to match times
-                fts_backward = FieldTimeSeries(backward_output_filename, vel_name)
-
-                # Loop over forward times and add the backward data
-                for iter in forward_iterations
-                    forward_time = forward_file["timeseries/t/$iter"]
-                    forward_data = forward_file["timeseries/$vel_name/$iter"] # Load in data
-                    
-                    # Write it again, adding the backward data using FieldTimeSeries interpolation. parent is used to strip offset from the backward data
-                    combined_file["timeseries/$vel_name/$iter"] = forward_data .- parent(fts_backward[Time(T-forward_time)].data)
                 end
             end
 
@@ -1143,155 +1105,122 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 end
 
 """
-    get_weight_function(;t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::String = "both")
+    get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
 
-Computes the weighting function for the offline filter. This function calculates
-the filter's impulse response, which determines how much each point in the
-timeseries `t` contributes to the filtered value at a reference time `tref`.
-The weighting function is based on the provided `filter_params`, which contains
-the coefficients for the filter's impulse response.
+Computes the weight function of the filter, which determines how much each point in the
+timeseries `t` contributes to the filtered value at a reference time `tref`. For the offline
+filter this is
+
+``G(t) = \\sum_i e^{-c_i |\\tau|} \\left[a_i \\cos(d_i \\tau) + b_i \\sin(d_i |\\tau|)\\right], \\quad \\tau = t_{ref} - t,``
+
+or with sine terms ``b_i \\sin(d_i \\tau)`` if `filter_params.sine_parity = :odd`.
 
 Keyword arguments
-=========
+=================
 - `t`: A collection of time points in the timeseries.
 - `tref`: The reference time at which the filter is being evaluated.
 - `filter_params`: A `NamedTuple` containing the coefficients (`a`, `b`, `c`,
   `d`) and the number of coefficient pairs (`N_coeffs`).
-- `direction`: A `String` indicating the direction of the filter. It can be
-  "both" (default), "forward", or "backward". This determines whether the
-  filter is applied symmetrically around `tref`, only to past times, or only
-  to future times.
+- `direction`: `:both` (default) for the offline filter, `:forward` to keep only times before `tref`
+  (as for the online filter, or the forward pass of the offline filter), or `:backward` to keep only
+  times after `tref` (the backward pass of the offline filter).
+- `term`: `nothing` (default) for the whole filter, or a single term, labelled as in the names of the separate
+  outputs (see [`create_output_fields`](@ref)), e.g. `"C1"` (for `b_C1_scaled`) or `"S2"`.
 
 Returns
 =======
 - A vector of weights `G`, with the same dimensions as `t`, representing the
-  value of the filter's impulse response at each time point relative to `tref`.
+  value of the weight function at each time point relative to `tref`.
 """
-function get_weight_function(;t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::String = "both")
+function get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
+    filter_params = select_term(filter_params, term)
+    direction in (:both, :forward, :backward) || error("direction must be :both, :forward or :backward, got $(repr(direction))")
+    _, sine_parity = filter_output_options(filter_params)
+    τ = tref .- t # Time lag, positive for times before tref
 
     G = 0*t
     N_coeffs = filter_params.N_coeffs
     if N_coeffs == 0.5
         a1 = filter_params.a1
         c1 = filter_params.c1
-        G .= a1.*exp.(-c1.*abs.(t .- tref))
+        G .= a1.*exp.(-c1.*abs.(τ))
     else
         for i in 1:N_coeffs
-            
+
             a = getproperty(filter_params, Symbol("a$i"))
             b = getproperty(filter_params, Symbol("b$i"))
             c = getproperty(filter_params, Symbol("c$i"))
             d = getproperty(filter_params, Symbol("d$i"))
 
-            G += (a.*cos.(d.*abs.(t .- tref)) .+ b.*sin.(d.*abs.(t .- tref))).*exp.(-c.*abs.(t .- tref))
+            sine = sine_parity === :odd ? sin.(d.*τ) : sin.(d.*abs.(τ))
+            G += (a.*cos.(d.*abs.(τ)) .+ b.*sine).*exp.(-c.*abs.(τ))
         end
     end
-    if direction == "forward"
+    if direction === :forward
         G[t .> tref] .= 0
-    elseif direction == "backward"
+    elseif direction === :backward
         G[t .< tref] .= 0
-    elseif direction != "both"
-        error("Direction must be 'forward', 'backward' or 'both'")
     end
     return G
 end
 
 """
-    get_offline_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
+    get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
 
-Calculates the frequency response of the offline filter. This function takes a set
-of frequencies and the filter's coefficients to compute how the filter amplifies
-or attenuates different frequency components of a signal.
+Calculates the frequency response ``\\hat{G}(\\omega)`` of the filter, i.e. the Fourier transform of the
+weight function (see [`get_weight_function`](@ref)), so that filtering ``e^{i\\omega t}`` gives
+``\\hat{G}(\\omega) e^{i\\omega t}``.
 
-The response is computed by summing the contributions of each coefficient pair
-based on the filter's transfer function in the frequency domain. The result is
-a measure of the filter's gain at each given frequency.
-
-Arguments
-=========
-- `freq`: A vector of frequencies (in radians per unit time).
+Keyword arguments
+=================
+- `freq`: A vector of frequencies ``\\omega`` (in radians per unit time).
 - `filter_params`: A `NamedTuple` containing the filter coefficients (`a`, `b`,
   `c`, `d`) and the number of coefficient pairs (`N_coeffs`).
+- `direction`: `:both` (default) for the offline filter, `:forward` for the online filter (or the
+  forward pass of the offline filter), or `:backward` for the backward pass of the offline filter.
+- `term`: `nothing` (default) for the whole filter, or a single term, labelled as in the names of the separate
+  outputs (see [`create_output_fields`](@ref)), e.g. `"C1"` (for `b_C1_scaled`) or `"S2"`.
 
 Returns
 =======
-- A vector `Ghat` representing the filter's frequency response at each
-  corresponding frequency in `freq`.
+- A vector `Ghat` of the frequency response at each frequency in `freq`. This is real for the offline
+  filter (`direction = :both`) if the weight function is even in time (`sine_parity = :even`, the
+  default), and complex otherwise.
 """
-function get_offline_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
-    
-    Ghat = 0*freq
-    N_coeffs = filter_params.N_coeffs
- 
-    if N_coeffs == 0.5
-        a1 = filter_params.a1
-        c1 = filter_params.c1
-        Ghat .= (2.0*a1*c1)./(c1^2 .+ freq.^2)
-        return Ghat
-    else
+function get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
+    filter_params = select_term(filter_params, term)
+    direction in (:both, :forward, :backward) || error("direction must be :both, :forward or :backward, got $(repr(direction))")
+    _, sine_parity = filter_output_options(filter_params)
+    σ = sine_parity === :odd ? -1 : 1 # Sign of the sine terms for times after tref
 
-        for i in 1:N_coeffs
-            
-            a = getproperty(filter_params, Symbol("a$i"))
-            b = getproperty(filter_params, Symbol("b$i"))
-            c = getproperty(filter_params, Symbol("c$i"))
-            d = getproperty(filter_params, Symbol("d$i"))
+    # The weight function for times after tref is that for times before tref reversed in time, with the sine terms multiplied by σ
+    Ghat = zeros(Complex{float(eltype(freq))}, size(freq))
+    direction in (:both, :forward)  && (Ghat .+= one_sided_frequency_response(freq, filter_params, 1))
+    direction in (:both, :backward) && (Ghat .+= one_sided_frequency_response(-freq, filter_params, σ))
 
-            Ghat += (a*c .+ b.*(d .+ freq))./(c^2 .+ (d .+ freq).^2) .+ (a*c .+ b.*(d .- freq))./(c^2 .+ (d .- freq).^2)
-        end
-    
-    return Ghat
-    end
+    # The response of the whole weight function is real if it is even in time
+    return (direction === :both && sine_parity === :even) ? real(Ghat) : Ghat
 end
 
-"""
-    get_online_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
-
-Calculates the frequency response of the online filter (i.e a one-sided filter that 
-is zero for negative times). This function takes a set of frequencies and the filter's 
-coefficients to compute how the filter amplifies or attenuates different frequency 
-components of a signal.
-
-The response is computed by summing the contributions of each coefficient pair
-based on the filter's transfer function in the frequency domain. The result is
-a measure of the filter's gain at each given frequency.
-
-Arguments
-=========
-- `freq`: A vector of frequencies (in radians per unit time).
-- `filter_params`: A `NamedTuple` containing the filter coefficients (`a`, `b`,
-  `c`, `d`) and the number of coefficient pairs (`N_coeffs`).
-
-Returns
-=======
-- A complex vector `Ghat` representing the filter's frequency response at each
-  corresponding frequency in `freq`.
-"""
-function get_online_frequency_response(;freq::AbstractArray, filter_params::NamedTuple)
-    
-    Ghat = 0*freq .+ 0im
-    N_coeffs = filter_params.N_coeffs
- 
-    if N_coeffs == 0.5
-        a1 = filter_params.a1
-        c1 = filter_params.c1
-        Ghat .= a1./(c1 .+ im.*freq)
-        return Ghat
-    else
-
-        for i in 1:N_coeffs
-            
-            a = getproperty(filter_params, Symbol("a$i"))
-            b = getproperty(filter_params, Symbol("b$i"))
-            c = getproperty(filter_params, Symbol("c$i"))
-            d = getproperty(filter_params, Symbol("d$i"))
-
-            Ghat += 0.5*((a .+ im.*b)./(c .+ im.*(d .+ freq)) .+ (a .- im.*b)./(c .+ im.*(-d .+ freq)))
-        end
-    
-    return Ghat
+# The frequency response of the weight function for times before tref, with the sine terms multiplied by σ
+function one_sided_frequency_response(freq, filter_params, σ)
+    if filter_params.N_coeffs == 0.5
+        return filter_params.a1 ./ (filter_params.c1 .+ im .* freq)
     end
+    Ghat = zeros(Complex{float(eltype(freq))}, size(freq))
+    for i in 1:filter_params.N_coeffs
+        a = getproperty(filter_params, Symbol("a$i"))
+        b = σ * getproperty(filter_params, Symbol("b$i"))
+        c = getproperty(filter_params, Symbol("c$i"))
+        d = getproperty(filter_params, Symbol("d$i"))
+        Ghat .+= 0.5 .* ((a + im*b) ./ (c .+ im .* (d .+ freq)) .+ (a - im*b) ./ (c .+ im .* (freq .- d)))
+    end
+    return Ghat
 end
+
+# The gain of the filter at zero frequency (the integral of its weight function), which is 1 for a normalised filter
+zero_frequency_gain(filter_params::NamedTuple, direction::Symbol) =
+    real(get_frequency_response(freq = [0.0]; filter_params, direction)[1])
 
 """
     compute_Eulerian_filter!(config::AbstractConfig)
@@ -1312,6 +1241,12 @@ The function iterates through each variable to be filtered:
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
+If the filter outputs its terms separately (`outputs = :separate`), each term is Eulerian filtered with its own
+weight function, and named like the Lagrangian outputs with `_Eulerian_filtered` in the stem, e.g.
+`b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`. The outputs are only divided by the integral
+of the weight function (correcting for it being cut off at the ends of the data) if the whole filter is normalised,
+in which case every term is divided by the same integral, so that the terms add up to the combined output.
+
 The method uses data saved to the filter output file - incase we decide to save this
 at lower frequency than the original data, it should be rewritten to use the original
 data file instead.
@@ -1323,6 +1258,7 @@ Arguments
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
     filter_params = config.filter_params
+    outputs, _ = filter_output_options(filter_params)
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
     compute_mean_velocities = config.compute_mean_velocities
@@ -1335,10 +1271,18 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     end
     
     if (config isa AbstractOfflineConfig)
-        direction = "both"
+        direction = :both
     elseif (config isa AbstractOnlineConfig)
-        direction = "forward"
+        direction = :forward
     end
+
+    # Dividing by the discrete integral of the weight function corrects for it being cut off at the ends of the
+    # data, which only makes sense for a normalised filter, whether its terms are output combined or separately
+    # (for a band-pass filter, it can be close to zero)
+    normalised = zero_frequency_gain(filter_params, direction) ≈ 1
+
+    # The weight functions to filter with: the whole filter, or each of its terms if they are output separately
+    weights = outputs === :combined ? [("", filter_params)] : separate_term_params(filter_params)
 
     # Open existing file
     jldopen(output_filename,"r+") do file
@@ -1350,30 +1294,36 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         for var_name in var_names_to_Eulerian_filter
             @info "Computing Eulerian filter for variable $var_name"
 
-            # Create group for filtered data
-            g_EF = Group(file, "timeseries/$(var_name * label *"_Eulerian_filtered")")
-
-            # Copy over serialized properties
-            g_EF_serialized = Group(file, "timeseries/$(var_name * label * "_Eulerian_filtered")/serialized") 
-            for property in keys(file["timeseries/$var_name/serialized"])
-                g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
+            # Create a group for each filtered output, copying over the serialized properties
+            groups = map(weights) do (suffix, _)
+                name = var_name * label * "_Eulerian_filtered" * suffix
+                g_EF = Group(file, "timeseries/$name")
+                g_EF_serialized = Group(file, "timeseries/$name/serialized")
+                for property in keys(file["timeseries/$var_name/serialized"])
+                    g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
+                end
+                g_EF
             end
 
-            # Loop over times to compute filtered field at each time
+            # Loop over times to compute filtered fields at each time
             for (i, t) in enumerate(times)
+                # Every output is normalised by the whole filter's weight function, so the terms add up to the whole
                 G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
-                
-                # Initialise with zeros
-                mean_field = file["timeseries/$(var_name)/$(iterations[1])"]*0.0
-
                 normalisation = sum(G[1:end-1] .* diff(times))
-                # Construct mean sequentially
+                Gs = [get_weight_function(t = times, tref = t, filter_params = p, direction = direction) for (_, p) in weights]
+
+                # Construct the means sequentially, reading each field once
+                mean_fields = [file["timeseries/$(var_name)/$(iterations[1])"]*0.0 for _ in weights]
                 for j in 1:length(times)
                     field = file["timeseries/$(var_name)/$(iterations[j])"]
                     dt = j < length(times) ? times[j+1] - times[j] : dt
-                    mean_field .+= G[j] .* field .* dt 
+                    for (mean_field, Gk) in zip(mean_fields, Gs)
+                        mean_field .+= Gk[j] .* field .* dt
+                    end
                 end
-                g_EF["$(iterations[i])"] = mean_field./normalisation
+                for (g_EF, mean_field) in zip(groups, mean_fields)
+                    g_EF["$(iterations[i])"] = normalised ? mean_field./normalisation : mean_field
+                end
             end
         end
     end
@@ -1395,12 +1345,19 @@ This new time series is stored in a new group called `timeseries/t_shifted` with
 """
 function compute_time_shift!(config::AbstractConfig)
     if !(config isa AbstractOnlineConfig)
-        @warn "Time shift computation is only relevant when filtering forward only. Offline forward-backward filtering
-        has an even weight function, so time shift should be zero. This function will compute a time shift regardless, but 
-        it may not be meaningful for offline forward-backward filters."
+        @warn "Time shift computation is only relevant when filtering forward only. The offline filter uses both the past " *
+              "and the future, so no time shift is needed. This function will compute a time shift regardless, but " *
+              "it may not be meaningful for the offline filter."
     end
     output_filename = config.output_filename
-    filter_params = config.filter_params    
+    filter_params = config.filter_params
+    direction = config isa AbstractOnlineConfig ? :forward : :both
+    if !(zero_frequency_gain(filter_params, direction) ≈ 1)
+        @warn "The filter is not normalised, so the time shift computed here (the centre of its weight function) " *
+              "is not meaningful. For a spectral filter, changes in the amplitude of the signal at each frequency " *
+              "are delayed by about 1/alpha (so t - 1/alpha is the time for the envelope or power), while its phase " *
+              "is only shifted by about alpha/(2 omega_n) radians."
+    end
     N_coeffs = filter_params.N_coeffs
     time_shift = 0.0
     if N_coeffs == 0.5 # exponential special case

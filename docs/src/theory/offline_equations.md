@@ -1,6 +1,6 @@
 # Offline Lagrangian filtering equations
 
-This page describes the Lagrangian filtering equations for the 'offline' configuration of *OceananigansLagrangianFilter.jl*. The offline scheme runs a forward pass very similar to the [online configuration](@ref "Online Lagrangian filtering equations"), before running a backward pass through the offline data and combinging the backward and forward outputs. 
+This page describes the Lagrangian filtering equations for the 'offline' configuration of *OceananigansLagrangianFilter.jl*. The offline scheme runs a forward pass very similar to the [online configuration](@ref "Online Lagrangian filtering equations"), before running a backward pass through the offline data and combining the backward and forward outputs. 
 
 We compute the Lagrangian mean of some scalar ``f`` as
 ```math
@@ -10,8 +10,8 @@ We compute the Lagrangian mean of some scalar ``f`` as
 ```
 and optionally compute
 ```math
-\begin{equation}\label{Xidefonline}
-\vb*{\Xi}(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^\infty \alpha e^{-\alpha(t-s)}\vb*{\varphi}(\vb*{a},s)\,\mathrm{d} s\,,
+\begin{equation}\label{Xidefoffline}
+\vb*{\Xi}(\vb*{\varphi}(\vb*{a},t),t) = \int_{-\infty}^\infty G(t-s)\vb*{\varphi}(\vb*{a},s)\,\mathrm{d} s\,,
 \end{equation}
 ```
 so that the generalised Lagrangian mean ``\bar{f}^{\mathrm{L}}`` (see definition in [Lagrangian averaging](@ref "Lagrangian averaging")) can be recovered by a post-processing interpolation step using
@@ -20,17 +20,18 @@ so that the generalised Lagrangian mean ``\bar{f}^{\mathrm{L}}`` (see definition
 \bar{f}^{\mathrm{L}}(\vb*{\Xi}(\vb*{x},t),t) = f^*(\vb*{x},t)\,.
 \end{equation}
 ```
-We consider even filter kernels composed of sums of exponentials of the absolute value of ``t``:
+We consider filter kernels composed of sums of exponentials of the absolute value of ``t``:
 ```math
 \begin{equation}
-    G(t) = \sum_{n=1}^{N/2} e^{-c_n |t|} \left( a_n \cos(d_n |t|) + b_n \sin(d_n |t|) \right)\,.
+    G(t) = \sum_{n=1}^{N/2} e^{-c_n |t|} \left( a_n \cos(d_n t) + b_n \sigma(t) \sin(d_n |t|) \right)\,,
 \end{equation}
 ```
+where the sine terms are either even in time, with ``\sigma(t) = 1`` (`sine_parity = :even`, the default, for which ``G`` is even), or odd in time, with ``\sigma(t) = \mathrm{sgn}(t)`` (`sine_parity = :odd`, for which the sine terms are ``b_n \sin(d_n t)``).
 We define a set of ``N`` weight functions, for even ``N``. For ``k = 1,...,N/2`` we have
 ```math
 \begin{align}
-    G_{Ck}(t) &=e^{-c_k|t|}\cos d_k |t|\,, \\
-    G_{Sk}(t) &=e^{-c_k|t|}\sin d_k |t|\,, \\
+    G_{Ck}(t) &=e^{-c_k|t|}\cos d_k t\,, \\
+    G_{Sk}(t) &=e^{-c_k|t|}\sigma(t)\sin d_k |t|\,, \\
 \end{align}
 ```
 For ``t>0``, we have
@@ -40,11 +41,11 @@ For ``t>0``, we have
     G_{Sk}'(t) &= - c_kG_{Sk}(t) + d_k G_{Ck}(t) \\
 \end{align}
 ```
-and for ``t<0``
+and for ``t<0``, where ``\sigma = \sigma(t)`` is ``1`` for even sine terms and ``-1`` for odd sine terms,
 ```math
 \begin{align} \label{backward_G_derivs}
-    G_{Ck}'(t) &= -G_{Ck}'(-t) = c_kG_{Ck}(t) + d_k G_{Sk}(t) \\
-    G_{Sk}'(t) &= -G_{Sk}'(-t) = c_kG_{Sk}(t) - d_k G_{Ck}(t) \\
+    G_{Ck}'(t) &= -G_{Ck}'(-t) = c_kG_{Ck}(t) + \sigma d_k G_{Sk}(t) \\
+    G_{Sk}'(t) &= -\sigma G_{Sk}'(-t) = c_kG_{Sk}(t) - \sigma d_k G_{Ck}(t) \\
 \end{align}
 ```
 We then define a corresponding set of ``N`` filtered scalars
@@ -54,7 +55,7 @@ We then define a corresponding set of ``N`` filtered scalars
     g_{Sk}(\vb*{\varphi}(\vb*{a},t),t) &= \int_{-\infty}^t G_{Sk}(t-s)f(\vb*{\varphi}(\vb*{a},s),s)\, \mathrm{d} s\\
 \end{align}
 ```
-so that 
+so that the contribution of the forward pass (from the past, ``s < t``) to ``f^*`` is
 ```math
 \begin{equation}
     f_1^*(\vb*{x},t) = \sum_{n=1}^{N/2} a_n g_{Cn}(\vb*{x},t) + b_n g_{Sn}(\vb*{x},t)\,.
@@ -76,10 +77,10 @@ If we want to find ``\bar{f}^{\mathrm{L}}``, we define map functions with which 
     \vb*{\Xi}_{Sk}(\vb*{\varphi}(\vb*{a},t),t) &= \int_{-\infty}^t G_{Sk}(t-s)\vb*{\varphi}(\vb*{a},s) \mathrm{d} s\,,
 \end{align}
 ```
-so that
+so that the forward pass contributes
 ```math
 \begin{equation}
-\vb*{\Xi}(\vb*{x},t) = \sum_{n=1}^{N/2} a_n \vb*{\Xi}_{Ck}(\vb*{x},t) + b_n \vb*{\Xi}_{Sk}(\vb*{x},t)
+\vb*{\Xi}_1(\vb*{x},t) = \sum_{n=1}^{N/2} a_n \vb*{\Xi}_{Cn}(\vb*{x},t) + b_n \vb*{\Xi}_{Sn}(\vb*{x},t)
 \end{equation}
 ```
 and
@@ -104,4 +105,10 @@ The perturbation map equations are then given by
 \frac{\partial \vb*{\xi}_{Sk}}{\partial t} + \vb*{u} \cdot \nabla \vb*{\xi}_{Sk} &= -\frac{d_k}{c_k^2 + d_k^2}\vb*{u} - c_k \vb*{\xi}_{Sk} + d_k \vb*{\xi}_{Ck}\,.
 \end{align}
 ```
-Backward-pass equations of the same form are solved by time-reversing the velocity and field data, and changing the sign of the velocity. The final filtered field is then reconstructed by summing the forwards and backwards pass outputs at each time. 
+Backward-pass equations of the same form are solved by time-reversing the velocity and field data, and changing the sign of the velocity. The backward pass gives filtered scalars ``h_{Ck}`` and ``h_{Sk}``, defined like ``g_{Ck}`` and ``g_{Sk}`` but integrating over the future (``s > t``) with weight functions ``G_{Ck}(s-t)`` and ``G_{Sk}(s-t)``. For ``s > t`` we have ``G_{Ck}(t-s) = G_{Ck}(s-t)`` and ``G_{Sk}(t-s) = \sigma G_{Sk}(s-t)``, with ``\sigma = -1`` for odd sine terms, so the contribution of the backward pass is
+```math
+\begin{equation}
+    f_2^*(\vb*{x},t) = \sum_{n=1}^{N/2} a_n h_{Cn}(\vb*{x},t) + \sigma b_n h_{Sn}(\vb*{x},t)\,,
+\end{equation}
+```
+and ``f^* = f_1^* + f_2^*``, and similarly for the maps. The backward pass outputs its contribution directly (changing the sign of the odd sine terms, and of the mean velocities, which change sign under time reversal), so the final filtered field is reconstructed by summing the forward and backward pass outputs at each time. 

@@ -95,8 +95,9 @@ function run_offline_Lagrangian_filter(config)
     # Swap in the backward reader
     simulation.callbacks[:update_input_data] = Callback(update_input_data!, callsite = UpdateStateCallsite(), parameters = backward_reader)
 
-    # Write outputs
-    simulation.output_writers[:vars] = JLD2Writer(model, filtered_outputs,
+    # Write outputs: the backward pass's contributions to the filtered fields
+    backward_outputs = create_output_fields(model, config; direction = :backward)
+    simulation.output_writers[:vars] = JLD2Writer(model, backward_outputs,
                                                             filename = config.backward_output_filename,
                                                             schedule = TimeInterval(config.T_out),
                                                             overwrite_files = true)
