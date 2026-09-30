@@ -148,3 +148,38 @@ end
     @test_logs (:warn, r"no effect for the online filter") match_mode=:any OnlineFilterConfig(; grid, var_names_to_filter = ("b",),
                                                                                               velocity_names = ("u", "w"), filter_params = online_params)
 end
+
+@testset "set_offline_spectrum_filter_params" begin
+    alpha, freqs = 2e-5, [1e-4, 1.4e-4]
+
+    # In-phase and quadrature terms at each frequency, output separately, with odd sine terms
+    params = set_offline_spectrum_filter_params(; alpha, freqs)
+    @test params.N_coeffs == 2 && params.outputs === :separate && params.sine_parity === :odd
+    @test params.a1 == params.b1 && params.a2 == params.b2
+    @test params.c1 == alpha && params.c2 == alpha && params.d1 == freqs[1] && params.d2 == freqs[2]
+
+    # Numerical integrals of the weight functions, which decay over a time 1/alpha
+    τ = range(-60 / alpha, 60 / alpha, length = 2_000_001)
+    integrate(f) = sum(f.(τ)) * step(τ)
+
+    # The spectral normalisation (the default) gives the window unit energy
+    @test integrate(t -> (params.a1 * exp(-alpha * abs(t)))^2) ≈ 1 rtol = 1e-4
+
+    # The unit gain normalisation passes a signal at each frequency with its amplitude preserved
+    unit_gain = set_offline_spectrum_filter_params(; alpha, freqs, normalisation = :unit_gain)
+    for n in 1:2
+        a, ω = getproperty(unit_gain, Symbol("a$n")), freqs[n]
+        @test integrate(t -> a * exp(-alpha * abs(t)) * cos(ω * t) * cos(ω * t)) ≈ 1 rtol = 1e-4
+    end
+    @test set_offline_spectrum_filter_params(; alpha, freqs = [0.0], normalisation = :unit_gain).a1 ≈ alpha / 2
+
+    @test_throws r"alpha must be positive" set_offline_spectrum_filter_params(; alpha = -1, freqs)
+    @test_throws r"at least one frequency" set_offline_spectrum_filter_params(; alpha, freqs = Float64[])
+    @test_throws r"normalisation must be" set_offline_spectrum_filter_params(; alpha, freqs, normalisation = :other)
+
+    # A config with these parameters outputs the terms separately (and isn't a normalised low-pass filter),
+    # so doesn't regrid
+    config = @test_logs (:warn, r"setting regrid_to_mean = false") match_mode=:any OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2",
+                                              var_names_to_filter = ("b",), velocity_names = ("u", "w"), filter_params = params)
+    @test config.filter_params.outputs === :separate && !config.regrid_to_mean
+end

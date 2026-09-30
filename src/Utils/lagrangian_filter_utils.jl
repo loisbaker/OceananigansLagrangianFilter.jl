@@ -207,6 +207,58 @@ function set_online_BW_filter_params(;N::Int=1,freq_c::Real=1)
 end
 
 """
+    set_offline_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+
+Coefficients for an exponentially-windowed spectral filter, which extracts the signal in a narrow band
+around each frequency in `freqs`. The window is `w(t) = exp(-alpha*|t|)`, giving the in-phase (`C`) and
+quadrature (`S`) weight functions at each frequency `omega_n`:
+
+    C(t) = A_n exp(-alpha*|t|) cos(omega_n*t)
+    S(t) = A_n exp(-alpha*|t|) sin(omega_n*t)
+
+so that `a_n = b_n = A_n`, `c_n = alpha` and `d_n = omega_n`. The `S` weight functions are odd in `t`
+(`sine_parity = :odd`), and each term is output separately (`outputs = :separate`).
+
+`alpha` sets the frequency resolution: the window lasts about `1/alpha`, so frequencies closer than
+about `alpha` are not resolved.
+
+Two normalisations are available:
+- `:spectral` (default): `A_n = sqrt(alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
+  Then `C^2 + S^2` estimates the (two-sided) power spectral density of the signal at `omega_n`,
+  normalised so that the variance is `∫ S(omega) domega / 2π`.
+- `:unit_gain`: `A_n = alpha (alpha^2 + 4omega_n^2) / (2alpha^2 + 4omega_n^2)`, so that a signal at exactly
+  `omega_n` passes through with its amplitude preserved. Then `C` is the band-passed signal, and
+  `sqrt(C^2 + S^2)` and `atan(-S, C)` are its envelope and phase. At `omega_n = 0` this reduces to
+  `alpha/2`, the single exponential of `set_offline_BW2_filter_params(N = 1)`.
+
+The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero.
+
+Arguments
+=========
+- `alpha`: Decay rate of the exponential window. Must be positive.
+- `freqs`: Frequencies (radians per unit time) at which to extract the signal.
+- `normalisation`: `:spectral` (default) or `:unit_gain`.
+
+Returns
+=======
+- A `NamedTuple` of coefficients, `N_coeffs`, `outputs = :separate` and `sine_parity = :odd`.
+"""
+function set_offline_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+    alpha > 0 || error("alpha must be positive.")
+    length(freqs) > 0 || error("freqs must contain at least one frequency.")
+    normalisation in (:spectral, :unit_gain) || error("normalisation must be :spectral or :unit_gain, got $(repr(normalisation))")
+
+    filter_params = NamedTuple()
+    for (n, omega) in enumerate(freqs)
+        A = normalisation === :spectral ? sqrt(alpha) :
+            alpha * (alpha^2 + 4omega^2) / (2alpha^2 + 4omega^2) # Unit gain at omega
+        coefficients = NamedTuple{(Symbol("a$n"), Symbol("b$n"), Symbol("c$n"), Symbol("d$n"))}((A, A, alpha, omega))
+        filter_params = merge(filter_params, coefficients)
+    end
+    return merge(filter_params, (; N_coeffs = length(freqs), outputs = :separate, sine_parity = :odd))
+end
+
+"""
     create_original_vars(config::AbstractConfig)
 
 Creates a `NamedTuple` to serve as auxiliary fields for the original variables 
