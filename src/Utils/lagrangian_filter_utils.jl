@@ -268,8 +268,9 @@ so that `a_n = b_n = A_n`, `c_n = alpha` and `d_n = omega_n`, and each term is o
 (`outputs = :separate`).
 
 `alpha` sets the frequency resolution: the window lasts about `1/alpha`, so frequencies closer than
-about `alpha` are not resolved. Because the window only uses the past, the envelope `sqrt(C^2 + S^2)`
-responds to changes in the signal with a delay of about `1/alpha`.
+about `alpha` are not resolved. Because the window only uses the past, changes in the amplitude of the
+signal show up in the envelope `sqrt(C^2 + S^2)` after a delay of about `1/alpha` (so `t - 1/alpha` is the time
+for the envelope or power, rather than the time computed by [`compute_time_shift!`](@ref)).
 
 Two normalisations are available:
 - `:spectral` (default): `A_n = sqrt(2alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
@@ -1032,6 +1033,17 @@ function separate_term_params(filter_params)
         end
     end
     return terms
+end
+
+# The coefficients of one term of a filter, labelled as in the names of its separate outputs (e.g. term = "C1" for
+# b_C1_scaled, or "S2"), or of the whole filter if term = nothing
+function select_term(filter_params::NamedTuple, term)
+    isnothing(term) && return filter_params
+    terms = Dict(suffix => params for (suffix, params) in separate_term_params(filter_params))
+    key = "_" * String(term) * "_scaled"
+    haskey(terms, key) || error("term must be one of $(join(sort([k[2:end-7] for k in keys(terms)]), ", ")) (or nothing, " *
+                                "for the whole filter), got $(repr(term))")
+    return terms[key]
 end
 
 """

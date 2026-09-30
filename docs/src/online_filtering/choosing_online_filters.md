@@ -25,7 +25,7 @@ Un-normalised filters can be used (for example the spectral filter below), but `
 
 `filter_params` can also contain the option `outputs`: `:combined` (default), to output each filtered quantity as the sum of its terms (e.g. `b_Lagrangian_filtered`), or `:separate`, to output each term separately, named after its filtered tracer with a `_scaled` suffix (e.g. `b_C1_scaled` and `b_S1_scaled`, the ``a_1`` and ``b_1`` terms of the filtered ``b``). Separate outputs can't be regridded to the mean position. (The option `sine_parity` of the offline filter has no effect here, since the online weight function is only used for ``t > 0``.)
 
-To check a filter, [`get_weight_function`](@ref) and [`get_frequency_response`](@ref) (with `direction = :forward`) compute its weight function and frequency response.
+To check a filter, [`get_weight_function`](@ref) and [`get_frequency_response`](@ref) (with `direction = :forward`) compute its weight function and frequency response, for the whole filter or a single term (e.g. `term = "C1"`).
 
 For ``N/2`` sets of coefficients, the weight function is composed of ``N`` exponentials, and ``N`` filtered tracers are needed to find the Lagrangian mean of each tracer. The number of equations that the filtering simulation solves is therefore linear in ``N``, so beware making ``N`` too large. 
 
@@ -67,7 +67,7 @@ The weight functions at each frequency are, for ``t > 0``,
     G_{Sn}(t) &= A_n e^{-\alpha t}\sin{\omega_n t}\,,
 \end{align}
 ```
-so that ``a_n = b_n = A_n``, ``c_n = \alpha`` and ``d_n = \omega_n``. Each term is output separately (`outputs = :separate`), e.g. `b_C1_scaled` and `b_S1_scaled` for a filtered variable `b` at ``\omega_1``. Because the window only uses the past, the outputs respond to changes in the signal with a delay of about ``1/\alpha``.
+so that ``a_n = b_n = A_n``, ``c_n = \alpha`` and ``d_n = \omega_n``. Each term is output separately (`outputs = :separate`), e.g. `b_C1_scaled` and `b_S1_scaled` for a filtered variable `b` at ``\omega_1``. Because the window only uses the past, changes in the amplitude of the signal show up in the outputs after a delay of about ``1/\alpha``.
 
 There are two normalisations:
 - `:spectral` (default): ``A_n = \sqrt{2\alpha}``, so that the (one-sided) window has unit energy. Then, as for the offline filter, the sum of the squares of the two outputs at ``\omega_n`` (e.g. `b_C1_scaled^2 + b_S1_scaled^2`) estimates the (two-sided) power spectral density of the signal at ``\omega_n``.

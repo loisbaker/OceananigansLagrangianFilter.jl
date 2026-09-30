@@ -1,3 +1,5 @@
+using JLD2
+
 @testset "OfflineFilterConfig boundary relaxation validation" begin
 
     good_mask(x, z, p) = 1.0 # one argument per non-Flat dimension, plus mask_params
@@ -219,6 +221,20 @@ end
     grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
     config = OnlineFilterConfig(; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"), filter_params = params)
     @test config.filter_params.outputs === :separate && !config.regrid_to_mean
+
+    # The time shift (the centre of the weight function) isn't meaningful for an un-normalised filter, so there's a warning
+    output_filename = tempname() * ".jld2"
+    try
+        jldopen(output_filename, "w") do file
+            file["timeseries/t/0"] = 0.0
+            file["timeseries/t/1"] = 3600.0
+        end
+        config = OnlineFilterConfig(; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"), filter_params = params, output_filename)
+        @test_logs (:warn, r"not normalised, so the time shift") match_mode=:any compute_time_shift!(config)
+        @test jldopen(file -> haskey(file, "timeseries/t_shifted/1"), output_filename)
+    finally
+        rm(output_filename, force = true)
+    end
 end
 
 @testset "Weight function and frequency response" begin
@@ -236,6 +252,18 @@ end
         numerical = [sum(weights .* G .* exp.(-im * ω .* (0.0 .- t))) for ω in freq]
         @test isapprox(get_frequency_response(; freq, filter_params, direction), numerical; rtol = 1e-4)
     end
+
+    # The responses of the separate terms add up to the whole filter's response
+    for sine_parity in (:even, :odd), direction in (:both, :forward, :backward)
+        filter_params = merge(two_terms, (; sine_parity))
+        terms = sum(get_frequency_response(; freq, filter_params, direction, term) for term in ("C1", "S1", "C2", "S2"))
+        @test terms ≈ get_frequency_response(; freq, filter_params, direction)
+    end
+
+    # A spectrum filter's cosine term is its window times the cosine, and unknown terms give an error listing the valid ones
+    spectrum = set_offline_spectrum_filter_params(alpha = 0.1, freqs = [1.0, 2.0])
+    @test get_weight_function(; t, tref = 0.0, filter_params = spectrum, term = "C1") ≈ spectrum.a1 .* exp.(-0.1 .* abs.(t)) .* cos.(t)
+    @test_throws r"term must be one of" get_frequency_response(; freq, filter_params = spectrum, term = "C3")
 
     # The offline response is real if the weight function is even in time, and complex otherwise
     @test get_frequency_response(; freq, filter_params = two_terms) isa Vector{Float64}

@@ -1105,7 +1105,7 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 end
 
 """
-    get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both)
+    get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
 
 Computes the weight function of the filter, which determines how much each point in the
 timeseries `t` contributes to the filtered value at a reference time `tref`. For the offline
@@ -1124,13 +1124,16 @@ Keyword arguments
 - `direction`: `:both` (default) for the offline filter, `:forward` to keep only times before `tref`
   (as for the online filter, or the forward pass of the offline filter), or `:backward` to keep only
   times after `tref` (the backward pass of the offline filter).
+- `term`: `nothing` (default) for the whole filter, or a single term, labelled as in the names of the separate
+  outputs (see [`create_output_fields`](@ref)), e.g. `"C1"` (for `b_C1_scaled`) or `"S2"`.
 
 Returns
 =======
 - A vector of weights `G`, with the same dimensions as `t`, representing the
   value of the weight function at each time point relative to `tref`.
 """
-function get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both)
+function get_weight_function(; t::AbstractArray, tref::Real, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
+    filter_params = select_term(filter_params, term)
     direction in (:both, :forward, :backward) || error("direction must be :both, :forward or :backward, got $(repr(direction))")
     _, sine_parity = filter_output_options(filter_params)
     τ = tref .- t # Time lag, positive for times before tref
@@ -1162,7 +1165,7 @@ function get_weight_function(; t::AbstractArray, tref::Real, filter_params::Name
 end
 
 """
-    get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both)
+    get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
 
 Calculates the frequency response ``\\hat{G}(\\omega)`` of the filter, i.e. the Fourier transform of the
 weight function (see [`get_weight_function`](@ref)), so that filtering ``e^{i\\omega t}`` gives
@@ -1175,6 +1178,8 @@ Keyword arguments
   `c`, `d`) and the number of coefficient pairs (`N_coeffs`).
 - `direction`: `:both` (default) for the offline filter, `:forward` for the online filter (or the
   forward pass of the offline filter), or `:backward` for the backward pass of the offline filter.
+- `term`: `nothing` (default) for the whole filter, or a single term, labelled as in the names of the separate
+  outputs (see [`create_output_fields`](@ref)), e.g. `"C1"` (for `b_C1_scaled`) or `"S2"`.
 
 Returns
 =======
@@ -1182,7 +1187,8 @@ Returns
   filter (`direction = :both`) if the weight function is even in time (`sine_parity = :even`, the
   default), and complex otherwise.
 """
-function get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both)
+function get_frequency_response(; freq::AbstractArray, filter_params::NamedTuple, direction::Symbol = :both, term = nothing)
+    filter_params = select_term(filter_params, term)
     direction in (:both, :forward, :backward) || error("direction must be :both, :forward or :backward, got $(repr(direction))")
     _, sine_parity = filter_output_options(filter_params)
     σ = sine_parity === :odd ? -1 : 1 # Sign of the sine terms for times after tref
@@ -1339,12 +1345,19 @@ This new time series is stored in a new group called `timeseries/t_shifted` with
 """
 function compute_time_shift!(config::AbstractConfig)
     if !(config isa AbstractOnlineConfig)
-        @warn "Time shift computation is only relevant when filtering forward only. Offline forward-backward filtering
-        has an even weight function, so time shift should be zero. This function will compute a time shift regardless, but 
-        it may not be meaningful for offline forward-backward filters."
+        @warn "Time shift computation is only relevant when filtering forward only. The offline filter uses both the past " *
+              "and the future, so no time shift is needed. This function will compute a time shift regardless, but " *
+              "it may not be meaningful for the offline filter."
     end
     output_filename = config.output_filename
-    filter_params = config.filter_params    
+    filter_params = config.filter_params
+    direction = config isa AbstractOnlineConfig ? :forward : :both
+    if !(zero_frequency_gain(filter_params, direction) ≈ 1)
+        @warn "The filter is not normalised, so the time shift computed here (the centre of its weight function) " *
+              "is not meaningful. For a spectral filter, changes in the amplitude of the signal at each frequency " *
+              "are delayed by about 1/alpha (so t - 1/alpha is the time for the envelope or power), while its phase " *
+              "is only shifted by about alpha/(2 omega_n) radians."
+    end
     N_coeffs = filter_params.N_coeffs
     time_shift = 0.0
     if N_coeffs == 0.5 # exponential special case

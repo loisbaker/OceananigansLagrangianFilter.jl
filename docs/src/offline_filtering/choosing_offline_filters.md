@@ -26,7 +26,7 @@ for even sine terms. Odd sine terms integrate to zero, so for odd sine terms the
 
 Un-normalised filters can be used (for example the spectral filter below), but `regrid_to_mean` will be set to false as the maps are no longer displacements from the mean position. 
 
-To check a filter, [`get_weight_function`](@ref) and [`get_frequency_response`](@ref) compute its weight function and frequency response.
+To check a filter, [`get_weight_function`](@ref) and [`get_frequency_response`](@ref) compute its weight function and frequency response, for the whole filter or a single term (e.g. `term = "C1"`).
 
 For ``N/2`` sets of coefficients, the weight function is composed of ``N`` exponentials, and ``N`` filtered tracers are needed to find the Lagrangian mean of each tracer. The number of equations that the filtering simulation solves is therefore linear in ``N``, so beware making ``N`` too large. 
 
