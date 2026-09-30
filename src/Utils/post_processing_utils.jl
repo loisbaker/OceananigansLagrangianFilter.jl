@@ -54,29 +54,13 @@ function sum_forward_backward_contributions!(config::AbstractConfig; extra_filte
     T = config.T
     velocity_names = config.velocity_names
     var_names_to_filter = config.var_names_to_filter
-    compute_maps = config.compute_maps
     compute_mean_velocities = config.compute_mean_velocities
-    label = config.label
     
-    # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if (config isa AbstractOfflineConfig) && config.advection === nothing
-        filter_identifier = "_Eulerian_filtered"
-    else
-        filter_identifier = "_Lagrangian_filtered"
-    end
+    # The names of the filtered fields output by each pass (see create_output_fields), which we will combine
+    filtered_var_names = filtered_output_names(config)
 
-    # List the names of the fields that we will combine
-    filtered_var_names = Tuple([var * label * filter_identifier for var in var_names_to_filter])
-    if compute_maps
-        filtered_var_names = (Tuple(["xi_" * vel * label for vel in velocity_names])..., filtered_var_names...)
-    end
-
-    # The mean velocities are combined in the same way. The original velocities are copied if they were filtered
-    vel_names_to_filter = ()
-    if compute_mean_velocities
-        filtered_var_names = (filtered_var_names..., Tuple([vel * label * filter_identifier for vel in velocity_names])...)
-        vel_names_to_filter = velocity_names
-    end
+    # The original velocities are copied if the mean velocities were computed
+    vel_names_to_filter = compute_mean_velocities ? velocity_names : ()
 
     # There might be some extra filtered variables that the user defined that we should combine too
     filtered_var_names = Tuple(unique((filtered_var_names..., extra_filtered_var_names...)))
@@ -1301,6 +1285,10 @@ Arguments
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
     filter_params = config.filter_params
+    outputs, _ = filter_output_options(filter_params)
+    if outputs === :separate
+        error("compute_Eulerian_filter! is not yet supported for filters that output their terms separately (outputs = :separate).")
+    end
     output_filename = config.output_filename
     var_names_to_filter = config.var_names_to_filter
     compute_mean_velocities = config.compute_mean_velocities

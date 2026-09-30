@@ -28,7 +28,7 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
-using ..Utils: resolve_map_options
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
@@ -211,7 +211,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -395,23 +395,29 @@ any other velocity components will be zero by default."
             
             end
         else # N_coeffs isn't provided, but we might be able to infer it
-            if floor(length(filter_params)/4) == length(filter_params)/4
-                filter_params = merge(filter_params, (N_coeffs = Int(length(filter_params)/4),))
+            if number_of_coefficient_fields(filter_params) > 0 && number_of_coefficient_fields(filter_params) % 4 == 0
+                filter_params = merge(filter_params, (N_coeffs = number_of_coefficient_fields(filter_params) ÷ 4,))
                 # But we still have to check that the right entries are there:
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
                     error("filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
-            elseif length(filter_params) == 2
+            elseif number_of_coefficient_fields(filter_params) == 2
                 filter_params = merge(filter_params, (N_coeffs = 0.5,))
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
                     error("For a filter with two coefficients, filter_params must have fields :a1, and :c1")
                 end
             else
-                error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
+                error("filter_params must have either 2 coefficients (for single exponential) or a multiple of 4 coefficients, e.g. 2*N coefficients for Butterworth squared of order N, N even.")
             
             end
 
         end
+    end
+
+    # Check the output options of the filter
+    outputs, sine_parity = filter_output_options(filter_params)
+    if sine_parity === :odd && filter_params.N_coeffs == 0.5
+        error("sine_parity = :odd requires sine terms, but a single exponential filter (N_coeffs = 0.5) has none.")
     end
 
     # Check normalisation of filter coefficients
@@ -459,7 +465,13 @@ any other velocity components will be zero by default."
     # Check and reconcile the options for the maps (e.g. no regridding for the Eulerian filter)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
                                                        lagrangian = !isnothing(advection), normalised,
-                                                       rectilinear = underlying_rectilinear_grid)
+                                                       rectilinear = underlying_rectilinear_grid,
+                                                       combined_outputs = outputs === :combined)
+
+    # The Eulerian filter for comparison doesn't yet support separately output terms
+    if compute_Eulerian_filter && outputs === :separate
+        error("compute_Eulerian_filter = true is not yet supported for filters that output their terms separately (outputs = :separate).")
+    end
 
     # Warn if Eulerian filter is being calculated twice
     if compute_Eulerian_filter && isnothing(advection)

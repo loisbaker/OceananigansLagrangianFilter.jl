@@ -8,7 +8,7 @@ using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
 
 using ..Utils
-using ..Utils: resolve_map_options
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields
 
 export OnlineFilterConfig
 """
@@ -112,7 +112,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1), true, true, true, 5, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", false, nothing, nothing, nothing)
 ```
 
 
@@ -187,23 +187,29 @@ function OnlineFilterConfig(; grid::AbstractGrid,
             
             end
         else # N_coeffs isn't provided, but we might be able to infer it
-            if floor(length(filter_params)/4) == length(filter_params)/4
-                filter_params = merge(filter_params, (N_coeffs = Int(length(filter_params)/4),))
+            if number_of_coefficient_fields(filter_params) > 0 && number_of_coefficient_fields(filter_params) % 4 == 0
+                filter_params = merge(filter_params, (N_coeffs = number_of_coefficient_fields(filter_params) ÷ 4,))
                 # But we still have to check that the right entries are there:
                 if !all((haskey(filter_params, Symbol(coeff,i)) for coeff in ["a","b","c","d"] for i in 1:filter_params.N_coeffs))
                     error("filter_params must have fields :a1, :a2, ..., :b1, :b2, ..., :c1, :c2, ..., :d1, :d2, ...")
                 end
-            elseif length(filter_params) == 2
+            elseif number_of_coefficient_fields(filter_params) == 2
                 filter_params = merge(filter_params, (N_coeffs = 0.5,))
                 if !all((haskey(filter_params, :a1) , haskey(filter_params, :c1)))
                     error("For a filter with two coefficients, filter_params must have fields :a1, and :c1")
                 end
             else
-                error("filter_params must have either 2 entries (for single exponential) or a multiple of 4 entries, e.g. 2*N entries for Butterworth squared of order N, N even.")
+                error("filter_params must have either 2 coefficients (for single exponential) or a multiple of 4 coefficients, e.g. 2*N coefficients for Butterworth squared of order N, N even.")
             
             end
 
         end
+    end
+
+    # Check the output options of the filter. The online filter only uses the weight function for t > 0, so sine_parity has no effect
+    outputs, _ = filter_output_options(filter_params)
+    if haskey(filter_params, :sine_parity)
+        @warn "filter_params.sine_parity has no effect for the online filter, which only uses the weight function for t > 0."
     end
 
     # Check normalisation of filter coefficients
@@ -234,7 +240,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     # Check and reconcile the options for the maps (e.g. no regridding for non-rectilinear grids)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
                                                        lagrangian = true, normalised,
-                                                       rectilinear = underlying_rectilinear_grid)
+                                                       rectilinear = underlying_rectilinear_grid,
+                                                       combined_outputs = outputs === :combined)
 
     # Check relaxation fields are appropriate
     if boundary_relaxation

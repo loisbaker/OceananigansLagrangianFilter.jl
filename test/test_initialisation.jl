@@ -148,6 +148,64 @@ end
     @test_throws ErrorException create_output_fields(model, filter_config; direction = :sideways)
 end
 
+@testset "create_output_fields: separate outputs and odd sine terms" begin
+    filtered_output_names = OceananigansLagrangianFilter.Utils.filtered_output_names # internal (not exported)
+
+    # An offline config (so that the backward pass can be tested) with a Butterworth filter, output separately
+    grid = FieldTimeSeries("data/reference_sim.jld2", "b").grid
+    butterworth = set_offline_BW2_filter_params(N = 2, freq_c = 1e-4)
+    config(; options...) = OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2",
+                                               var_names_to_filter = ("b",), velocity_names = ("u", "w"),
+                                               filter_params = merge(butterworth, (; options...)), grid = grid,
+                                               output_original_data = false)
+    separate_even = @test_logs (:warn, r"no combined fields") match_mode=:any config(outputs = :separate)
+    separate_odd  = config(outputs = :separate, sine_parity = :odd)
+    combined_odd  = config(sine_parity = :odd)
+    combined_even = config()
+
+    filtered_vars = create_filtered_vars(combined_even)
+    model = NonhydrostaticModel(grid; tracers = filtered_vars)
+    for (n, name) in enumerate(keys(model.tracers)) # a different, non-trivial field for each tracer
+        set!(getproperty(model.tracers, name), (x, z) -> n + x / 1e3 + z / 1e2)
+    end
+    field(output) = interior(Field(output))
+    (; a1, b1, c1, d1) = butterworth
+
+    # Separate outputs are named after their tracer with a _scaled suffix, and filtered_output_names lists them
+    forward = create_output_fields(model, separate_even)
+    @test sort(collect(keys(forward))) == sort(collect(filtered_output_names(separate_even)))
+    @test sort(collect(keys(forward))) == sort(["b_C1_scaled", "b_S1_scaled", "xi_u_C1_scaled", "xi_u_S1_scaled",
+                                                "xi_w_C1_scaled", "xi_w_S1_scaled", "u_C1_scaled", "u_S1_scaled",
+                                                "w_C1_scaled", "w_S1_scaled"])
+    @test field(forward["b_C1_scaled"]) == a1 .* interior(model.tracers.b_C1)
+    @test field(forward["b_S1_scaled"]) == b1 .* interior(model.tracers.b_S1)
+    @test field(forward["u_C1_scaled"]) ≈ -a1 .* (c1 .* interior(model.tracers.xi_u_C1) .+ d1 .* interior(model.tracers.xi_u_S1))
+    @test field(forward["u_S1_scaled"]) ≈ b1 .* (d1 .* interior(model.tracers.xi_u_C1) .- c1 .* interior(model.tracers.xi_u_S1))
+
+    # The separate outputs add up to the combined outputs
+    combined = create_output_fields(model, combined_even)
+    @test field(forward["b_C1_scaled"]) .+ field(forward["b_S1_scaled"]) ≈ field(combined["b_Lagrangian_filtered"])
+    @test field(forward["xi_u_C1_scaled"]) .+ field(forward["xi_u_S1_scaled"]) ≈ field(combined["xi_u"])
+    @test field(forward["u_C1_scaled"]) .+ field(forward["u_S1_scaled"]) ≈ field(combined["u_Lagrangian_filtered"])
+
+    # In the backward pass, the mean velocities are negated (they change sign under time reversal), and so are
+    # the sine terms if they are odd. The forward outputs don't depend on the sine parity.
+    @test create_output_fields(model, separate_odd) |> keys |> collect |> sort == sort(collect(keys(forward)))
+    for (options, sine_sign) in ((separate_even, 1), (separate_odd, -1))
+        backward = create_output_fields(model, options; direction = :backward)
+        for name in keys(forward)
+            velocity_sign = startswith(name, "u_") || startswith(name, "w_") ? -1 : 1
+            term_sign = occursin("_S1_", name) ? sine_sign : 1
+            @test field(backward[name]) == velocity_sign * term_sign .* field(forward[name])
+        end
+    end
+
+    # Combined outputs with odd sine terms: the backward contribution has its sine terms negated
+    backward = create_output_fields(model, combined_odd; direction = :backward)
+    @test field(backward["b_Lagrangian_filtered"]) ≈ field(forward["b_C1_scaled"]) .- field(forward["b_S1_scaled"])
+    @test field(backward["u_Lagrangian_filtered"]) ≈ -(field(forward["u_C1_scaled"]) .- field(forward["u_S1_scaled"]))
+end
+
 @testset "create_forcing wires in a relaxation term when boundary_relaxation = true" begin
     grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
                             topology = (Periodic, Flat, Bounded))

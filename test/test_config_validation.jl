@@ -115,3 +115,36 @@ end
     # The removed option map_to_mean gives an error explaining what to use instead
     @test_throws r"compute_maps" OfflineFilterConfig(; base..., map_to_mean = true)
 end
+
+@testset "Filter output options (outputs, sine_parity)" begin
+
+    base = (; original_data_filename = "data/reference_sim.jld2", var_names_to_filter = ("b",), velocity_names = ("u", "w"))
+    butterworth = set_offline_BW2_filter_params(N = 2, freq_c = 1e-4)
+
+    # The helpers set the output options explicitly (these are also the defaults)
+    @test butterworth.outputs === :combined && butterworth.sine_parity === :even
+    @test set_online_BW_filter_params(N = 2, freq_c = 1e-4).outputs === :combined
+
+    # Only the allowed values can be used
+    @test_throws r"outputs must be" OfflineFilterConfig(; base..., filter_params = merge(butterworth, (outputs = :both,)))
+    @test_throws r"sine_parity must be" OfflineFilterConfig(; base..., filter_params = merge(butterworth, (sine_parity = :none,)))
+
+    # A single exponential filter has no sine terms
+    @test_throws r"no sine terms|has none" OfflineFilterConfig(; base..., filter_params = merge(set_offline_BW2_filter_params(N = 1, freq_c = 1e-4), (sine_parity = :odd,)))
+
+    # N_coeffs can be inferred from the coefficients, even if filter_params also has the output options
+    without_N_coeffs = Base.structdiff(butterworth, (; N_coeffs = nothing))
+    @test OfflineFilterConfig(; base..., filter_params = without_N_coeffs).filter_params.N_coeffs == 1
+
+    # Separate outputs can't be regridded, and don't yet work with the Eulerian filter for comparison
+    separate = merge(butterworth, (outputs = :separate,))
+    config = @test_logs (:warn, r"no combined fields") match_mode=:any OfflineFilterConfig(; base..., filter_params = separate)
+    @test config.compute_maps && !config.regrid_to_mean
+    @test_throws r"not yet supported" OfflineFilterConfig(; base..., filter_params = separate, compute_Eulerian_filter = true)
+
+    # The online filter only uses the weight function for t > 0, so the sine parity has no effect
+    grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
+    online_params = merge(set_online_BW_filter_params(N = 2, freq_c = 1e-4), (sine_parity = :odd,))
+    @test_logs (:warn, r"no effect for the online filter") match_mode=:any OnlineFilterConfig(; grid, var_names_to_filter = ("b",),
+                                                                                              velocity_names = ("u", "w"), filter_params = online_params)
+end
