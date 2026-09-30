@@ -212,22 +212,21 @@ function OnlineFilterConfig(; grid::AbstractGrid,
         @warn "filter_params.sine_parity has no effect for the online filter, which only uses the weight function for t > 0."
     end
 
-    # Check normalisation of filter coefficients
+    # Check normalisation of filter coefficients (unit gain at zero frequency, so a constant is preserved)
     normalised = true
     if filter_params.N_coeffs == 0.5
-        if !(filter_params.a1 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: a1=$(filter_params.a1) != c1=$(filter_params.c1)."
-            normalised = false
-        end
+        gain = filter_params.a1/filter_params.c1
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
         b_coeffs = [filter_params[Symbol("b",i)] for i in 1:filter_params.N_coeffs]
-        c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs] 
+        c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs]
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
-        if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1.0)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 1."
-            normalised = false
-        end
+        gain = sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2))
+    end
+    if !(gain ≈ 1)
+        @warn "Filter coefficients are not normalised: the gain at zero frequency is $(round(gain; sigdigits = 4)), not 1, " *
+              "so a constant is not preserved. This is expected for a band-pass or spectral filter."
+        normalised = false
     end
 
     # Give a warning if the grid has an immersed boundary

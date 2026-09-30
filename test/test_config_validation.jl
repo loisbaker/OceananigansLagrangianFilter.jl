@@ -142,6 +142,14 @@ end
     @test config.compute_maps && !config.regrid_to_mean
     @test_throws r"not yet supported" OfflineFilterConfig(; base..., filter_params = separate, compute_Eulerian_filter = true)
 
+    # Odd sine terms integrate to zero, so they don't count towards the normalisation: this term has
+    # gain 2ac/(c^2 + d^2) = 1 with odd sine terms, but 2(ac + bd)/(c^2 + d^2) = 2 with even ones
+    single_term = (; a1 = 1.0, b1 = 1.0, c1 = 1.0, d1 = 1.0, N_coeffs = 1, outputs = :combined)
+    @test_logs (:warn, r"gain at zero frequency is 2.0") match_mode=:any OfflineFilterConfig(; base...,
+                    filter_params = merge(single_term, (; sine_parity = :even)))
+    config = OfflineFilterConfig(; base..., filter_params = merge(single_term, (; sine_parity = :odd)))
+    @test config.regrid_to_mean # not switched off, so it was treated as normalised
+
     # The online filter only uses the weight function for t > 0, so the sine parity has no effect
     grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
     online_params = merge(set_online_BW_filter_params(N = 2, freq_c = 1e-4), (sine_parity = :odd,))

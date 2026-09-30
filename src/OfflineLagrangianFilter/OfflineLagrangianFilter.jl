@@ -420,22 +420,24 @@ any other velocity components will be zero by default."
         error("sine_parity = :odd requires sine terms, but a single exponential filter (N_coeffs = 0.5) has none.")
     end
 
-    # Check normalisation of filter coefficients
+    # Check normalisation of filter coefficients (unit gain at zero frequency, so a constant is preserved)
     normalised = true
     if filter_params.N_coeffs == 0.5
-        if !(filter_params.a1*2 ≈ filter_params.c1)
-            @warn "Filter coefficients are not normalised: 2*a1=$(2*filter_params.a1) != c1=$(filter_params.c1)."
-            normalised = false
-        end
+        gain = 2*filter_params.a1/filter_params.c1
     else
         a_coeffs = [filter_params[Symbol("a",i)] for i in 1:filter_params.N_coeffs]
         b_coeffs = [filter_params[Symbol("b",i)] for i in 1:filter_params.N_coeffs]
         c_coeffs = [filter_params[Symbol("c",i)] for i in 1:filter_params.N_coeffs]
         d_coeffs = [filter_params[Symbol("d",i)] for i in 1:filter_params.N_coeffs]
-        if !(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) ) ≈ 1/2)
-            @warn "Filter coefficients are not normalised: $(sum((a_coeffs.*c_coeffs + b_coeffs.*d_coeffs)./(c_coeffs.^2 + d_coeffs.^2) )) != 0.5."
-            normalised = false
+        gain = 2*sum(a_coeffs.*c_coeffs./(c_coeffs.^2 + d_coeffs.^2))
+        if sine_parity === :even # Odd sine terms integrate to zero, so only even ones contribute
+            gain += 2*sum(b_coeffs.*d_coeffs./(c_coeffs.^2 + d_coeffs.^2))
         end
+    end
+    if !(gain ≈ 1)
+        @warn "Filter coefficients are not normalised: the gain at zero frequency is $(round(gain; sigdigits = 4)), not 1, " *
+              "so a constant is not preserved. This is expected for a band-pass or spectral filter."
+        normalised = false
     end
 
     # If grid is not given, we can define it using the data file (this would be the typical behaviour for Oceananigans output)
