@@ -226,12 +226,15 @@ Two normalisations are available:
 - `:spectral` (default): `A_n = sqrt(alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
   Then `C^2 + S^2` estimates the (two-sided) power spectral density of the signal at `omega_n`,
   normalised so that the variance is `∫ S(omega) domega / 2π`.
-- `:unit_gain`: `A_n = alpha (alpha^2 + 4omega_n^2) / (2alpha^2 + 4omega_n^2)`, so that a signal at exactly
-  `omega_n` passes through with its amplitude preserved. Then `C` is the band-passed signal, and
-  `sqrt(C^2 + S^2)` and `atan(-S, C)` are its envelope and phase. At `omega_n = 0` this reduces to
-  `alpha/2`, the single exponential of `set_offline_BW2_filter_params(N = 1)`.
+- `:unit_gain`: `A_n = alpha (alpha^2 + 4omega_n^2) / (2alpha^2 + 4omega_n^2)`, so that `C` passes a signal at
+  exactly `omega_n` through unchanged: `C` is the band-passed signal, and `S` is its quadrature (a quarter
+  period later). Then `sqrt(C^2 + S^2)` is its envelope and `atan(S, C)` its instantaneous phase (`omega_n*t`
+  plus the phase of the signal). `S` has gain `4omega_n^2 / (2alpha^2 + 4omega_n^2)`, so the envelope and phase
+  are accurate to about `alpha^2 / (2omega_n^2)`. At `omega_n = 0` this reduces to `alpha/2`, the single
+  exponential of `set_offline_BW2_filter_params(N = 1)`.
 
-The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero.
+The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero. See
+[`set_online_spectrum_filter_params`](@ref) for the online filter.
 
 Arguments
 =========
@@ -244,18 +247,75 @@ Returns
 - A `NamedTuple` of coefficients, `N_coeffs`, `outputs = :separate` and `sine_parity = :odd`.
 """
 function set_offline_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+    amplitude(omega) = normalisation === :spectral ? sqrt(alpha) :
+                       alpha * (alpha^2 + 4omega^2) / (2alpha^2 + 4omega^2) # Unit gain at omega
+    filter_params = spectrum_filter_coefficients(amplitude; alpha, freqs, normalisation)
+    return merge(filter_params, (; sine_parity = :odd))
+end
+
+"""
+    set_online_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+
+Coefficients for an exponentially-windowed spectral filter for the online filter: the causal version of
+[`set_offline_spectrum_filter_params`](@ref), which only uses the past. The window is `w(t) = exp(-alpha*t)`
+for `t > 0` (the time before the present), giving the in-phase (`C`) and quadrature (`S`) weight functions
+at each frequency `omega_n`:
+
+    C(t) = A_n exp(-alpha*t) cos(omega_n*t)
+    S(t) = A_n exp(-alpha*t) sin(omega_n*t)
+
+so that `a_n = b_n = A_n`, `c_n = alpha` and `d_n = omega_n`, and each term is output separately
+(`outputs = :separate`).
+
+`alpha` sets the frequency resolution: the window lasts about `1/alpha`, so frequencies closer than
+about `alpha` are not resolved. Because the window only uses the past, the envelope `sqrt(C^2 + S^2)`
+responds to changes in the signal with a delay of about `1/alpha`.
+
+Two normalisations are available:
+- `:spectral` (default): `A_n = sqrt(2alpha)`, so that the window has unit energy, `∫ (A_n w)^2 dt = 1`.
+  Then, as for the offline filter, `C^2 + S^2` estimates the (two-sided) power spectral density of the
+  signal at `omega_n`, normalised so that the variance is `∫ S(omega) domega / 2π`.
+- `:unit_gain`: `A_n = alpha sqrt(alpha^2 + 4omega_n^2) / sqrt(alpha^2 + omega_n^2)`, so that `C` passes a
+  signal at exactly `omega_n` with its amplitude preserved, and `S` gives its quadrature with gain
+  `omega_n / sqrt(alpha^2 + omega_n^2)`. Then `sqrt(C^2 + S^2)` is its envelope and `atan(S, C)` its
+  instantaneous phase (`omega_n*t` plus the phase of the signal). Unlike the offline filter, the one-sided
+  window shifts the phases slightly: `C` lags the signal and `S` leads its quadrature, each by about
+  `alpha / (2omega_n)` radians, so the envelope and phase have a ripple of relative size about
+  `alpha / (2omega_n)` at twice the frequency (for a ripple below 1%, use `alpha ≲ 0.02 omega_n`). At
+  `omega_n = 0` this reduces to `alpha`, the single exponential of `set_online_BW_filter_params(N = 1)`.
+
+The `S` terms can be left out of the outputs by setting their coefficients `b_n` to zero.
+
+Arguments
+=========
+- `alpha`: Decay rate of the exponential window. Must be positive.
+- `freqs`: Frequencies (radians per unit time) at which to extract the signal.
+- `normalisation`: `:spectral` (default) or `:unit_gain`.
+
+Returns
+=======
+- A `NamedTuple` of coefficients, `N_coeffs` and `outputs = :separate`.
+"""
+function set_online_spectrum_filter_params(; alpha::Real, freqs::AbstractVector, normalisation::Symbol = :spectral)
+    amplitude(omega) = normalisation === :spectral ? sqrt(2alpha) :
+                       alpha * sqrt(alpha^2 + 4omega^2) / sqrt(alpha^2 + omega^2) # Unit gain at omega
+    return spectrum_filter_coefficients(amplitude; alpha, freqs, normalisation)
+end
+
+# Coefficients of a spectral filter with an exponential window decaying at rate alpha, with a_n = b_n = amplitude(omega_n),
+# c_n = alpha and d_n = omega_n at each frequency omega_n in freqs, whose terms are output separately
+function spectrum_filter_coefficients(amplitude::Function; alpha::Real, freqs::AbstractVector, normalisation::Symbol)
     alpha > 0 || error("alpha must be positive.")
     length(freqs) > 0 || error("freqs must contain at least one frequency.")
     normalisation in (:spectral, :unit_gain) || error("normalisation must be :spectral or :unit_gain, got $(repr(normalisation))")
 
     filter_params = NamedTuple()
     for (n, omega) in enumerate(freqs)
-        A = normalisation === :spectral ? sqrt(alpha) :
-            alpha * (alpha^2 + 4omega^2) / (2alpha^2 + 4omega^2) # Unit gain at omega
+        A = amplitude(omega)
         coefficients = NamedTuple{(Symbol("a$n"), Symbol("b$n"), Symbol("c$n"), Symbol("d$n"))}((A, A, alpha, omega))
         filter_params = merge(filter_params, coefficients)
     end
-    return merge(filter_params, (; N_coeffs = length(freqs), outputs = :separate, sine_parity = :odd))
+    return merge(filter_params, (; N_coeffs = length(freqs), outputs = :separate))
 end
 
 """

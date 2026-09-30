@@ -192,6 +192,36 @@ end
     @test config.filter_params.outputs === :separate && !config.regrid_to_mean
 end
 
+@testset "set_online_spectrum_filter_params" begin
+    alpha, freqs = 2e-5, [1e-4, 1.4e-4]
+
+    # In-phase and quadrature terms at each frequency, output separately, with no sine_parity (it has no effect online)
+    params = set_online_spectrum_filter_params(; alpha, freqs)
+    @test params.N_coeffs == 2 && params.outputs === :separate && !haskey(params, :sine_parity)
+    @test params.a1 == params.b1 && params.c1 == alpha && params.d2 == freqs[2]
+
+    # The spectral normalisation (the default) gives the one-sided window unit energy (trapezoidal rule)
+    τ = range(0, 60 / alpha, length = 1_000_001)
+    energy = (params.a1 .* exp.(-alpha .* τ)).^2
+    @test (sum(energy) - energy[1] / 2) * step(τ) ≈ 1 rtol = 1e-4
+
+    # The unit gain normalisation passes a signal at each frequency through the C term with its amplitude preserved
+    unit_gain = set_online_spectrum_filter_params(; alpha, freqs, normalisation = :unit_gain)
+    for n in 1:2
+        C_only = (; a1 = getproperty(unit_gain, Symbol("a$n")), b1 = 0.0, c1 = alpha, d1 = freqs[n], N_coeffs = 1)
+        @test abs(get_frequency_response(freq = [freqs[n]], filter_params = C_only, direction = :forward)[1]) ≈ 1
+    end
+    @test set_online_spectrum_filter_params(; alpha, freqs = [0.0], normalisation = :unit_gain).a1 ≈ alpha
+
+    @test_throws r"alpha must be positive" set_online_spectrum_filter_params(; alpha = -1, freqs)
+    @test_throws r"normalisation must be" set_online_spectrum_filter_params(; alpha, freqs, normalisation = :other)
+
+    # An online config with these parameters outputs the terms separately, so doesn't regrid
+    grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
+    config = OnlineFilterConfig(; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"), filter_params = params)
+    @test config.filter_params.outputs === :separate && !config.regrid_to_mean
+end
+
 @testset "Weight function and frequency response" begin
     zero_frequency_gain = OceananigansLagrangianFilter.Utils.zero_frequency_gain
 
