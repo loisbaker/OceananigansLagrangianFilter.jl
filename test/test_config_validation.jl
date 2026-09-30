@@ -191,3 +191,32 @@ end
                                               var_names_to_filter = ("b",), velocity_names = ("u", "w"), filter_params = params)
     @test config.filter_params.outputs === :separate && !config.regrid_to_mean
 end
+
+@testset "Weight function and frequency response" begin
+    zero_frequency_gain = OceananigansLagrangianFilter.Utils.zero_frequency_gain
+
+    # The frequency response is the Fourier transform of the weight function, for each direction and sine parity
+    two_terms = (; a1 = 0.7, b1 = 0.4, c1 = 0.3, d1 = 1.1, a2 = 0.2, b2 = -0.5, c2 = 0.5, d2 = 0.6, N_coeffs = 2)
+    t = collect(range(-120, 120; length = 480_001)); dt = t[2] - t[1]
+    freq = [0.0, 0.5, 1.1, -0.8]
+    for sine_parity in (:even, :odd), direction in (:both, :forward, :backward)
+        filter_params = merge(two_terms, (; sine_parity))
+        G = get_weight_function(; t, tref = 0.0, filter_params, direction)
+        weights = fill(dt, length(t))
+        direction === :both || (weights[(length(t) + 1) ÷ 2] /= 2) # Trapezoidal rule at the jump at t = tref
+        numerical = [sum(weights .* G .* exp.(-im * ω .* (0.0 .- t))) for ω in freq]
+        @test isapprox(get_frequency_response(; freq, filter_params, direction), numerical; rtol = 1e-4)
+    end
+
+    # The offline response is real if the weight function is even in time, and complex otherwise
+    @test get_frequency_response(; freq, filter_params = two_terms) isa Vector{Float64}
+    @test get_frequency_response(; freq, filter_params = merge(two_terms, (; sine_parity = :odd))) isa Vector{ComplexF64}
+    @test_throws r"direction must be" get_weight_function(; t, tref = 0.0, filter_params = two_terms, direction = :sideways)
+
+    # The Butterworth filters are normalised, and odd sine terms don't contribute to the gain at zero frequency
+    @test zero_frequency_gain(set_offline_BW2_filter_params(N = 2, freq_c = 1e-4), :both) ≈ 1
+    @test zero_frequency_gain(set_offline_BW2_filter_params(N = 1, freq_c = 1e-4), :both) ≈ 1
+    @test zero_frequency_gain(set_online_BW_filter_params(N = 2, freq_c = 1e-4), :forward) ≈ 1
+    spectrum = set_offline_spectrum_filter_params(alpha = 1e-4, freqs = [1e-3, 2e-3])
+    @test zero_frequency_gain(spectrum, :both) ≈ sum(2 * spectrum[Symbol("a$i")] * 1e-4 / (1e-8 + w^2) for (i, w) in enumerate([1e-3, 2e-3]))
+end
