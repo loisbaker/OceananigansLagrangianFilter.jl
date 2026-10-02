@@ -1,6 +1,7 @@
 module DataIO
 
 using Oceananigans
+using Oceananigans: AbstractModel
 using Oceananigans.Fields: interior, Field
 using Oceananigans.OutputReaders: InMemory, FieldTimeSeries
 using Oceananigans.BoundaryConditions: fill_halo_regions!
@@ -18,6 +19,6 @@ include("buffered_data_reader.jl")
 
 export AbstractDataSource, JLD2DataSource, NetCDFDataSource
 export BufferedDataReader, create_buffered_reader
-export advance_buffer!, interpolate_to_model!
+export advance_buffer!, interpolate_to_model!, update_input_data!
 
 end # module DataIO
