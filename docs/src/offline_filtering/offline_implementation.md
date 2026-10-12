@@ -42,3 +42,45 @@ run_offline_Lagrangian_filter(filter_config)
 
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
+
+## Varying cutoff frequency
+
+The cutoff frequency can vary in space, and in time, through a frequency scale ``M`` that multiplies the filter's
+frequencies locally (see [Varying cutoff frequency](@ref)). `frequency_scale_func` takes the non-flat coordinates and
+`frequency_scale_params`:
+
+```julia
+frequency_scale(x, z, p) = 1 + 0.5 * sin(2π * x / p.L)
+
+config = OfflineFilterConfig(original_data_filename = "my_simulation.jld2",
+                             var_names_to_filter = ("T",),
+                             velocity_names = ("u", "w"),
+                             N = 2, freq_c = 1e-4,
+                             frequency_scale_func = frequency_scale,
+                             frequency_scale_params = (; L = 10kilometers))
+```
+
+``M`` can also depend on other fields in the data, which are read in with `extra_auxiliary_var_names` and named in
+`frequency_scale_dependencies`. Their values at the cell centre are passed after the coordinates:
+
+```julia
+frequency_scale(x, z, zeta, p) = 1 + abs(zeta) / p.f
+
+config = OfflineFilterConfig(...,
+                             extra_auxiliary_var_names = ("zeta",),
+                             frequency_scale_func = frequency_scale,
+                             frequency_scale_dependencies = (:zeta,),
+                             frequency_scale_params = (; f = 1e-4))
+```
+
+- ``M`` must be finite and positive. This is checked at every cell centre when the config is built, but with
+  dependencies only for the initial fields, when the filtered variables are initialised. Make sure it stays
+  positive throughout the run, e.g. by using `abs` or `exp` of the fields rather than the fields themselves.
+- `frequency_scale_func` is called inside the filter's kernels, so it must be GPU-compatible to run on a GPU.
+- Fields in `frequency_scale_dependencies` must be at cell centres, apart from the velocities, which are interpolated
+  to cell centres.
+- ``M`` can't depend on the filtered fields of the same run (see [Varying cutoff frequency](@ref)): to use a
+  filtered field, filter it in a first run and read it in with `extra_auxiliary_var_names` in a second.
+- Choose `Δt` for the largest local cutoff during the run, and leave enough time for spin-up at the smallest one.
+- The time shift is not defined, and the Eulerian filter in post-processing is not computed. For the Eulerian
+  counterpart, run the filter again with `advection = nothing`.

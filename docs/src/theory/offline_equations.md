@@ -111,4 +111,6 @@ Backward-pass equations of the same form are solved by time-reversing the veloci
     f_2^*(\vb*{x},t) = \sum_{n=1}^{N/2} a_n h_{Cn}(\vb*{x},t) + \sigma b_n h_{Sn}(\vb*{x},t)\,,
 \end{equation}
 ```
-and ``f^* = f_1^* + f_2^*``, and similarly for the maps. The backward pass outputs its contribution directly (changing the sign of the odd sine terms, and of the mean velocities, which change sign under time reversal), so the final filtered field is reconstructed by summing the forward and backward pass outputs at each time. 
+and ``f^* = f_1^* + f_2^*``, and similarly for the maps. The backward pass outputs its contribution directly (changing the sign of the odd sine terms, and of the mean velocities, which change sign under time reversal), so the final filtered field is reconstructed by summing the forward and backward pass outputs at each time.
+
+For a cutoff frequency that varies in space or time, see [Varying cutoff frequency](@ref).

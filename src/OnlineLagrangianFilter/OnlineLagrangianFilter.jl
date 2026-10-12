@@ -8,7 +8,7 @@ using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options, check_frequency_scale_options
 
 export OnlineFilterConfig
 """
@@ -31,6 +31,9 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     label::String
     relaxation_mask_func::Union{Function, Nothing}
     relaxation_params::Union{NamedTuple, Nothing}
+    frequency_scale_func::Union{Function, Nothing}
+    frequency_scale_params::Union{NamedTuple, Nothing}
+    frequency_scale_dependencies::Tuple{Vararg{Symbol}}
 end
 
 """
@@ -47,7 +50,10 @@ end
                             npad::Int = 5,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
-                            relaxation_params::Union{NamedTuple, Nothing} = nothing
+                            relaxation_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_func::Union{Function, Nothing} = nothing,
+                            frequency_scale_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_dependencies::Tuple{Vararg{Symbol}} = ()
 
                             )
 
@@ -73,6 +79,9 @@ Keyword arguments
      at the same time.  Default: "".
   - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
+  - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
+  - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
+  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields whose values at the cell centre are passed to `frequency_scale_func`, e.g. `(:zeta,)`. Velocities are interpolated to cell centres, and other fields must be at cell centres. Offline, they must be in `velocity_names`, `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
 
 # Example:
 
@@ -106,7 +115,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", nothing, nothing, nothing, nothing, ())
 ```
 
 
@@ -125,6 +134,9 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
                             relaxation_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_func::Union{Function, Nothing} = nothing,
+                            frequency_scale_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_dependencies::Tuple{Vararg{Symbol}} = (),
                             map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
@@ -229,6 +241,9 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     # Check relaxation fields are appropriate
     check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
 
+    # Check the frequency scale options
+    check_frequency_scale_options(frequency_scale_func, frequency_scale_params, frequency_scale_dependencies, grid)
+
     return OnlineFilterConfig(grid,
                             output_filename,
                             var_names_to_filter,
@@ -240,7 +255,10 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             npad,
                             label,
                             relaxation_mask_func,
-                            relaxation_params
+                            relaxation_params,
+                            frequency_scale_func,
+                            frequency_scale_params,
+                            frequency_scale_dependencies
                             )
  
 end

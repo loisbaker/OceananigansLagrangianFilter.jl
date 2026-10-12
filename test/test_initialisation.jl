@@ -74,8 +74,9 @@ end
     reader = create_buffered_reader(filter_config; direction = :forward)
     filtered_vars = create_filtered_vars(filter_config)
     forcing = create_forcing(filtered_vars, filter_config)
-    model = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b),
-                                forcing = forcing, buoyancy = BuoyancyTracer())
+    # As in the offline filter, the original variables are auxiliary fields of the model
+    model = NonhydrostaticModel(grid; tracers = filtered_vars, auxiliary_fields = create_original_vars(filter_config),
+                                forcing = forcing)
 
     initialise_filtered_vars_from_data(model, reader, filter_config)
 
@@ -209,7 +210,7 @@ end
 @testset "create_forcing adds a relaxation term when relaxation_mask_func is given" begin
     grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
                             topology = (Periodic, Flat, Bounded))
-    mask_func(x, z, p) = p.a # constant mask, so the expected relaxation is simple
+    mask_func(x, z, p) = p.a + x * z # varies in space (and isn't symmetric in x and z), to check it's evaluated at the cell centre
     relax_timescale = 1hour
 
     for N in (1, 2) # single exponential and N_coeffs = 2
@@ -237,6 +238,7 @@ end
         relaxation_term(name) = getproperty(model_relax.forcing, name)(i, 1, k, grid, model_relax.clock, fields) -
                                 getproperty(model_norelax.forcing, name)(i, 1, k, grid, model_relax.clock, fields)
         value(name) = getproperty(fields, name)[i, 1, k]
+        mask = mask_func(Oceananigans.Grids.xnode(i, grid, Center()), Oceananigans.Grids.znode(k, grid, Center()), (; a = 0.5))
 
         for j in 1:(p.N_coeffs == 0.5 ? 1 : p.N_coeffs)
             c = getproperty(p, Symbol("c", j))
@@ -251,8 +253,153 @@ end
                 targets[Symbol("xi_w_S", j)] = value(:w) * (-2c * d) / (c^2 + d^2)^2
             end
             for (name, target) in targets
-                @test relaxation_term(name) ≈ -0.5 / relax_timescale * (value(name) - target)
+                @test relaxation_term(name) ≈ -mask / relax_timescale * (value(name) - target)
             end
         end
     end
+end
+
+@testset "Frequency scale: forcing, initialisation and post-processing" begin
+    # Each new model type takes a while to compile, so the forcing is checked on fields without a model, and the
+    # checks that need a model share one, of the same type as in the create_output_fields tests above
+    grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
+    m = 2.0
+    M_func(x, z, p) = p.m * (1.5 + x) # varies in space
+    M_b(x, z, b, p) = p.m * (0.5 + b) # the same, through the field b = 1 + x
+    scale = (; frequency_scale_func = M_func, frequency_scale_params = (; m))
+    uniform_scale = (; frequency_scale_func = (x, z, p) -> p.m, frequency_scale_params = (; m))
+    relaxation = (; relaxation_mask_func = (x, z, p) -> 0.3 + x * z, relaxation_params = (; timescale = 1hour))
+    config(N; freq_c = 1e-4, kwargs...) = OnlineFilterConfig(; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"),
+                                                               N, freq_c, kwargs...)
+    map_names(filtered_vars) = filter(name -> startswith(string(name), "xi_"), filtered_vars)
+
+    # Fields that vary, so that each term of the forcing is different
+    function set_fields!(fields, filtered_vars)
+        set!(fields.b, (x, z) -> 1 + x)
+        set!(fields.u, (x, z) -> 2 + z)
+        set!(fields.w, 0.5)
+        for (n, name) in enumerate(filtered_vars)
+            set!(getproperty(fields, name), (x, z) -> n * (1 + x * z))
+        end
+    end
+    divide_filtered_vars!(fields, filtered_vars, m) = foreach(name -> interior(getproperty(fields, name)) ./= m, filtered_vars)
+
+    clock = Clock(time = 0.0)
+    i, k = 2, 3
+    x, z = Oceananigans.Grids.xnode(i, grid, Center()), Oceananigans.Grids.znode(k, grid, Center())
+    M = M_func(x, z, (; m))
+    for N in (1, 2) # single exponential and N_coeffs = 2
+        filtered_vars = create_filtered_vars(config(N))
+        fields = merge((; u = XFaceField(grid), w = ZFaceField(grid), b = CenterField(grid)),
+                       NamedTuple(name => CenterField(grid) for name in filtered_vars))
+        set_fields!(fields, filtered_vars)
+        # The same, with the maps zero, so their forcing is just the velocity source
+        fields_no_maps = merge(fields, NamedTuple(name => CenterField(grid) for name in map_names(filtered_vars)))
+        forcing(F, name, f = fields) = getproperty(F, name)(i, 1, k, grid, clock, f)
+
+        F_uniform     = create_forcing(filtered_vars, config(N))
+        F_one         = create_forcing(filtered_vars, config(N; frequency_scale_func = (x, z, p) -> 1.0))
+        F_scale       = create_forcing(filtered_vars, config(N; scale...))
+        F_b           = create_forcing(filtered_vars, config(N; frequency_scale_func = M_b, frequency_scale_dependencies = (:b,),
+                                                                frequency_scale_params = (; m)))
+        F_relax       = create_forcing(filtered_vars, config(N; relaxation...))
+        F_scale_relax = create_forcing(filtered_vars, config(N; scale..., relaxation...))
+
+        for name in filtered_vars
+            # M = 1 is exactly the same as no frequency scale
+            @test forcing(F_one, name) == forcing(F_uniform, name)
+            # A dependency on a field gives the same as the same function of the coordinates
+            @test forcing(F_b, name) ≈ forcing(F_scale, name)
+
+            relaxation_term(F_with, F_without) = forcing(F_with, name) - forcing(F_without, name)
+            if name in map_names(filtered_vars)
+                # Maps: the decay terms are multiplied by M, but not the velocity source...
+                source = forcing(F_uniform, name, fields_no_maps)
+                @test forcing(F_scale, name) ≈ source + M * (forcing(F_uniform, name) - source)
+                # ...and the relaxation target (the local equilibrium) is divided by M. Without the frequency scale, the
+                # relaxation term is -R/T (q - target), which gives the target
+                q = getproperty(fields, name)[i, 1, k]
+                R = 0.3 + x * z
+                T = relaxation.relaxation_params.timescale
+                target = q + relaxation_term(F_relax, F_uniform) * T / R
+                @test relaxation_term(F_scale_relax, F_scale) ≈ -R / T * (q - target / M)
+            else
+                # Tracers: all the terms are multiplied by M, and the relaxation is unchanged
+                @test forcing(F_scale, name) ≈ M * forcing(F_uniform, name)
+                @test relaxation_term(F_scale_relax, F_scale) ≈ relaxation_term(F_relax, F_uniform)
+            end
+        end
+
+        # A uniform frequency scale m is the same filter as a uniform filter with cutoff m * freq_c: its tracers and maps
+        # are m times those of the faster filter (all the Butterworth coefficients scale with freq_c), so its forcing is too
+        forcing_values(F) = Dict(name => [getproperty(F, name)(i, 1, k, grid, clock, fields) for i in 1:4, k in 1:4]
+                                 for name in filtered_vars)
+        forcing_scaled = forcing_values(create_forcing(filtered_vars, config(N; uniform_scale...)))
+        divide_filtered_vars!(fields, filtered_vars, m)
+        forcing_faster = forcing_values(create_forcing(filtered_vars, config(N; freq_c = m * 1e-4)))
+        for name in filtered_vars
+            @test forcing_faster[name] ≈ forcing_scaled[name] ./ m
+        end
+    end
+
+    # Outputs and initialisation, for N = 2
+    filtered_vars = create_filtered_vars(config(2))
+    model = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b))
+    fields = merge(model.velocities, model.tracers)
+    set_fields!(fields, filtered_vars)
+    tracer(name) = interior(getproperty(model.tracers, name))
+    M_field = CenterField(grid)
+    set!(M_field, (x, z) -> M_func(x, z, (; m)))
+    output_values(config) = Dict(name => (f = Field(output); compute!(f); copy(interior(f)))
+                                 for (name, output) in create_output_fields(model, config))
+
+    # The mean velocities are multiplied by M (to give the velocity of the mean position), and the other outputs are
+    # unchanged. This uses the separate outputs, and the combined outputs are checked with the uniform frequency scale
+    separate(; kwargs...) = OnlineFilterConfig(; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"),
+                                                 filter_params = merge(config(2).filter_params, (; outputs = :separate)), kwargs...)
+    uniform, scaled = output_values(separate()), output_values(separate(; scale...))
+    for name in keys(uniform)
+        is_velocity = startswith(name, "u") || startswith(name, "w")
+        @test scaled[name] ≈ (is_velocity ? interior(M_field) : 1) .* uniform[name]
+    end
+
+    # With a uniform frequency scale m, the outputs (including the mean velocities, with their factor of M) are the same
+    # as those of the faster filter, with its tracers and maps 1/m times
+    outputs_scaled = output_values(config(2; uniform_scale...))
+    divide_filtered_vars!(fields, filtered_vars, m)
+    outputs_faster = output_values(config(2; freq_c = m * 1e-4))
+    for name in keys(outputs_scaled)
+        @test outputs_faster[name] ≈ outputs_scaled[name]
+    end
+
+    # Initialisation: the maps' local equilibria are divided by M, and the filtered variables are unchanged...
+    initialise_filtered_vars_from_model(model, config(2))
+    uniform_values = Dict(name => copy(tracer(name)) for name in filtered_vars)
+    initialise_filtered_vars_from_model(model, config(2; scale...))
+    for name in filtered_vars
+        expected = name in map_names(filtered_vars) ? uniform_values[name] ./ interior(M_field) : uniform_values[name]
+        @test tracer(name) ≈ expected
+    end
+    # ...so with a uniform frequency scale m, they're m times those of the faster filter
+    initialise_filtered_vars_from_model(model, config(2; uniform_scale...))
+    scaled_values = Dict(name => copy(tracer(name)) for name in filtered_vars)
+    initialise_filtered_vars_from_model(model, config(2; freq_c = m * 1e-4))
+    for name in filtered_vars
+        @test tracer(name) ≈ scaled_values[name] ./ m
+    end
+
+    # Dependencies that aren't fields of the model, and a frequency scale that isn't positive everywhere, are errors
+    # when initialising. So are dependencies that aren't at cell centres (checked here with an extra field instead of
+    # a new model, which would take a while to compile)
+    @test_throws ErrorException initialise_filtered_vars_from_model(model,
+        config(2; frequency_scale_func = M_b, frequency_scale_dependencies = (:vorticity,), frequency_scale_params = (; m)))
+    @test_throws ErrorException initialise_filtered_vars_from_model(model,
+        config(2; frequency_scale_func = (x, z, b, p) -> b - 1.5, frequency_scale_dependencies = (:b,)))
+    model_with_face_field = (; velocities = model.velocities, tracers = model.tracers, auxiliary_fields = (; b_face = XFaceField(grid)))
+    @test_throws ErrorException OceananigansLagrangianFilter.Utils.check_frequency_scale_dependencies(model_with_face_field,
+        config(2; frequency_scale_func = M_b, frequency_scale_dependencies = (:b_face,), frequency_scale_params = (; m)))
+
+    # The time shift and the Eulerian filter in post-processing aren't available with a frequency scale
+    @test_throws ErrorException compute_time_shift!(config(1; scale...))
+    @test_throws ErrorException compute_Eulerian_filter!(config(1; scale...))
 end

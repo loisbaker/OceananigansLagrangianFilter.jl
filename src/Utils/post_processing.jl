@@ -754,6 +754,9 @@ Arguments
   names, and filter parameters.
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
+    isnothing(config.frequency_scale_func) ||
+        error("compute_Eulerian_filter! doesn't support a frequency scale. For the Eulerian filter with the same frequency " *
+              "scale, run the filter without advection (offline, advection = nothing)")
     filter_params = config.filter_params
     outputs, _ = filter_output_options(filter_params)
     output_filename = config.output_filename
@@ -841,6 +844,8 @@ This new time series is stored in a new group called `timeseries/t_shifted` with
 
 """
 function compute_time_shift!(config::AbstractConfig)
+    isnothing(config.frequency_scale_func) ||
+        error("The time shift is not defined for a filter with a frequency scale, since the centre of its weight function varies")
     if !(config isa AbstractOnlineConfig)
         @warn "Time shift computation is only relevant when filtering forward only. The offline filter uses both the past " *
               "and the future, so no time shift is needed. This function will compute a time shift regardless, but " *

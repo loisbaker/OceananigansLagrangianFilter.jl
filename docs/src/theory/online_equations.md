@@ -124,3 +124,4 @@ The perturbation map equations are then given by
 ```
 and solved with initial conditions ``\vb*{\xi}_{Ck}(\vb*{x},0) = \vb*{\xi}_{Sk}(\vb*{x},0)=0``.
 
+For a cutoff frequency that varies in space or time, see [Varying cutoff frequency](@ref).

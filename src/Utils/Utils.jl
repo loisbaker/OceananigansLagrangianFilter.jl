@@ -7,12 +7,12 @@ using OceananigansLagrangianFilter: AbstractConfig, AbstractOfflineConfig, Abstr
 using JLD2
 using JLD2: Group
 using Oceananigans
-using Oceananigans.Fields: Center
+using Oceananigans.Fields: Center, location
 using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory
 using Oceananigans: AbstractModel
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
-using Oceananigans.Grids: AbstractGrid, topology, Flat
+using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture
 using DataStructures: OrderedDict
 using NCDatasets
 using Oceananigans.Forcings: DiscreteForcing

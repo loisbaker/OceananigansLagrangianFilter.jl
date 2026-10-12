@@ -70,7 +70,7 @@ theory_pages = [
     "Background: PDEs for Lagrangian filtering" => "theory/filtering_PDEs.md",
     "Online Lagrangian filtering equations" => "theory/online_equations.md",
     "Offline Lagrangian filtering equations" => "theory/offline_equations.md",
-    "Spatially varying cutoff equations" => "theory/frequency_scale.md"
+    "Varying cutoff frequency" => "theory/frequency_scale.md"
 ]
 online_pages = [
     "Online filtering implementation" => "online_filtering/online_implementation.md",
