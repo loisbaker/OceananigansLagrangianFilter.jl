@@ -292,7 +292,7 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
     label = config.label
 
 
-    if (config isa AbstractOfflineConfig) && config.advection === nothing
+    if !config.lagrangian
         error("Regridding to mean position is not meaningful for Eulerian filtering")
     end
     if compute_mean_velocities
@@ -818,7 +818,7 @@ Arguments
 function compute_Eulerian_filter!(config::AbstractConfig)
     isnothing(config.frequency_scale_func) ||
         error("compute_Eulerian_filter! doesn't support a frequency scale. For the Eulerian filter with the same frequency " *
-              "scale, run the filter without advection (offline, advection = nothing)")
+              "scale, run the filter without advection (lagrangian = false)")
     filter_params = config.filter_params
     outputs, _ = filter_output_options(filter_params)
     output_filename = config.output_filename

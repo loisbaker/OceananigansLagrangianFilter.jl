@@ -83,4 +83,4 @@ config = OfflineFilterConfig(...,
   filtered field, filter it in a first run and read it in with `extra_auxiliary_var_names` in a second.
 - Choose `Δt` for the largest local cutoff during the run, and leave enough time for spin-up at the smallest one.
 - The time shift is not defined, and the Eulerian filter in post-processing is not computed. For the Eulerian
-  counterpart, run the filter again with `advection = nothing`.
+  counterpart, run the filter again with `lagrangian = false`.

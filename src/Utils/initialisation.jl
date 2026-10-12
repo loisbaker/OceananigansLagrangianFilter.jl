@@ -24,6 +24,8 @@ Arguments
 - `config`: An instance of `AbstractConfig` with the filter parameters.
 """
 function initialise_filtered_vars_from_model(model::AbstractModel, config::AbstractConfig)
+    check_filtered_vars_advection(model, config)
+
     # The frequency scale at every cell centre, or `nothing` for a uniform filter
     M = frequency_scale_field(model, config)
 
@@ -133,22 +135,15 @@ end
 """
     zero_closure_for_filtered_vars(config::AbstractConfig)
 
+The diffusivities for the filtered variables of the online filter, all zero, to merge into the `κ` of the model's
+closure, e.g.
 
-Initializes the model's filtered tracer fields using the actual tracer fields that are
-assumed to have been already set. This improves the "spin-up" of the filter simulation 
-by providing a good starting point.
+    closure = ScalarDiffusivity(ν = 1e-6, κ = merge((; b = 1e-6), zero_closure_for_filtered_vars(filter_config)))
 
-The initialization formula depends on the number of filter coefficients
-(`N_coeffs`):
-
-- For a **single-exponential filter** (`N_coeffs = 0.5`), only the `_C1`
-  tracer exists and is initialized.
-- For a **multi-coefficient filter** (`N_coeffs > 0.5`), both the `_C` and `_S`
-  tracers for each coefficient are initialized.
+The filtered variables are then not diffused. Includes the maps if they are solved for.
 
 Arguments
 =========
-- `model`: The `AbstractModel` whose tracers are to be initialized.
 - `config`: An instance of `AbstractConfig` with the filter parameters.
 """
 function zero_closure_for_filtered_vars(config::AbstractConfig)
@@ -190,6 +185,19 @@ function zero_closure_for_filtered_vars(config::AbstractConfig)
     filtered_closure = NamedTuple(dict)
     return filtered_closure
 end
+
+"""
+    filtered_vars_advection(config::AbstractConfig; advection = WENO())
+
+The tracer advection schemes for the filtered variables of the online filter, to merge into the model's
+`tracer_advection`: `advection` for the Lagrangian filter, or `nothing` (no advection) for the Eulerian filter
+(`lagrangian = false`). Tracers missing from a `NamedTuple` `tracer_advection` are advected with `Centered()`,
+so list all the other tracers too, e.g.
+
+    tracer_advection = merge((; b = WENO(), T = WENO()), filtered_vars_advection(filter_config))
+"""
+filtered_vars_advection(config::AbstractConfig; advection = WENO()) =
+    NamedTuple(name => (config.lagrangian ? advection : nothing) for name in create_filtered_vars(config))
 
 """
     initialise_filtered_vars_from_data(model, reader::BufferedDataReader, config)

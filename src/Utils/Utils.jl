@@ -31,7 +31,7 @@ include("post_processing.jl")
 
 export create_buffered_reader, set_offline_BW2_filter_params, set_online_BW_filter_params, set_offline_spectrum_filter_params, set_online_spectrum_filter_params
 export create_original_vars, create_filtered_vars, create_forcing, create_output_fields
-export update_input_data!, initialise_filtered_vars_from_data, initialise_filtered_vars_from_model, zero_closure_for_filtered_vars
+export update_input_data!, initialise_filtered_vars_from_data, initialise_filtered_vars_from_model, zero_closure_for_filtered_vars, filtered_vars_advection
 export sum_forward_backward_contributions!, regrid_to_mean_position!, change_sign_of_map_variables!
 export jld2_to_netcdf, get_weight_function, get_frequency_response, compute_Eulerian_filter!, compute_time_shift!
 

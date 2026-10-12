@@ -70,7 +70,7 @@ no longer linear.
 
 Whether ``M`` varies in space or time, the filter has no single frequency response or time shift, so
 [`compute_time_shift!`](@ref) is not available. The Eulerian counterpart of the filter is the same filter without
-advection (offline, `advection = nothing`), which uses the same ``M`` at fixed points; the Eulerian filter in
+advection (`lagrangian = false`), which uses the same ``M`` at fixed points; the Eulerian filter in
 post-processing ([`compute_Eulerian_filter!`](@ref)) does not support a frequency scale.
 
 ## Mean velocities

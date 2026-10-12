@@ -1,5 +1,20 @@
 # The output fields of a Lagrangian filter
 
+# Warns if the model's advection of the filtered variables doesn't match config.lagrangian (see filtered_vars_advection)
+function check_filtered_vars_advection(model, config::AbstractOnlineConfig)
+    filtered_vars = create_filtered_vars(config)
+    advected = Tuple(name for name in filtered_vars if !isnothing(getproperty(model.advection, name)))
+    if !config.lagrangian && !isempty(advected)
+        @warn "lagrangian = false, but the model advects the filtered variables $advected, so the outputs named " *
+              "_Eulerian_filtered won't be the Eulerian filter. Set tracer_advection with filtered_vars_advection(config)."
+    elseif config.lagrangian && length(advected) < length(filtered_vars)
+        @warn "The model doesn't advect some of the filtered variables, so the outputs named _Lagrangian_filtered " *
+              "won't be the Lagrangian filter. Set lagrangian = false for the Eulerian filter."
+    end
+    return nothing
+end
+check_filtered_vars_advection(model, config::AbstractOfflineConfig) = nothing # the offline filter builds its own model
+
 """
     create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
 
@@ -50,6 +65,7 @@ corresponding reconstructed `Field`s.
 """
 function create_output_fields(model::AbstractModel, config::AbstractConfig; direction::Symbol = :forward)
     direction in (:forward, :backward) || error("direction must be :forward or :backward, got :$direction")
+    check_filtered_vars_advection(model, config)
 
     filter_params = config.filter_params
     outputs, sine_parity = filter_output_options(filter_params)
@@ -96,12 +112,8 @@ velocity_of_mean_position(output, M) = M * output
 function filtered_output_quantities(config::AbstractConfig)
     label = config.label
 
-    # When offline filtering, we can turn off advection to get Eulerian filtered fields
-    if (config isa AbstractOfflineConfig) && config.advection === nothing
-        filter_identifier = "_Eulerian_filtered"
-    else
-        filter_identifier = "_Lagrangian_filtered"
-    end
+    # Without advection (lagrangian = false), the filter is the Eulerian filter
+    filter_identifier = config.lagrangian ? "_Lagrangian_filtered" : "_Eulerian_filtered"
 
     row(quantity, combined_name, separate_stem, tracer_stem) = (; quantity, combined_name, separate_stem, tracer_stem)
 

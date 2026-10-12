@@ -29,6 +29,7 @@ using OceananigansLagrangianFilter.Utils
     - `compute_maps`: A Bool determining whether to compute and output the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` by solving their equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")). The maps are the displacements from the mean position.
     - `regrid_to_mean`: A Bool determining whether the filtered fields should be interpolated to the mean position after the simulation (see below). This requires the maps, so if `regrid_to_mean=true` the maps will be computed.
     - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `compute_maps=false` and `compute_mean_velocities=true` the maps will still be solved for (but not output). 
+    - `lagrangian`: `true` (default) for the Lagrangian filter, or `false` for the Eulerian filter (see below).
     - `frequency_scale_func`, `frequency_scale_params` and `frequency_scale_dependencies`: optionally, a frequency scale that varies the cutoff frequency in space and time, as for the offline filter (see [Varying cutoff frequency](@ref "Varying cutoff frequency")). Online, the dependencies can be any fields of the model.
 
 ```julia
@@ -67,7 +68,13 @@ vertical_closure = VerticalScalarDiffusivity(ν=1e-6 , κ=merge((T=1e-6, b= 1e-6
 closure = (horizontal_closure, vertical_closure)
 ```
 
-- Define the model with the combined (original and filtered) `tracers`, `forcing` and `closure`. This should work with both `NonHydrostaticModel` and `HydrostaticFreeSurfaceModel`. Any fields named in `frequency_scale_dependencies` must be fields of the model, e.g. added to its `auxiliary_fields` (which Oceananigans doesn't update, so keep them up to date, e.g. with a callback).
+- For the Lagrangian filter (the default), the filtered variables are advected like any other tracer. For the Eulerian filter (`lagrangian = false`), they must not be advected: set the model's `tracer_advection` with the helper function [`filtered_vars_advection`](@ref), which gives no advection (`nothing`) for each of the filtered variables. Tracers missing from a `NamedTuple` `tracer_advection` are advected with `Centered()`, not the model's `advection`, so list all the other tracers too. If the advection of the filtered variables doesn't match `lagrangian`, [`initialise_filtered_vars_from_model`](@ref) and [`create_output_fields`](@ref) give a warning.
+
+```julia
+tracer_advection = merge((; b = WENO(), T = WENO()), filtered_vars_advection(filter_config))
+```
+
+- Define the model with the combined (original and filtered) `tracers`, `forcing` and `closure` (and `tracer_advection` for the Eulerian filter). This should work with both `NonHydrostaticModel` and `HydrostaticFreeSurfaceModel`. Any fields named in `frequency_scale_dependencies` must be fields of the model, e.g. added to its `auxiliary_fields` (which Oceananigans doesn't update, so keep them up to date, e.g. with a callback).
 
 - Initialise your model variables as normal
 

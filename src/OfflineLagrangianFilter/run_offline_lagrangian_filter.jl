@@ -35,7 +35,7 @@ function run_offline_Lagrangian_filter(config)
     @info "Created forcing for filtered variables"
 
     # Define model
-    model = LagrangianFilter(config.grid; tracers = filtered_vars, auxiliary_fields = original_vars, forcing = forcing, advection=config.advection)
+    model = LagrangianFilter(config.grid; tracers = filtered_vars, auxiliary_fields = original_vars, forcing = forcing, advection = config.lagrangian ? config.advection : nothing)
     @info "Created model"
 
     # ── Forward pass ──────────────────────────────────────────────────────────
