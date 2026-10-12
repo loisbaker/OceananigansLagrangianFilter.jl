@@ -218,7 +218,7 @@ function initialise_filtered_vars_from_data(model::AbstractModel,
     hi_frames = reader.frames[3 - reader.lo_slot]
 
     # ── Tracer initialisation ─────────────────────────────────────────────────
-    for var_name in reader.var_names
+    for var_name in config.var_names_to_filter
         labelled = var_name * label
         lo_f = lo_frames[Symbol(var_name)]
         hi_f = hi_frames[Symbol(var_name)]

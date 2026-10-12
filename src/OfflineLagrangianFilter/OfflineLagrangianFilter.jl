@@ -86,6 +86,7 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     original_data_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}}
+    extra_auxiliary_var_names::Tuple{Vararg{String}}
     T_start::Real
     T_end::Real
     T::Real
@@ -116,6 +117,7 @@ end
     OfflineFilterConfig(; original_data_filename::String,
                         var_names_to_filter::Tuple{Vararg{String}},
                         velocity_names::Tuple{Vararg{String}},
+                        extra_auxiliary_var_names::Tuple{Vararg{String}} = (),
                         T_start::Union{Real,Nothing} = nothing,
                         T_end::Union{Real,Nothing} = nothing,
                         T::Union{Real,Nothing} = nothing,
@@ -152,6 +154,7 @@ Keyword arguments
   - `original_data_filename`: (required) The path to the JLD2 or NetCDF file containing the original Oceananigans output data.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
+  - `extra_auxiliary_var_names`: A `Tuple` of `String`s naming extra variables in the data file to read in as auxiliary fields of the filter model, without filtering them, e.g. for use in `frequency_scale_func`. They are interpolated in time like the filtered variables, but are not reversed in sign on the backward pass. Default: `()`.
   - `T_start`: Start time for the filter. Must be within the time range of the data. If not given, defaults to either T_end - T (if they are given), or the start time of the original data.
   - `T_end`: End time for the filter. Must be within the time range of the data. If not given, defaults to either T_start + T (after T_start given or computed, if T is given), or the end time of the original data.
   - `T`: Duration of the filtering. If not given, defaults to T_end - T_start (after T_start and T_end are given or computed).
@@ -205,7 +208,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -219,6 +222,7 @@ OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 
 function OfflineFilterConfig(; original_data_filename::String,
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
+                            extra_auxiliary_var_names::Tuple{Vararg{String}} = (),
                             T_start::Union{Real,Nothing} = nothing,
                             T_end::Union{Real,Nothing} = nothing,
                             T::Union{Real,Nothing} = nothing,
@@ -266,6 +270,13 @@ a different name in the original simulation.")
         error("Time variable 't' cannot be in 'var_names_to_filter'.")
     end
 
+    # Check that the extra auxiliary variables are new names
+    for var in extra_auxiliary_var_names
+        if var in (var_names_to_filter..., velocity_names..., "t")
+            error("'$var' is in 'extra_auxiliary_var_names', so it cannot also be in 'var_names_to_filter' or 'velocity_names', or be 't'.")
+        end
+    end
+
     # Notify about the velocities that will be used
     if compute_maps || regrid_to_mean
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
@@ -283,7 +294,7 @@ any other velocity components will be zero by default."
     # Open up the file for some checks — extract times and verify variables exist
     times = if endswith(original_data_filename, ".nc")
         NCDatasets.Dataset(original_data_filename, "r") do file
-            for var in (var_names_to_filter..., velocity_names...)
+            for var in (var_names_to_filter..., velocity_names..., extra_auxiliary_var_names...)
                 if !haskey(file, var)
                     error("Variable '$var' not found in original data file.")
                 end
@@ -292,7 +303,7 @@ any other velocity components will be zero by default."
         end
     else  # JLD2
         jldopen(original_data_filename, "r") do file
-            for var in (var_names_to_filter..., velocity_names...)
+            for var in (var_names_to_filter..., velocity_names..., extra_auxiliary_var_names...)
                 if !haskey(file["timeseries"], var)
                     error("Variable '$var' not found in original data file.")
                 end
@@ -463,6 +474,7 @@ any other velocity components will be zero by default."
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
                             velocity_names,
+                            extra_auxiliary_var_names,
                             T_start,
                             T_end,
                             T,

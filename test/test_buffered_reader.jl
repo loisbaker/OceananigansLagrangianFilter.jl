@@ -209,3 +209,47 @@ end
         run_reader_tests(arch_label, make_fwd, make_bwd, model, times, b_frames, u_frames)
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Extra auxiliary variables
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "BufferedDataReader — extra auxiliary variables" begin
+
+    datafile = reference_sim_with_extra_variable() # b2 = 2b
+    b_fts    = FieldTimeSeries(datafile, "b")
+    times    = Float64.(b_fts.times)
+    n        = length(times)
+    base     = (; original_data_filename = datafile, var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
+
+    # The extra names must be in the file, and must not also be filtered variables or velocities
+    @test_throws ErrorException OfflineFilterConfig(; base..., extra_auxiliary_var_names = ("c",))
+    @test_throws ErrorException OfflineFilterConfig(; base..., extra_auxiliary_var_names = ("b",))
+    @test_throws ErrorException OfflineFilterConfig(; base..., extra_auxiliary_var_names = ("u",))
+
+    config = OfflineFilterConfig(; base..., extra_auxiliary_var_names = ("b2",))
+
+    # b2 is an auxiliary field of the model, but is not filtered
+    original_vars = create_original_vars(config)
+    @test issubset((:b, :b2), keys(original_vars))
+    @test !any(name -> startswith(string(name), "b2"), create_filtered_vars(config))
+
+    model = NonhydrostaticModel(config.grid; tracers = create_filtered_vars(config), auxiliary_fields = original_vars)
+
+    # initialise_filtered_vars_from_data initialises the filtered variables only, with b2 present
+    initialise_filtered_vars_from_data(model, create_buffered_reader(config), config)
+    @test interior(model.tracers.b_C1) ≈ interior(b_fts[1]) ./ config.filter_params.c1
+
+    # b2 is interpolated in time like b...
+    fwd   = create_buffered_reader(config; direction = :forward)
+    sim_t = (times[1] + times[2]) / 2 - fwd.T_start
+    advance_buffer!(fwd, sim_t)
+    interpolate_to_model!(model, fwd, sim_t)
+    @test interior(model.auxiliary_fields.b2) ≈ interior(b_fts[1]) .+ interior(b_fts[2])
+
+    # ...and is not reversed in sign on the backward pass
+    bwd   = create_buffered_reader(config; direction = :backward)
+    sim_t = bwd.T_end - (times[n-1] + times[n]) / 2
+    advance_buffer!(bwd, sim_t)
+    interpolate_to_model!(model, bwd, sim_t)
+    @test interior(model.auxiliary_fields.b2) ≈ interior(b_fts[n-1]) .+ interior(b_fts[n])
+end
