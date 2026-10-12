@@ -69,7 +69,8 @@ theory_pages = [
     "Eulerian and Lagrangian averaging" => "theory/Eulerian_Lagrangian_definitions.md",
     "Background: PDEs for Lagrangian filtering" => "theory/filtering_PDEs.md",
     "Online Lagrangian filtering equations" => "theory/online_equations.md",
-    "Offline Lagrangian filtering equations" => "theory/offline_equations.md"
+    "Offline Lagrangian filtering equations" => "theory/offline_equations.md",
+    "Spatially varying cutoff equations" => "theory/frequency_scale.md"
 ]
 online_pages = [
     "Online filtering implementation" => "online_filtering/online_implementation.md",
