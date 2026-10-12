@@ -1,6 +1,6 @@
 # Builds a small NonhydrostaticModel with online Lagrangian filtering wired in, runs it
 # for a short time, and (optionally) compares the result against a saved reference.
-function run_online_filter_test(filename_stem::String; N::Int, freq_c::Real)
+function run_online_filter_test(filename_stem::String; N::Int, freq_c::Real, arch = CPU())
     # Model parameters
     Nx = 10
     Nz = 10
@@ -14,7 +14,7 @@ function run_online_filter_test(filename_stem::String; N::Int, freq_c::Real)
     Δb = M² * L_front # Buoyancy difference across the front
 
     # Grid
-    grid = RectilinearGrid(CPU(), size = (Nx, Nz),
+    grid = RectilinearGrid(arch, size = (Nx, Nz),
                         x = (-L_front / 2, L_front / 2),
                         z = (-H, 0),
                         topology = (Periodic, Flat, Bounded))
@@ -110,15 +110,15 @@ function run_online_filter_test(filename_stem::String; N::Int, freq_c::Real)
     return nothing
 end
 
-@testset "Online run test" begin
+@testset "Online run test on $(arch_label(arch))" for arch in test_architectures()
 
     # Test the online filter on a small simulation, comparing against a saved
     # reference output (generated with the same N=1 single-exponential filter).
-    filename_stem = "data/test_online_output"
+    filename_stem = "data/test_online_output_" * arch_label(arch)
     try
         # Letting any error propagate here means the @testset reports it directly
         # (with a full stacktrace), rather than us swallowing it into a boolean assertion.
-        run_online_filter_test(filename_stem; N = 1, freq_c = 1e-4 / 4)
+        run_online_filter_test(filename_stem; N = 1, freq_c = 1e-4 / 4, arch)
 
         compare_filter_output_to_reference(filename_stem, "data/reference_online_output.jld2", "w")
     finally

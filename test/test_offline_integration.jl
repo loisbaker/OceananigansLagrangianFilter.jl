@@ -1,16 +1,16 @@
 using JLD2
 
-@testset "Offline run test" begin
+@testset "Offline run test on $(arch_label(arch))" for arch in test_architectures()
 
     # Test the offline filter on small saved simulation data, comparing against
     # a saved reference output (generated with the same N=2 Butterworth filter).
-    test_filename_stem = "data/test_offline_output"
+    test_filename_stem = "data/test_offline_output_" * arch_label(arch)
     try
         filter_config = OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2", # Where the original simulation output is
                                         output_filename = test_filename_stem * ".jld2", # Where to save the filtered output
                                         var_names_to_filter = ("b",), # Which variables to filter
                                         velocity_names = ("u", "w"), # Velocities to use for Lagrangian filtering
-                                        architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                        architecture = arch, # CPU(), and GPU() if CUDA finds one
                                         Δt = 20minutes, # Time step of filtering simulation
                                         T_out = 1hour, # How often to output filtered data
                                         N = 2, # Order of Butterworth filter
