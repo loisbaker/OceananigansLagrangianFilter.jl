@@ -1,396 +1,159 @@
 # The forcing of the filtered variables: the right-hand sides of the filter equations
+#
+# Each filtered tracer (b_C1, b_S1, ..., xi_u_C1, xi_u_S1, ...) has one DiscreteForcing, which
+# Oceananigans calls as func(i, j, k, grid, clock, fields, p) at every cell centre. `fields` is
+# merge(velocities, tracers, auxiliary_fields), and `p` holds the field names (as `Val`s, so the
+# lookup happens at compile time) and the coefficients of term i:
+#
+#   tracer, cosine:  d/dt gC  = -c gC - d gS + f              [- R/T_relax (gC - f c/(c^2+d^2))]
+#   tracer, sine:    d/dt gS  = -c gS + d gC                  [- R/T_relax (gS - f d/(c^2+d^2))]
+#   map, cosine:     d/dt xiC = -c/(c^2+d^2) u - c xiC - d xiS [- R/T_relax (xiC - u (d^2-c^2)/(c^2+d^2)^2)]
+#   map, sine:       d/dt xiS = -d/(c^2+d^2) u - c xiS + d xiC [- R/T_relax (xiS - u (-2cd)/(c^2+d^2)^2)]
+#
+# The single exponential (N_coeffs = 0.5) has d = 0 and no sine fields. The bracketed boundary
+# relaxation towards the local equilibrium is only included if `boundary_relaxation = true`;
+# R = mask_func(x..., mask_params) is the relaxation mask.
+#
+# The terms are summed in the same order, and the relaxation targets are written in the same
+# form, as the previous implementation (a tuple of ContinuousForcings), so the results are
+# bit-for-bit unchanged.
 
-"""
-    _make_gC_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+# The value of the field called `name` at (i, j, k)
+@inline field_value(fields, ::Val{name}, i, j, k) where name = @inbounds getproperty(fields, name)[i, j, k]
 
-Create a forcing term for the cosine component (gC) of a filtered variable.
-Includes the special case of a single exponential.
+# The value of velocity `name` interpolated to (i, j, k), with the operator interp built by velocity_interpolation
+@inline velocity_value(fields, ::Val{name}, interp, i, j, k, grid) where name = @inbounds interp(i, j, k, grid, getproperty(fields, name))
 
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
-    including label if used.
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
+# The operator that interpolates a velocity to cell centres, as ContinuousForcing would use for it
+velocity_interpolation(vel_name::String) = interpolation_operator(assumed_field_location(Symbol(vel_name)), (Center(), Center(), Center()))
 
-# Returns
-- A `Forcing` object configured to compute the forcing term for the gC field.
-"""
-function _make_gC_forcing(i::Int, labelled_var_name::String, filter_params::NamedTuple)
-    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
-        c = getproperty(filter_params, Symbol("c",i))
-        gCkey = Symbol(labelled_var_name,"_C",i)
-        forcing_func = (args...) -> -args[end][1]*args[end-1] 
-        return Forcing(forcing_func, parameters = (c,), field_dependencies = (gCkey,))
-    else
-        c = getproperty(filter_params, Symbol("c",i))
-        d = getproperty(filter_params, Symbol("d",i))
-        gCkey = Symbol(labelled_var_name, "_C",i)
-        gSkey = Symbol(labelled_var_name, "_S",i)
-        forcing_func = (args...) -> -args[end][1]*args[end-2] - args[end][2]*args[end-1]
-        return Forcing(forcing_func, parameters = (c,d), field_dependencies = (gCkey,gSkey))
-    end
+#####
+##### Boundary relaxation
+#####
+
+# `relaxation` is either `nothing` (no relaxation) or a NamedTuple (mask_func, mask_params, timescale).
+# (A NamedTuple, rather than a struct, so Oceananigans adapts it to the GPU along with the other parameters.)
+boundary_relaxation(config::AbstractConfig) =
+    config.boundary_relaxation ? (; mask_func = config.mask_func, mask_params = config.mask_params, timescale = config.relax_timescale) : nothing
+
+# mask_func takes the non-flat coordinates of the cell centre and mask_params
+@inline function relaxation_mask(r, i, j, k, grid)
+    X = node(i, j, k, grid, Center(), Center(), Center())
+    return r.mask_func(X..., r.mask_params)
 end
 
-"""
-    _make_gS_forcing(i::Int, var_name::String, filter_params::NamedTuple)
+# Add the relaxation of `q` towards `target` to the tendency G
+@inline add_relaxation(G, ::Nothing, i, j, k, grid, q, target) = G
+@inline add_relaxation(G, r::NamedTuple, i, j, k, grid, q, target) = G + -1 / r.timescale * (q - target) * relaxation_mask(r, i, j, k, grid)
 
-Create a forcing term for the sine component (gS) of a filtered variable.
+#####
+##### Tendencies
+#####
 
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
-    including label if used.
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-
-# Returns
-- A `Forcing` object configured to compute the forcing term for the gS field.
-"""
-function _make_gS_forcing(i::Int, labelled_var_name::String, filter_params::NamedTuple)
-    c = getproperty(filter_params, Symbol("c",i))
-    d = getproperty(filter_params, Symbol("d",i))
-    gCkey = Symbol(labelled_var_name,"_C",i)
-    gSkey = Symbol(labelled_var_name,"_S",i)  
-    forcing_func = (args...) -> -args[end][1]*args[end-1] + args[end][2]*args[end-2]
-    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (gCkey,gSkey))
+@inline function tracer_C_tendency(i, j, k, grid, clock, fields, p)
+    gC = field_value(fields, p.C, i, j, k)
+    gS = field_value(fields, p.S, i, j, k)
+    f  = field_value(fields, p.source, i, j, k)
+    G  = (-p.c * gC - p.d * gS) + f
+    return add_relaxation(G, p.relaxation, i, j, k, grid, gC, f * p.c / (p.c^2 + p.d^2))
 end
 
-"""
-    _make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
-
-Create a forcing term for the cosine component (xiC) of a map variable. The function handles 
-the special case of a single exponential filter where `d` is zero.
-
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `vel_name::String`: The name of the velocity variable (e.g., "u").
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-
-# Returns
-- A `Forcing` object configured to compute the forcing term for the xiC field.
-"""
-function _make_xiC_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
-    c = getproperty(filter_params, Symbol("c",i))
-    d = filter_params.N_coeffs == 0.5 ? 0 : getproperty(filter_params, Symbol("d",i)) # Single exponential special case gets d = 0
-    forcing_func = (args...) -> -args[end][1]/(args[end][1]^2 + args[end][2]^2)*args[end-1] # Parameters are last argument, and field dependence is second to last argument. 
-    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
+@inline function tracer_S_tendency(i, j, k, grid, clock, fields, p)
+    gC = field_value(fields, p.C, i, j, k)
+    gS = field_value(fields, p.S, i, j, k)
+    f  = field_value(fields, p.source, i, j, k)
+    G  = -p.c * gS + p.d * gC
+    return add_relaxation(G, p.relaxation, i, j, k, grid, gS, f * p.d / (p.c^2 + p.d^2))
 end
 
-"""
-    _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
-
-Create a forcing term for the sine component (xiS) of a map variable. 
-
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `vel_name::String`: The name of the velocity variable (e.g., "u").
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-
-# Returns
-- A `Forcing` object configured to compute the forcing term for the xiS field.
-"""
-function _make_xiS_forcing(i::Int, vel_name::String, filter_params::NamedTuple)
-    c = getproperty(filter_params, Symbol("c",i))
-    d = getproperty(filter_params, Symbol("d",i))
-    forcing_func = (args...) -> -args[end][2]/(args[end][1]^2 + args[end][2]^2)*args[end-1]
-    return Forcing(forcing_func, parameters = (c,d), field_dependencies = (Symbol(vel_name),))
+@inline function exponential_tracer_tendency(i, j, k, grid, clock, fields, p)
+    gC = field_value(fields, p.C, i, j, k)
+    f  = field_value(fields, p.source, i, j, k)
+    G  = -p.c * gC + f
+    return add_relaxation(G, p.relaxation, i, j, k, grid, gC, f / p.c)
 end
 
-"""
-    _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-Create a relaxation term for the cosine component (gC) of a filtered variable. The function handles the special case of a single exponential filter where `d` is zero.  
-
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
-    including label if used.
-- `original_var_name::String`: The name of the original variable (e.g., "T").
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-- `relax_timescale::Real`: The timescale over which the relaxation occurs.
-- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
-- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
-
-# Returns
-- A `Forcing` object configured to compute the relaxation term for the gC field.
-"""
-function _make_gC_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
-        c = getproperty(filter_params, Symbol("c",i))
-        gCkey = Symbol(labelled_var_name,"_C",i)
-        var_key = Symbol(original_var_name)
-        # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, relax_timescale, mask_params), and field deps are original variable (args[end-2]), gC (args[end-1])
-        # use this general call signature to account for different numbers of spatial variables
-        # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][3])
-        gC_relaxation_func = (args...) -> -1/args[end][2]*(args[end-1] - args[end-2]/args[end][1]) * mask_func(args[1:end-4]...,args[end][3]) 
-        return Forcing(gC_relaxation_func, parameters = (c, relax_timescale, mask_params), field_dependencies = (var_key, gCkey))
-    else
-        c = getproperty(filter_params, Symbol("c",i))
-        d = getproperty(filter_params, Symbol("d",i))
-        gCkey = Symbol(labelled_var_name, "_C",i)
-        var_key = Symbol(original_var_name)
-        # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, d, relax_timescale, mask_params), and field deps are original variable (args[end-2]), gC (args[end-1])
-        # use this general call signature to account for different numbers of spatial variables
-        # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][4])
-        gC_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2] * args[end][1]/(args[end][1]^2 + args[end][2]^2)) * mask_func(args[1:end-4]...,args[end][4]) 
-        return Forcing(gC_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (var_key,gCkey))
-    end
+@inline function map_C_tendency(i, j, k, grid, clock, fields, p)
+    xiC = field_value(fields, p.C, i, j, k)
+    xiS = field_value(fields, p.S, i, j, k)
+    u  = velocity_value(fields, p.source, p.interp, i, j, k, grid)
+    G  = -p.c / (p.c^2 + p.d^2) * u + (-p.c * xiC - p.d * xiS)
+    return add_relaxation(G, p.relaxation, i, j, k, grid, xiC, u * (p.d^2 - p.c^2) / (p.c^2 + p.d^2)^2)
 end
 
-"""
-    _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-Create a relaxation term for the sine component (gS) of a filtered variable.
-    
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "T")
-    including label if used.
-- `original_var_name::String`: The name of the original variable (e.g., "T").
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-- `relax_timescale::Real`: The timescale over which the relaxation occurs.
-- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
-- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
-
-# Returns
-- A `Forcing` object configured to compute the relaxation term for the gS field.
-
-"""
-function _make_gS_relaxation(i::Int, labelled_var_name::String, original_var_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-    c = getproperty(filter_params, Symbol("c",i))
-    d = getproperty(filter_params, Symbol("d",i))
-    gSkey = Symbol(labelled_var_name, "_S",i)
-    var_key = Symbol(original_var_name)
-    # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, d, relax_timescale, mask_params), and field deps are original variable (args[end-2]), gS (args[end-1])
-    # use this general call signature to account for different numbers of spatial variables
-    # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][4])
-    gS_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*args[end][2]/(args[end][1]^2 + args[end][2]^2)) * mask_func(args[1:end-4]...,args[end][4]) 
-    return Forcing(gS_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (var_key,gSkey))
+@inline function map_S_tendency(i, j, k, grid, clock, fields, p)
+    xiC = field_value(fields, p.C, i, j, k)
+    xiS = field_value(fields, p.S, i, j, k)
+    u  = velocity_value(fields, p.source, p.interp, i, j, k, grid)
+    G  = -p.d / (p.c^2 + p.d^2) * u + (-p.c * xiS + p.d * xiC)
+    return add_relaxation(G, p.relaxation, i, j, k, grid, xiS, u * (-2 * p.c * p.d) / (p.c^2 + p.d^2)^2)
 end
 
-"""
-    _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-Create a relaxation term for the cosine component (xiC) of a map variable. The function handles the special case of a single exponential filter where `d` is zero.  
-
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "xi_u")
-    including label if used.
-- `vel_name::String`: The name of the velocity variable (e.g., "u"). 
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-- `relax_timescale::Real`: The timescale over which the relaxation occurs.
-- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
-- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function. 
-"""
-function _make_xiC_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-    if filter_params.N_coeffs == 0.5 # Single exponential special case has a simpler forcing
-        c = getproperty(filter_params, Symbol("c",i))
-        xiCkey = Symbol(labelled_var_name,"_C",i)
-        vel_key = Symbol(vel_name)
-        # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, relax_timescale, mask_params), and field deps are vel (args[end-2]), xiC (args[end-1])
-        # use this general call signature to account for different numbers of spatial variables
-        # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][3])
-        xiC_relaxation_func = (args...) -> -1/args[end][2]*(args[end-1] - (-1/args[end][1]^2)*args[end-2]) * mask_func(args[1:end-4]...,args[end][3]) 
-        return Forcing(xiC_relaxation_func, parameters = (c, relax_timescale, mask_params), field_dependencies = (vel_key, xiCkey))
-    else
-        c = getproperty(filter_params, Symbol("c",i))
-        d = getproperty(filter_params, Symbol("d",i))
-        xiCkey = Symbol(labelled_var_name, "_C",i)
-        vel_key = Symbol(vel_name)
-        # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, d, relax_timescale, mask_params), and field deps are velocity (args[end-2]), xiC (args[end-1])
-        # use this general call signature to account for different numbers of spatial variables
-        # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][4])
-        xiC_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*(args[end][2]^2 - args[end][1]^2)/(args[end][1]^2 + args[end][2]^2)^2) * mask_func(args[1:end-4]...,args[end][4]) 
-        return Forcing(xiC_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (vel_key, xiCkey))
-    end
+@inline function exponential_map_tendency(i, j, k, grid, clock, fields, p)
+    xiC = field_value(fields, p.C, i, j, k)
+    u  = velocity_value(fields, p.source, p.interp, i, j, k, grid)
+    G  = -p.c / (p.c^2 + 0^2) * u + -p.c * xiC
+    return add_relaxation(G, p.relaxation, i, j, k, grid, xiC, (-1 / p.c^2) * u)
 end
 
-
-"""
-    _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-Create a relaxation term for the sine component (xiS) of a map variable.
-
-# Arguments
-- `i::Int`: The index of the coefficient pair (cᵢ, dᵢ) to use from `filter_params`.
-- `labelled_var_name::String`: The name of the variable being filtered (e.g., "xi_u")
-    including label if used.
-- `vel_name::String`: The name of the velocity variable (e.g., "u"). 
-- `filter_params::NamedTuple`: A `NamedTuple` containing all filter coefficients.
-- `relax_timescale::Real`: The timescale over which the relaxation occurs.
-- `mask_func::Function`: A function that defines the spatial mask for the relaxation.
-- `mask_params::Union{NamedTuple, Nothing}`: Optional parameters for the mask function
-"""
-function _make_xiS_relaxation(i::Int, labelled_var_name::String, vel_name::String, filter_params::NamedTuple, relax_timescale::Real, mask_func::Function, mask_params::Union{NamedTuple, Nothing})
-    c = getproperty(filter_params, Symbol("c",i))
-    d = getproperty(filter_params, Symbol("d",i))
-    xiSkey = Symbol(labelled_var_name, "_S",i)
-    vel_key = Symbol(vel_name)
-    # args are (spatial variables, t, field deps, parameters). Parameters are args[end] = (c, d, relax_timescale, mask_params), and field deps are velocity (args[end-2]), xiS (args[end-1])
-    # use this general call signature to account for different numbers of spatial variables
-    # mask_func takes spatial variables (args[1:end-4] - not time args[end-3]) and mask_params (args[end][4])
-    xiS_relaxation_func = (args...) -> -1/args[end][3]*(args[end-1] - args[end-2]*(-2*args[end][1]*args[end][2])/(args[end][1]^2 + args[end][2]^2)^2) * mask_func(args[1:end-4]...,args[end][4])
-    return Forcing(xiS_relaxation_func, parameters = (c, d, relax_timescale, mask_params), field_dependencies = (vel_key, xiSkey))
-end
-
+#####
+##### Building the forcing
+#####
 
 """
     create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
 
-Creates a `NamedTuple` of forcing functions for each filtered variable and,
-if enabled, for the spatial mapping variables. These forcing terms are used
-to numerically integrate the filter equations.
+Create the forcing for the filtered tracers named in `filtered_vars` (from [`create_filtered_vars`](@ref)):
+the right-hand sides of the filter equations for each filtered variable, and for the map variables if
+they are needed, plus the boundary relaxation if `config.boundary_relaxation` is `true`.
 
-The function handles two cases: a single-exponential filter
-(`N_coeffs = 0.5`) and a multi-coefficient Butterworth squared filter
-(`N_coeffs > 0.5`).
-
-* For standard filtered variables, the forcing is a combination of terms
-  derived from the filter's coefficients and a term from the original data.
-* For spatial mapping variables (if `compute_maps` or `compute_mean_velocities` is true), the forcing
-  includes terms derived from the filter's coefficients and a term from the
-  original velocity data.
-
-Arguments
-=========
-- `filtered_vars`: A `Tuple` of `Symbol`s representing the names of the
-  filtered variables.
-- `config`: An instance of `AbstractConfig` containing the names of the
-  variables to be filtered, velocity names, and the filter parameters.
-
-Returns
-=======
-A `NamedTuple` where each key is a variable name from `filtered_vars` and
-each value is a `Tuple` of the corresponding forcing functions.
+Returns a `NamedTuple` with one `DiscreteForcing` for each filtered tracer.
 """
 function create_forcing(filtered_vars::Tuple{Vararg{Symbol}}, config::AbstractConfig)
-
-    var_names_to_filter = config.var_names_to_filter
-    velocity_names = config.velocity_names
     filter_params = config.filter_params
-    N_coeffs = filter_params.N_coeffs
     label = config.label
+    exponential = filter_params.N_coeffs == 0.5
+    N_terms = exponential ? 1 : filter_params.N_coeffs
+    relaxation = boundary_relaxation(config)
 
-    # Initialize dictionary
-    gC_forcings_dict = Dict()
+    forcing = Dict{Symbol, DiscreteForcing}()
 
-    # Make a simple forcing function for original data forcing - the final argument is the field dependence.
-    original_var_forcing_func(args...) = args[end]
+    for i in 1:N_terms
+        c = getproperty(filter_params, Symbol("c", i))
+        d = exponential ? 0 : getproperty(filter_params, Symbol("d", i))
 
-    # Special case `N_coeffs = 0.5`, single exponential
-    if N_coeffs == 0.5
-        # Build by hand as only one coefficient
-        for var_name in var_names_to_filter
-            labelled_var_name = var_name * label
-            var_key = Symbol(var_name)
-            gCkey = Symbol(labelled_var_name,"_C1")
-
-            # The forcing for gC is the sum of a filter forcing term and the original data forcing
-            gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
-            gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies = (;var_key))
-
-            if config.boundary_relaxation
-                relax_timescale = config.relax_timescale
-                mask_func = config.mask_func
-                mask_params = config.mask_params
-                gC_relaxation = _make_gC_relaxation(1, labelled_var_name, var_name, filter_params, relax_timescale, mask_func, mask_params)
-                gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing, gC_relaxation)
+        for var_name in config.var_names_to_filter
+            C = Symbol(var_name, label, "_C", i)
+            S = Symbol(var_name, label, "_S", i)
+            source = Val(Symbol(var_name))
+            if exponential
+                forcing[C] = DiscreteForcing(exponential_tracer_tendency, parameters = (; C = Val(C), source, c, relaxation))
             else
-                gC_forcings_dict[gCkey] = (gC_forcing, gC_original_var_forcing)
+                p = (; C = Val(C), S = Val(S), source, c, d, relaxation)
+                forcing[C] = DiscreteForcing(tracer_C_tendency, parameters = p)
+                forcing[S] = DiscreteForcing(tracer_S_tendency, parameters = p)
             end
         end
 
-        # Check if we need xi forcing (implied by number of filtered_vars)
-        if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
+        maps_needed(config) || continue
 
-            # Create forcing for xi maps (one for each velocity component)
-            for vel_name in velocity_names
-                labelled_var_name = "xi_" * vel_name * label
-                gCkey = Symbol(labelled_var_name, "_C1") 
-                 
-                # The forcing for xiC includes a term involving xiC (as for tracers) and a 
-                # term involving the corresponding velocity
-                gC_forcing = _make_gC_forcing(1, labelled_var_name, filter_params)
-                xiC_forcing = _make_xiC_forcing(1, vel_name, filter_params)
-
-                if config.boundary_relaxation
-                    relax_timescale = config.relax_timescale
-                    mask_func = config.mask_func
-                    mask_params = config.mask_params
-                    xiC_relaxation = _make_xiC_relaxation(1, labelled_var_name, vel_name, filter_params, relax_timescale, mask_func, mask_params)
-                    gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing, xiC_relaxation)
-                else
-                    gC_forcings_dict[gCkey] = (xiC_forcing, gC_forcing)
-                end
+        for vel_name in config.velocity_names
+            C = Symbol("xi_", vel_name, label, "_C", i)
+            S = Symbol("xi_", vel_name, label, "_S", i)
+            source = Val(Symbol(vel_name))
+            interp = velocity_interpolation(vel_name)
+            if exponential
+                forcing[C] = DiscreteForcing(exponential_map_tendency, parameters = (; C = Val(C), source, interp, c, relaxation))
+            else
+                p = (; C = Val(C), S = Val(S), source, interp, c, d, relaxation)
+                forcing[C] = DiscreteForcing(map_C_tendency, parameters = p)
+                forcing[S] = DiscreteForcing(map_S_tendency, parameters = p)
             end
         end
-
-        return NamedTuple(gC_forcings_dict)
-
-    else
-        gS_forcings_dict = Dict()
-
-        for var_name in var_names_to_filter
-            var_key = Symbol(var_name)
-            for i in 1:N_coeffs
-                labelled_var_name = var_name * label
-                gCkey = Symbol(labelled_var_name,"_C",i)
-                gSkey = Symbol(labelled_var_name,"_S",i)
-
-                # The forcing for gC is the sum of a filter forcing term and the original data forcing
-                gC_forcing_i = _make_gC_forcing(i, labelled_var_name, filter_params)
-                gC_original_var_forcing = Forcing(original_var_forcing_func, field_dependencies= (;var_key))
-                gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
-
-                if config.boundary_relaxation
-                    relax_timescale = config.relax_timescale
-                    mask_func = config.mask_func
-                    mask_params = config.mask_params
-                    gC_relaxation = _make_gC_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale, mask_func, mask_params)
-                    gS_relaxation = _make_gS_relaxation(i, labelled_var_name, var_name, filter_params, relax_timescale, mask_func, mask_params)
-
-                    gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing, gC_relaxation)
-                    gS_forcings_dict[gSkey] = (gS_forcing_i, gS_relaxation)
-                else
-                    gC_forcings_dict[gCkey] = (gC_forcing_i, gC_original_var_forcing)
-                    # The forcing for gS is just a filter forcing term
-                    gS_forcings_dict[gSkey] = gS_forcing_i
-                end
-            end
-        end
-
-        # Check if we need xi forcing (implied by number of filtered_vars)
-        if length(filtered_vars) > N_coeffs*length(var_names_to_filter)*2
-            # Create forcing for xi maps (one for each velocity component)
-            for vel_name in velocity_names
-                
-                for i in 1:N_coeffs
-                    labelled_var_name = "xi_" * vel_name * label
-                    gCkey = Symbol(labelled_var_name, "_C", i) 
-                    gSkey = Symbol(labelled_var_name, "_S", i) 
-
-                    # The forcing for xiC includes a term involving xiC and xiS (as for tracers, so reuse forcing constructor) and a 
-                    # term involving the corresponding velocity
-                    gC_forcing_i = _make_gC_forcing(i, labelled_var_name, filter_params)
-                    xiC_forcing_i = _make_xiC_forcing(i, vel_name, filter_params)
-                    
-                    # The forcing for xiS also includes a term involving xiC and xiS and a term involving the corresponding velocity
-                    gS_forcing_i = _make_gS_forcing(i, labelled_var_name, filter_params)
-                    xiS_forcing_i = _make_xiS_forcing(i, vel_name, filter_params)
-
-                    if config.boundary_relaxation
-                        relax_timescale = config.relax_timescale
-                        mask_func = config.mask_func
-                        mask_params = config.mask_params
-                        xiC_relaxation = _make_xiC_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale, mask_func, mask_params)
-                        xiS_relaxation = _make_xiS_relaxation(i, labelled_var_name, vel_name, filter_params, relax_timescale, mask_func, mask_params)
-                        gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i, xiC_relaxation)
-                        gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i, xiS_relaxation)
-                    else
-                        gC_forcings_dict[gCkey] = (xiC_forcing_i, gC_forcing_i)
-                        gS_forcings_dict[gSkey] = (xiS_forcing_i, gS_forcing_i)
-                    end
-
-                end
-            end
-        end
-
-        return (; NamedTuple(gC_forcings_dict)..., NamedTuple(gS_forcings_dict)...)
     end
+
+    missing_names = setdiff(filtered_vars, keys(forcing))
+    isempty(missing_names) || error("No forcing was created for $missing_names: filtered_vars should come from create_filtered_vars(config)")
+
+    return NamedTuple(forcing)
 end

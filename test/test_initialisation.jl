@@ -206,30 +206,53 @@ end
     @test field(backward["u_Lagrangian_filtered"]) ≈ -(field(forward["u_C1_scaled"]) .- field(forward["u_S1_scaled"]))
 end
 
-@testset "create_forcing wires in a relaxation term when boundary_relaxation = true" begin
+@testset "create_forcing adds a relaxation term when boundary_relaxation = true" begin
     grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
                             topology = (Periodic, Flat, Bounded))
-    mask_func(x, z, p) = 1.0
+    mask_func(x, z, p) = p.a # constant mask, so the expected relaxation is simple
+    relax_timescale = 1hour
 
-    config_norelax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
-                                        velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
-    config_relax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
-                                        velocity_names = ("u", "w"), N = 1, freq_c = 1e-4,
-                                        boundary_relaxation = true, relax_timescale = 1hour,
-                                        mask_func = mask_func, mask_params = (; a = 1))
+    for N in (1, 2) # single exponential and N_coeffs = 2
+        config_norelax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
+                                            velocity_names = ("u", "w"), N = N, freq_c = 1e-4)
+        config_relax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
+                                            velocity_names = ("u", "w"), N = N, freq_c = 1e-4,
+                                            boundary_relaxation = true, relax_timescale = relax_timescale,
+                                            mask_func = mask_func, mask_params = (; a = 0.5))
 
-    filtered_vars = create_filtered_vars(config_norelax) # same variable names regardless of relaxation
-    forcing_norelax = create_forcing(filtered_vars, config_norelax)
-    forcing_relax = create_forcing(filtered_vars, config_relax)
+        filtered_vars = create_filtered_vars(config_norelax) # same variable names regardless of relaxation
+        model_norelax = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b), forcing = create_forcing(filtered_vars, config_norelax))
+        model_relax   = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b), forcing = create_forcing(filtered_vars, config_relax))
 
-    # Without relaxation: filter forcing + original-data forcing
-    @test length(forcing_norelax[:b_C1]) == 2
-    @test length(forcing_norelax[:xi_u_C1]) == 2
+        # Evaluate both forcings on the same fields: uniform velocities, so centre-interpolation is exact
+        set!(model_relax, b = (x, z) -> 1 + x, u = 2.0)
+        set!(model_relax.velocities.w, 0.5) # see above on why w can't be set via set!(model, w=...)
+        for (n, name) in enumerate(filtered_vars)
+            set!(getproperty(model_relax.tracers, name), n)
+        end
+        fields = merge(model_relax.velocities, model_relax.tracers, model_relax.auxiliary_fields)
 
-    # With relaxation: an extra relaxation forcing term is appended
-    @test length(forcing_relax[:b_C1]) == 3
-    @test length(forcing_relax[:xi_u_C1]) == 3
+        p = config_relax.filter_params
+        i, k = 2, 3
+        relaxation_term(name) = getproperty(model_relax.forcing, name)(i, 1, k, grid, model_relax.clock, fields) -
+                                getproperty(model_norelax.forcing, name)(i, 1, k, grid, model_relax.clock, fields)
+        value(name) = getproperty(fields, name)[i, 1, k]
 
-    # Same coefficient/field-dependence structure, just with the extra term
-    @test forcing_relax[:b_C1][1:2] == forcing_norelax[:b_C1]
+        for j in 1:(p.N_coeffs == 0.5 ? 1 : p.N_coeffs)
+            c = getproperty(p, Symbol("c", j))
+            d = p.N_coeffs == 0.5 ? 0 : getproperty(p, Symbol("d", j))
+            # Relaxation is towards the local equilibrium of each tracer (C, and S if there is one)
+            targets = Dict(Symbol("b_C", j) => value(:b) * c / (c^2 + d^2),
+                           Symbol("xi_u_C", j) => value(:u) * (d^2 - c^2) / (c^2 + d^2)^2,
+                           Symbol("xi_w_C", j) => value(:w) * (d^2 - c^2) / (c^2 + d^2)^2)
+            if p.N_coeffs != 0.5
+                targets[Symbol("b_S", j)] = value(:b) * d / (c^2 + d^2)
+                targets[Symbol("xi_u_S", j)] = value(:u) * (-2c * d) / (c^2 + d^2)^2
+                targets[Symbol("xi_w_S", j)] = value(:w) * (-2c * d) / (c^2 + d^2)^2
+            end
+            for (name, target) in targets
+                @test relaxation_term(name) ≈ -0.5 / relax_timescale * (value(name) - target)
+            end
+        end
+    end
 end

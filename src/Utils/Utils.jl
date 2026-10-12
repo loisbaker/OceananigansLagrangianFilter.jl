@@ -15,6 +15,9 @@ using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryC
 using Oceananigans.Grids: AbstractGrid
 using DataStructures: OrderedDict
 using NCDatasets
+using Oceananigans.Forcings: DiscreteForcing
+using Oceananigans.Grids: node
+using Oceananigans.Operators: interpolation_operator, assumed_field_location
 
 using ..DataIO: BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!, update_input_data!, stored_times, shared_halo_regions
 
