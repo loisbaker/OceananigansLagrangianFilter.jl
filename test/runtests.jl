@@ -1,6 +1,6 @@
 # Tests for OceananigansLagrangianFilter, split across a few files by topic:
 #   test_loading.jl              - the package and its exports load correctly
-#   test_config_validation.jl   - OfflineFilterConfig / OnlineFilterConfig validation, esp. boundary_relaxation
+#   test_config_validation.jl   - OfflineFilterConfig / OnlineFilterConfig validation, esp. boundary relaxation
 #   test_initialisation.jl      - filter/map initialisation, sign flipping, and relaxation forcing
 #   test_offline_integration.jl - end-to-end offline filter run vs. saved reference data
 #   test_halo_inflation.jl      - saved data with a smaller halo than the model grid (e.g. WENO9 on WENO5 output)

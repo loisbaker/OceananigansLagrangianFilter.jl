@@ -11,8 +11,9 @@
 #   map, sine:       d/dt xiS = -d/(c^2+d^2) u - c xiS + d xiC [- R/T_relax (xiS - u (-2cd)/(c^2+d^2)^2)]
 #
 # The single exponential (N_coeffs = 0.5) has d = 0 and no sine fields. The bracketed boundary
-# relaxation towards the local equilibrium is only included if `boundary_relaxation = true`;
-# R = mask_func(x..., mask_params) is the relaxation mask.
+# relaxation towards the local equilibrium is only included if `relaxation_mask_func` is given;
+# R = relaxation_mask_func(x..., relaxation_params) is the relaxation mask, and
+# T_relax = relaxation_params.timescale.
 #
 # The terms are summed in the same order, and the relaxation targets are written in the same
 # form, as the previous implementation (a tuple of ContinuousForcings), so the results are
@@ -31,20 +32,43 @@ velocity_interpolation(vel_name::String) = interpolation_operator(assumed_field_
 ##### Boundary relaxation
 #####
 
-# `relaxation` is either `nothing` (no relaxation) or a NamedTuple (mask_func, mask_params, timescale).
+"""
+    check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
+
+Check the boundary relaxation options of a filter config. If `relaxation_mask_func` is given, it must take one
+argument per non-flat dimension of `grid` plus `relaxation_params`, and `relaxation_params` must contain the
+relaxation `timescale`.
+"""
+function check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
+    isnothing(relaxation_mask_func) && return nothing
+
+    # We should check that this function only has one method
+    length(methods(relaxation_mask_func)) == 1 || @warn "relaxation_mask_func has multiple methods, that could cause issues"
+
+    # We'll also check the number of args is correct
+    num_args = first(methods(relaxation_mask_func)).nargs - 2 # First argument is self, last is relaxation_params
+    num_non_flat = count(T -> T !== Flat, topology(grid))
+    num_args == num_non_flat || error("relaxation_mask_func has the wrong number of arguments: it should take the $num_non_flat non-flat coordinates and relaxation_params")
+
+    relaxation_params isa NamedTuple && haskey(relaxation_params, :timescale) ||
+        error("relaxation_params must contain the relaxation timescale, e.g. relaxation_params = (; timescale = 1hour)")
+    return nothing
+end
+
+# `relaxation` is either `nothing` (no relaxation) or a NamedTuple (mask_func, params), where params contains the timescale.
 # (A NamedTuple, rather than a struct, so Oceananigans adapts it to the GPU along with the other parameters.)
 boundary_relaxation(config::AbstractConfig) =
-    config.boundary_relaxation ? (; mask_func = config.mask_func, mask_params = config.mask_params, timescale = config.relax_timescale) : nothing
+    isnothing(config.relaxation_mask_func) ? nothing : (; mask_func = config.relaxation_mask_func, params = config.relaxation_params)
 
-# mask_func takes the non-flat coordinates of the cell centre and mask_params
+# mask_func takes the non-flat coordinates of the cell centre and relaxation_params
 @inline function relaxation_mask(r, i, j, k, grid)
     X = node(i, j, k, grid, Center(), Center(), Center())
-    return r.mask_func(X..., r.mask_params)
+    return r.mask_func(X..., r.params)
 end
 
 # Add the relaxation of `q` towards `target` to the tendency G
 @inline add_relaxation(G, ::Nothing, i, j, k, grid, q, target) = G
-@inline add_relaxation(G, r::NamedTuple, i, j, k, grid, q, target) = G + -1 / r.timescale * (q - target) * relaxation_mask(r, i, j, k, grid)
+@inline add_relaxation(G, r::NamedTuple, i, j, k, grid, q, target) = G + -1 / r.params.timescale * (q - target) * relaxation_mask(r, i, j, k, grid)
 
 #####
 ##### Tendencies
@@ -105,7 +129,7 @@ end
 
 Create the forcing for the filtered tracers named in `filtered_vars` (from [`create_filtered_vars`](@ref)):
 the right-hand sides of the filter equations for each filtered variable, and for the map variables if
-they are needed, plus the boundary relaxation if `config.boundary_relaxation` is `true`.
+they are needed, plus the boundary relaxation if `config.relaxation_mask_func` is given.
 
 Returns a `NamedTuple` with one `DiscreteForcing` for each filtered tracer.
 """

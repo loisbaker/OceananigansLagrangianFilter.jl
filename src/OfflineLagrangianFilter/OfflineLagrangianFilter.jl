@@ -28,7 +28,7 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
@@ -107,10 +107,8 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     label::String
-    boundary_relaxation::Bool
-    relax_timescale::Union{Real, Nothing}
-    mask_params::Union{NamedTuple, Nothing}
-    mask_func::Union{Function, Nothing}
+    relaxation_mask_func::Union{Function, Nothing}
+    relaxation_params::Union{NamedTuple, Nothing}
 
 end
 
@@ -141,10 +139,8 @@ end
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
                         label::String = "",
-                        boundary_relaxation::Bool = false,
-                        relax_timescale::Union{Real, Nothing} = nothing,
-                        mask_params::Union{NamedTuple, Nothing} = nothing,
-                        mask_func::Union{Function, Nothing} = nothing)
+                        relaxation_mask_func::Union{Function, Nothing} = nothing,
+                        relaxation_params::Union{NamedTuple, Nothing} = nothing)
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -180,10 +176,8 @@ Keyword arguments
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
-  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
-  - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
-  - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
-  - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
+  - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
 # Example:
 
 ```jldoctest offline_config
@@ -217,7 +211,7 @@ OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", nothing, nothing)
 
 ```
 
@@ -248,10 +242,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing,
                             label::String = "",
-                            boundary_relaxation::Bool = false,
-                            relax_timescale::Union{Real, Nothing} = nothing,
-                            mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing,
+                            relaxation_mask_func::Union{Function, Nothing} = nothing,
+                            relaxation_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
@@ -466,30 +458,8 @@ any other velocity components will be zero by default."
     end
 
     # Check relaxation fields are appropriate
-    if boundary_relaxation
-        if isnothing(relax_timescale)
-            error("A relax_timescale must be set if boundary_relaxation = true")
-        end
-        if isnothing(mask_params)
-            @warn "mask_params = nothing with boundary_relaxation = true. The mask function probably needs parameters."
-        end
-        if isnothing(mask_func)
-            error("A spatial mask_func must be set if boundary_relaxation = true")
-        else
-            # We should check that this function only has one method
-            if !(length(methods(mask_func)) ==1)
-                @warn "mask_func has multiple methods, that could cause issues"
-            end
-            # We'll also check the number of args is correct
-            num_args = first(methods(mask_func)).nargs - 2 # First argument is self, last is mask_params
-            num_non_flat = count(T -> T !== Flat, topology(grid))
-            if num_args != num_non_flat
-                error("mask_func has the wrong number of arguments")
-            end
+    check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
 
-        end
-    end
-    
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
                             velocity_names,
@@ -514,10 +484,8 @@ any other velocity components will be zero by default."
                             advection,
                             grid,
                             label,
-                            boundary_relaxation,
-                            relax_timescale,
-                            mask_params,
-                            mask_func
+                            relaxation_mask_func,
+                            relaxation_params
                             )
 
 end
