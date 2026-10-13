@@ -43,7 +43,7 @@ run_offline_Lagrangian_filter(filter_config)
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
 
-## Varying cutoff frequency
+## Frequency scale
 
 The cutoff frequency can vary in space, and in time, through a frequency scale ``M`` that multiplies the filter's
 frequencies locally (see [Varying cutoff frequency](@ref)). `frequency_scale_func` takes the non-flat coordinates and
