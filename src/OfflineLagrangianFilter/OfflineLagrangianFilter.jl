@@ -28,7 +28,7 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options, check_frequency_scale_options
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
@@ -110,6 +110,9 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     label::String
     relaxation_mask_func::Union{Function, Nothing}
     relaxation_params::Union{NamedTuple, Nothing}
+    frequency_scale_func::Union{Function, Nothing}
+    frequency_scale_params::Union{NamedTuple, Nothing}
+    frequency_scale_dependencies::Tuple{Vararg{Symbol}}
 
 end
 
@@ -142,7 +145,10 @@ end
                         grid::Union{AbstractGrid, Nothing} = nothing,
                         label::String = "",
                         relaxation_mask_func::Union{Function, Nothing} = nothing,
-                        relaxation_params::Union{NamedTuple, Nothing} = nothing)
+                        relaxation_params::Union{NamedTuple, Nothing} = nothing,
+                        frequency_scale_func::Union{Function, Nothing} = nothing,
+                        frequency_scale_params::Union{NamedTuple, Nothing} = nothing,
+                        frequency_scale_dependencies::Tuple{Vararg{Symbol}} = ())
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -181,6 +187,9 @@ Keyword arguments
      at the same time.  Default: "".
   - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
+  - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
+  - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
+  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields whose values at the cell centre are passed to `frequency_scale_func`, e.g. `(:zeta,)`. Velocities are interpolated to cell centres, and other fields must be at cell centres. Offline, they must be in `velocity_names`, `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
 # Example:
 
 ```jldoctest offline_config
@@ -214,7 +223,7 @@ OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", nothing, nothing, nothing, nothing, ())
 
 ```
 
@@ -248,6 +257,9 @@ function OfflineFilterConfig(; original_data_filename::String,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
                             relaxation_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_func::Union{Function, Nothing} = nothing,
+                            frequency_scale_params::Union{NamedTuple, Nothing} = nothing,
+                            frequency_scale_dependencies::Tuple{Vararg{Symbol}} = (),
                             map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
@@ -468,8 +480,22 @@ any other velocity components will be zero by default."
         compute_Eulerian_filter = false
     end
 
+    # The Eulerian filter in post-processing doesn't support a frequency scale
+    if compute_Eulerian_filter && !isnothing(frequency_scale_func)
+        @warn "compute_Eulerian_filter=true with a frequency_scale_func, but the Eulerian filter in post-processing doesn't support a frequency scale, so it won't be computed. Run the filter again with advection = nothing for the Eulerian filter with the same frequency scale."
+        compute_Eulerian_filter = false
+    end
+
     # Check relaxation fields are appropriate
     check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
+
+    # Check the frequency scale options
+    check_frequency_scale_options(frequency_scale_func, frequency_scale_params, frequency_scale_dependencies, grid)
+    for name in frequency_scale_dependencies
+        if !(String(name) in (velocity_names..., var_names_to_filter..., extra_auxiliary_var_names...))
+            error("frequency_scale_dependencies must be in velocity_names, var_names_to_filter or extra_auxiliary_var_names, but '$name' is not")
+        end
+    end
 
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
@@ -497,7 +523,10 @@ any other velocity components will be zero by default."
                             grid,
                             label,
                             relaxation_mask_func,
-                            relaxation_params
+                            relaxation_params,
+                            frequency_scale_func,
+                            frequency_scale_params,
+                            frequency_scale_dependencies
                             )
 
 end

@@ -29,6 +29,7 @@ using OceananigansLagrangianFilter.Utils
     - `compute_maps`: A Bool determining whether to compute and output the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}`` by solving their equations (see [Online Lagrangian filtering equations](@ref "Online Lagrangian filtering equations")). The maps are the displacements from the mean position.
     - `regrid_to_mean`: A Bool determining whether the filtered fields should be interpolated to the mean position after the simulation (see below). This requires the maps, so if `regrid_to_mean=true` the maps will be computed.
     - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `compute_maps=false` and `compute_mean_velocities=true` the maps will still be solved for (but not output). 
+    - `frequency_scale_func`, `frequency_scale_params` and `frequency_scale_dependencies`: optionally, a frequency scale that varies the cutoff frequency in space and time, as for the offline filter (see [Varying cutoff frequency](@ref "Varying cutoff frequency")). Online, the dependencies can be any fields of the model.
 
 ```julia
 filter_config = OnlineFilterConfig( grid = grid,
@@ -66,7 +67,7 @@ vertical_closure = VerticalScalarDiffusivity(ν=1e-6 , κ=merge((T=1e-6, b= 1e-6
 closure = (horizontal_closure, vertical_closure)
 ```
 
-- Define the model with the combined (original and filtered) `tracers`, `forcing` and `closure`. This should work with both `NonHydrostaticModel` and `HydrostaticFreeSurfaceModel`.
+- Define the model with the combined (original and filtered) `tracers`, `forcing` and `closure`. This should work with both `NonHydrostaticModel` and `HydrostaticFreeSurfaceModel`. Any fields named in `frequency_scale_dependencies` must be fields of the model, e.g. added to its `auxiliary_fields` (which Oceananigans doesn't update, so keep them up to date, e.g. with a callback).
 
 - Initialise your model variables as normal
 
@@ -109,13 +110,13 @@ if filter_config.regrid_to_mean
 end
 ```
 
-- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref).
+- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref). This isn't available with a frequency scale.
     
 ```julia
 compute_Eulerian_filter!(filter_config)
 ```
 
-- Optionally compute a shifted time coordinate to give a more appropriate reference time for the average. The new reference time is calculated as the weighted mean of time: ``t_{shift} = \int_{-\infty}^t G(t-s)s\, \mathrm{d} s``
+- Optionally compute a shifted time coordinate to give a more appropriate reference time for the average. The new reference time is calculated as the weighted mean of time: ``t_{shift} = \int_{-\infty}^t G(t-s)s\, \mathrm{d} s``. This isn't available with a frequency scale.
     
 ```julia
 compute_time_shift!(filter_config)

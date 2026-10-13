@@ -27,7 +27,8 @@ time, so their backward-pass contributions are negated. See `filter_output_optio
 For the offline filter, the outputs of each pass are defined as that pass's contribution
 to the filtered fields, so that the forward and backward outputs are summed (see
 [`sum_forward_backward_contributions!`](@ref)). The backward pass is run with the velocities
-negated, so its mean velocity outputs are negated (`direction = :backward`).
+negated, so its mean velocity outputs are negated (`direction = :backward`). With a frequency scale, the mean
+velocities are the velocity of the mean position (see [Varying cutoff frequency](@ref)).
 
 Arguments
 =========
@@ -56,9 +57,12 @@ function create_output_fields(model::AbstractModel, config::AbstractConfig; dire
     # Odd sine terms have weight functions that are odd in time, so change sign in the backward pass
     s = (direction === :backward && sine_parity === :odd) ? -1 : 1
 
+    # The frequency scale, or `nothing` for a uniform filter
+    M = frequency_scale_operation(model, config)
+
     outputs_dict = Dict()
     for q in filtered_output_quantities(config)
-        add_filtered_outputs!(outputs_dict, model.tracers, filter_params, q, s, outputs, direction)
+        add_filtered_outputs!(outputs_dict, model.tracers, filter_params, q, s, outputs, direction, M)
     end
 
     # We can also add the saved vars for comparison if this is an offline filter, otherwise do this manually 
@@ -78,6 +82,11 @@ end
 # The backward pass of the offline filter runs with the velocities negated, so its outputs of quantities that
 # change sign under time reversal (the mean velocities) are negated to give its contribution to the filtered field.
 time_reversed(output, direction) = direction === :backward ? -output : output
+
+# The mean velocities computed from the maps are the velocities in filter time, (u/M)*, so are multiplied by the
+# frequency scale M to give the velocity of the mean position (see docs/src/theory/frequency_scale.md)
+velocity_of_mean_position(output, ::Nothing) = output
+velocity_of_mean_position(output, M) = M * output
 
 # The filtered quantities that are output, one NamedTuple for each with fields
 #   quantity:      :tracer (a filtered variable or map) or :velocity (a mean velocity, computed from the maps)
@@ -152,11 +161,11 @@ scaled_tracers((cC, cS), gC, gS) = cS == 0 ? cC * gC : cC == 0 ? cS * gS : cC * 
 
 # Add the outputs for one filtered quantity `q` (see filtered_output_quantities) to `outputs_dict`, either combined
 # or separately for each term
-function add_filtered_outputs!(outputs_dict, tracers, filter_params, q, s, outputs, direction)
+function add_filtered_outputs!(outputs_dict, tracers, filter_params, q, s, outputs, direction, M)
     N_coeffs = filter_params.N_coeffs
     gC(i) = getproperty(tracers, Symbol(q.tracer_stem, "_C", i))
     gS(i) = getproperty(tracers, Symbol(q.tracer_stem, "_S", i))
-    sign_for_time_reversal(output) = q.quantity === :velocity ? time_reversed(output, direction) : output
+    velocity_output(output) = q.quantity === :velocity ? time_reversed(velocity_of_mean_position(output, M), direction) : output
 
     if outputs === :combined
         total = nothing
@@ -166,13 +175,13 @@ function add_filtered_outputs!(outputs_dict, tracers, filter_params, q, s, outpu
                                      (cosine[1] + sine[1]) * gC(i) + (cosine[2] + sine[2]) * gS(i)
             total = isnothing(total) ? term : total + term
         end
-        outputs_dict[q.combined_name] = sign_for_time_reversal(total)
+        outputs_dict[q.combined_name] = velocity_output(total)
     else
         for (i, has_cosine, has_sine) in filter_terms(filter_params)
             cosine, sine = term_coefficients(filter_params, i, q.quantity, s)
             gSi = N_coeffs == 0.5 ? nothing : gS(i)
-            has_cosine && (outputs_dict[q.separate_stem * "_C$(i)_scaled"] = sign_for_time_reversal(scaled_tracers(cosine, gC(i), gSi)))
-            has_sine   && (outputs_dict[q.separate_stem * "_S$(i)_scaled"] = sign_for_time_reversal(scaled_tracers(sine, gC(i), gSi)))
+            has_cosine && (outputs_dict[q.separate_stem * "_C$(i)_scaled"] = velocity_output(scaled_tracers(cosine, gC(i), gSi)))
+            has_sine   && (outputs_dict[q.separate_stem * "_S$(i)_scaled"] = velocity_output(scaled_tracers(sine, gC(i), gSi)))
         end
     end
     return outputs_dict

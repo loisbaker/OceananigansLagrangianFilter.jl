@@ -43,6 +43,36 @@ end
     @test isnothing(OnlineFilterConfig(; base...).relaxation_mask_func)
 end
 
+@testset "Frequency scale validation" begin
+
+    grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
+                            topology = (Periodic, Flat, Bounded))
+    online = (; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
+    offline = (; original_data_filename = "data/reference_sim.jld2", var_names_to_filter = ("b",),
+                 velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
+
+    # frequency_scale_func must take the non-Flat coordinates, the dependencies and frequency_scale_params
+    @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_func = (x, p) -> 1.0)
+    @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_func = (x, z, p) -> 1.0, frequency_scale_dependencies = (:u,))
+
+    # Without dependencies, it must be finite and positive at every cell centre
+    @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_func = (x, z, p) -> x)
+
+    # Dependencies need a frequency_scale_func
+    @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_dependencies = (:u,))
+
+    # Offline, the dependencies must be read from the data
+    @test_throws ErrorException OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, zeta, p) -> 1.0,
+                                                      frequency_scale_dependencies = (:zeta,))
+    config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,))
+    @test config.frequency_scale_dependencies == (:b,)
+
+    # The Eulerian filter in post-processing doesn't support a frequency scale, so is switched off with a warning
+    config = @test_logs (:warn, r"frequency_scale_func") match_mode=:any OfflineFilterConfig(; offline...,
+                            frequency_scale_func = (x, z, p) -> 1.0, compute_Eulerian_filter = true)
+    @test !config.compute_Eulerian_filter
+end
+
 @testset "Map options (compute_maps, regrid_to_mean)" begin
 
     base = (; original_data_filename = "data/reference_sim.jld2", var_names_to_filter = ("b",),
