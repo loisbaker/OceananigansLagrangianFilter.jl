@@ -10,12 +10,24 @@ using Oceananigans
 using Oceananigans.Fields: Center
 using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory
+using Oceananigans: AbstractModel
+using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
+using Oceananigans.Grids: AbstractGrid
+using DataStructures: OrderedDict
+using NCDatasets
+using Oceananigans.Forcings: DiscreteForcing
+using Oceananigans.Grids: node
+using Oceananigans.Operators: interpolation_operator, assumed_field_location
 
-using ..DataIO: BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!, stored_times, shared_halo_regions
+using ..DataIO: BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!, update_input_data!, stored_times, shared_halo_regions
 
-# Need to figure out how to get OfflineLagrangianFilter
-include("lagrangian_filter_utils.jl")
-include("post_processing_utils.jl")
+include("filter_params.jl")
+include("filter_variables.jl")
+include("filter_forcing.jl")
+include("filter_outputs.jl")
+include("initialisation.jl")
+include("file_utils.jl")
+include("post_processing.jl")
 
 export create_buffered_reader, set_offline_BW2_filter_params, set_online_BW_filter_params, set_offline_spectrum_filter_params, set_online_spectrum_filter_params
 export create_original_vars, create_filtered_vars, create_forcing, create_output_fields

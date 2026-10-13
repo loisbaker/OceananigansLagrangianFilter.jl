@@ -1,6 +1,12 @@
 # Shared helpers used across the integration tests in test_offline_integration.jl
 # and test_online_integration.jl.
 
+# The architectures to run the integration tests against reference data on: the GPU too, if CUDA finds one
+test_architectures() = CUDA.functional() ? (CPU(), GPU()) : (CPU(),)
+
+# "CPU" or "GPU", for test names and output filenames
+arch_label(arch) = string(nameof(typeof(arch)))
+
 """
     compare_filter_output_to_reference(test_filename_stem, ref_filename, varname; rtol = 1e-6)
 

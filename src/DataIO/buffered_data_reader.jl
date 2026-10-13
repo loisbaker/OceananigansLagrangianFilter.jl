@@ -170,6 +170,22 @@ function interpolate_to_model!(model, r::BufferedDataReader, sim_t)
     return nothing
 end
 
+"""
+    update_input_data!(model, reader::BufferedDataReader)
+
+Callback that reads directly from the source file via a two-frame
+GPU buffer. Calls `advance_buffer!` to slide the window if needed, then
+linearly interpolates into the model's velocity and auxiliary fields.
+Designed to be used at callsite `UpdateStateCallsite()`, so that the fields are
+updated at each substep of multi-stage time steppers.
+"""
+function update_input_data!(model::AbstractModel, reader::BufferedDataReader)
+    t = model.clock.time
+    advance_buffer!(reader, t)
+    interpolate_to_model!(model, reader, t)
+    return nothing
+end
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Buffer field allocation helpers
 # ──────────────────────────────────────────────────────────────────────────────
