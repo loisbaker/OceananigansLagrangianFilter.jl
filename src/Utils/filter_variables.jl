@@ -14,18 +14,19 @@ Arguments
 
 Returns
 =======
-A `NamedTuple` where each key is a `Symbol` of a variable name to be filtered,
-and each value is an empty `CenterField` for that variable.
+A `NamedTuple` where each key is a `Symbol` of a variable name to be filtered, or of an
+extra auxiliary variable (`config.extra_auxiliary_var_names`), and each value is a field
+for that variable.
 """
 function create_original_vars(config::AbstractConfig)
 
-    var_names_to_filter = config.var_names_to_filter
+    var_names = (config.var_names_to_filter..., config.extra_auxiliary_var_names...)
     grid = config.grid
     architecture = config.architecture
     vars = Dict()
     original_data_filename = config.original_data_filename
 
-    for var_name in var_names_to_filter
+    for var_name in var_names
         # Only the first frame is needed, so avoid loading the whole time series into memory. The grid and
         # boundary conditions are not read from the file, since those saved by older Oceananigans versions may
         # not be readable (see `_build_templates`); the model uses default boundary conditions.

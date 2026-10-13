@@ -28,7 +28,7 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options
 
 include("run_offline_lagrangian_filter.jl")
 include("lagrangian_filter.jl")
@@ -86,6 +86,7 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     original_data_filename::String
     var_names_to_filter::Tuple{Vararg{String}}
     velocity_names::Tuple{Vararg{String}}
+    extra_auxiliary_var_names::Tuple{Vararg{String}}
     T_start::Real
     T_end::Real
     T::Real
@@ -107,10 +108,8 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     advection::Union{AbstractAdvectionScheme, Nothing}
     grid::AbstractGrid
     label::String
-    boundary_relaxation::Bool
-    relax_timescale::Union{Real, Nothing}
-    mask_params::Union{NamedTuple, Nothing}
-    mask_func::Union{Function, Nothing}
+    relaxation_mask_func::Union{Function, Nothing}
+    relaxation_params::Union{NamedTuple, Nothing}
 
 end
 
@@ -118,6 +117,7 @@ end
     OfflineFilterConfig(; original_data_filename::String,
                         var_names_to_filter::Tuple{Vararg{String}},
                         velocity_names::Tuple{Vararg{String}},
+                        extra_auxiliary_var_names::Tuple{Vararg{String}} = (),
                         T_start::Union{Real,Nothing} = nothing,
                         T_end::Union{Real,Nothing} = nothing,
                         T::Union{Real,Nothing} = nothing,
@@ -141,10 +141,8 @@ end
                         advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
                         label::String = "",
-                        boundary_relaxation::Bool = false,
-                        relax_timescale::Union{Real, Nothing} = nothing,
-                        mask_params::Union{NamedTuple, Nothing} = nothing,
-                        mask_func::Union{Function, Nothing} = nothing)
+                        relaxation_mask_func::Union{Function, Nothing} = nothing,
+                        relaxation_params::Union{NamedTuple, Nothing} = nothing)
 
 Constructs a configuration object for offline Lagrangian filtering of Oceananigans data.
 This function validates the input data file, time specifications, and filter parameters
@@ -156,6 +154,7 @@ Keyword arguments
   - `original_data_filename`: (required) The path to the JLD2 or NetCDF file containing the original Oceananigans output data.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
   - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
+  - `extra_auxiliary_var_names`: A `Tuple` of `String`s naming extra variables in the data file to read in as auxiliary fields of the filter model, without filtering them, e.g. for use in `frequency_scale_func`. They are interpolated in time like the filtered variables, but are not reversed in sign on the backward pass. Default: `()`.
   - `T_start`: Start time for the filter. Must be within the time range of the data. If not given, defaults to either T_end - T (if they are given), or the start time of the original data.
   - `T_end`: End time for the filter. Must be within the time range of the data. If not given, defaults to either T_start + T (after T_start given or computed, if T is given), or the end time of the original data.
   - `T`: Duration of the filtering. If not given, defaults to T_end - T_start (after T_start and T_end are given or computed).
@@ -180,10 +179,8 @@ Keyword arguments
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
-  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
-  - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
-  - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
-  - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
+  - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
 # Example:
 
 ```jldoctest offline_config
@@ -211,13 +208,13 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=1000.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=10.0, "", nothing, nothing)
 
 ```
 
@@ -225,6 +222,7 @@ OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), 0.0, 
 function OfflineFilterConfig(; original_data_filename::String,
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
+                            extra_auxiliary_var_names::Tuple{Vararg{String}} = (),
                             T_start::Union{Real,Nothing} = nothing,
                             T_end::Union{Real,Nothing} = nothing,
                             T::Union{Real,Nothing} = nothing,
@@ -248,10 +246,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing,
                             label::String = "",
-                            boundary_relaxation::Bool = false,
-                            relax_timescale::Union{Real, Nothing} = nothing,
-                            mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing,
+                            relaxation_mask_func::Union{Function, Nothing} = nothing,
+                            relaxation_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
@@ -274,6 +270,13 @@ a different name in the original simulation.")
         error("Time variable 't' cannot be in 'var_names_to_filter'.")
     end
 
+    # Check that the extra auxiliary variables are new names
+    for var in extra_auxiliary_var_names
+        if var in (var_names_to_filter..., velocity_names..., "t")
+            error("'$var' is in 'extra_auxiliary_var_names', so it cannot also be in 'var_names_to_filter' or 'velocity_names', or be 't'.")
+        end
+    end
+
     # Notify about the velocities that will be used
     if compute_maps || regrid_to_mean
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
@@ -291,7 +294,7 @@ any other velocity components will be zero by default."
     # Open up the file for some checks — extract times and verify variables exist
     times = if endswith(original_data_filename, ".nc")
         NCDatasets.Dataset(original_data_filename, "r") do file
-            for var in (var_names_to_filter..., velocity_names...)
+            for var in (var_names_to_filter..., velocity_names..., extra_auxiliary_var_names...)
                 if !haskey(file, var)
                     error("Variable '$var' not found in original data file.")
                 end
@@ -300,7 +303,7 @@ any other velocity components will be zero by default."
         end
     else  # JLD2
         jldopen(original_data_filename, "r") do file
-            for var in (var_names_to_filter..., velocity_names...)
+            for var in (var_names_to_filter..., velocity_names..., extra_auxiliary_var_names...)
                 if !haskey(file["timeseries"], var)
                     error("Variable '$var' not found in original data file.")
                 end
@@ -466,33 +469,12 @@ any other velocity components will be zero by default."
     end
 
     # Check relaxation fields are appropriate
-    if boundary_relaxation
-        if isnothing(relax_timescale)
-            error("A relax_timescale must be set if boundary_relaxation = true")
-        end
-        if isnothing(mask_params)
-            @warn "mask_params = nothing with boundary_relaxation = true. The mask function probably needs parameters."
-        end
-        if isnothing(mask_func)
-            error("A spatial mask_func must be set if boundary_relaxation = true")
-        else
-            # We should check that this function only has one method
-            if !(length(methods(mask_func)) ==1)
-                @warn "mask_func has multiple methods, that could cause issues"
-            end
-            # We'll also check the number of args is correct
-            num_args = first(methods(mask_func)).nargs - 2 # First argument is self, last is mask_params
-            num_non_flat = count(T -> T !== Flat, topology(grid))
-            if num_args != num_non_flat
-                error("mask_func has the wrong number of arguments")
-            end
+    check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
 
-        end
-    end
-    
     return OfflineFilterConfig(original_data_filename,
                             var_names_to_filter,
                             velocity_names,
+                            extra_auxiliary_var_names,
                             T_start,
                             T_end,
                             T,
@@ -514,10 +496,8 @@ any other velocity components will be zero by default."
                             advection,
                             grid,
                             label,
-                            boundary_relaxation,
-                            relax_timescale,
-                            mask_params,
-                            mask_func
+                            relaxation_mask_func,
+                            relaxation_params
                             )
 
 end

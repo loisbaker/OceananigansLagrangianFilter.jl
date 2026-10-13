@@ -206,7 +206,7 @@ end
     @test field(backward["u_Lagrangian_filtered"]) ≈ -(field(forward["u_C1_scaled"]) .- field(forward["u_S1_scaled"]))
 end
 
-@testset "create_forcing adds a relaxation term when boundary_relaxation = true" begin
+@testset "create_forcing adds a relaxation term when relaxation_mask_func is given" begin
     grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
                             topology = (Periodic, Flat, Bounded))
     mask_func(x, z, p) = p.a # constant mask, so the expected relaxation is simple
@@ -217,8 +217,8 @@ end
                                             velocity_names = ("u", "w"), N = N, freq_c = 1e-4)
         config_relax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
                                             velocity_names = ("u", "w"), N = N, freq_c = 1e-4,
-                                            boundary_relaxation = true, relax_timescale = relax_timescale,
-                                            mask_func = mask_func, mask_params = (; a = 0.5))
+                                            relaxation_mask_func = mask_func,
+                                            relaxation_params = (; timescale = relax_timescale, a = 0.5))
 
         filtered_vars = create_filtered_vars(config_norelax) # same variable names regardless of relaxation
         model_norelax = NonhydrostaticModel(grid; tracers = (filtered_vars..., :b), forcing = create_forcing(filtered_vars, config_norelax))

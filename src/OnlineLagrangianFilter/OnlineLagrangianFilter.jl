@@ -8,7 +8,7 @@ using Oceananigans.ImmersedBoundaries: ImmersedBoundaryGrid
 
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain
+using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options
 
 export OnlineFilterConfig
 """
@@ -29,10 +29,8 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     compute_mean_velocities::Bool
     npad::Int
     label::String
-    boundary_relaxation::Bool
-    relax_timescale::Union{Real, Nothing}
-    mask_params::Union{NamedTuple, Nothing}
-    mask_func::Union{Function, Nothing}
+    relaxation_mask_func::Union{Function, Nothing}
+    relaxation_params::Union{NamedTuple, Nothing}
 end
 
 """
@@ -48,10 +46,8 @@ end
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             label::String = "",
-                            boundary_relaxation::Bool = false,
-                            relax_timescale::Union{Real, Nothing} = nothing,
-                            mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing} = nothing
+                            relaxation_mask_func::Union{Function, Nothing} = nothing,
+                            relaxation_params::Union{NamedTuple, Nothing} = nothing
 
                             )
 
@@ -75,10 +71,8 @@ Keyword arguments
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
-  - `boundary_relaxation`: A `Bool` indicating whether to include relaxation to the original data at the boundaries of the domain in the filter simulation. Default: `false`.
-  - `relax_timescale`: A `Real` indicating the timescale at which to relax the boundaries to the original fields if boundary_relaxation is `true`. Default `nothing`.
-  - `mask_params`: A `NamedTuple` containing any parameters necessary for `mask_func`. Default `nothing`.
-  - `mask_func`: A `Function` defining the mask for the relaxation. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be non-flat spatial dimensions and `mask_params`. Default `nothing`.
+  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
+  - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
 
 # Example:
 
@@ -112,7 +106,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", nothing, nothing)
 ```
 
 
@@ -129,10 +123,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             compute_mean_velocities::Bool = true,
                             npad::Int = 5,
                             label::String = "",
-                            boundary_relaxation::Bool = false,
-                            relax_timescale::Union{Real, Nothing} = nothing,
-                            mask_params::Union{NamedTuple, Nothing} = nothing,
-                            mask_func::Union{Function, Nothing}  = nothing,
+                            relaxation_mask_func::Union{Function, Nothing} = nothing,
+                            relaxation_params::Union{NamedTuple, Nothing} = nothing,
                             map_to_mean = nothing # Removed option, gives an error explaining what to use instead
                             )
 
@@ -235,29 +227,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                                                        combined_outputs = outputs === :combined)
 
     # Check relaxation fields are appropriate
-    if boundary_relaxation
-        if isnothing(relax_timescale)
-            error("A relax_timescale must be set if boundary_relaxation = true")
-        end
-        if isnothing(mask_params)
-            @warn "mask_params = nothing with boundary_relaxation = true. The mask function probably needs parameters."
-        end
-        if isnothing(mask_func)
-            error("A spatial mask_func must be set if boundary_relaxation = true")
-        else
-            # We should check that this function only has one method
-            if length(methods(mask_func)) != 1
-                @warn "mask_func has multiple methods, that could cause issues"
-            end
-            # We'll also check the number of args is correct
-            num_args = first(methods(mask_func)).nargs - 2 # First argument is self, last is mask_params
-            num_non_flat = count(T -> T !== Flat, topology(grid))
-            if num_args != num_non_flat
-                error("mask_func has the wrong number of arguments")
-            end
-
-        end
-    end
+    check_relaxation_options(relaxation_mask_func, relaxation_params, grid)
 
     return OnlineFilterConfig(grid,
                             output_filename,
@@ -269,10 +239,8 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             compute_mean_velocities,
                             npad,
                             label,
-                            boundary_relaxation,
-                            relax_timescale,
-                            mask_params,
-                            mask_func
+                            relaxation_mask_func,
+                            relaxation_params
                             )
  
 end

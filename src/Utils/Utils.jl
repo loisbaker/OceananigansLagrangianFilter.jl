@@ -12,7 +12,7 @@ using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory
 using Oceananigans: AbstractModel
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
-using Oceananigans.Grids: AbstractGrid
+using Oceananigans.Grids: AbstractGrid, topology, Flat
 using DataStructures: OrderedDict
 using NCDatasets
 using Oceananigans.Forcings: DiscreteForcing

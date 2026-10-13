@@ -254,7 +254,7 @@ function create_buffered_reader(config::AbstractConfig;
                                 time_name :: String                            = "time")
 
     filename  = config.original_data_filename
-    var_names = collect(String, config.var_names_to_filter)
+    var_names = collect(String, (config.var_names_to_filter..., config.extra_auxiliary_var_names...))
     vel_names = collect(String, config.velocity_names)
     arch      = config.architecture
     all_names = [vel_names; var_names]

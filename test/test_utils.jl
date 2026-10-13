@@ -1,6 +1,8 @@
 # Shared helpers used across the integration tests in test_offline_integration.jl
 # and test_online_integration.jl.
 
+using JLD2
+
 # The architectures to run the integration tests against reference data on: the GPU too, if CUDA finds one
 test_architectures() = CUDA.functional() ? (CPU(), GPU()) : (CPU(),)
 
@@ -34,4 +36,25 @@ function compare_filter_output_to_reference(test_filename_stem::String, ref_file
     end
 
     return nothing
+end
+
+"""
+    reference_sim_with_extra_variable()
+
+Return the path to a temporary copy of `data/reference_sim.jld2` with an extra variable `b2 = 2b`, for testing
+`extra_auxiliary_var_names`. The reference data itself is not changed.
+"""
+function reference_sim_with_extra_variable()
+    filename = joinpath(mktempdir(), "reference_sim_extra.jld2")
+    cp("data/reference_sim.jld2", filename)
+    jldopen(filename, "a+") do file
+        b = file["timeseries/b"]
+        for key in keys(b["serialized"]) # location, indices and boundary conditions
+            file["timeseries/b2/serialized/$key"] = b["serialized/$key"]
+        end
+        for key in filter(!=("serialized"), keys(b)) # one array per saved iteration
+            file["timeseries/b2/$key"] = 2 .* b[key]
+        end
+    end
+    return filename
 end
