@@ -484,9 +484,9 @@ any other velocity components will be zero by default."
         compute_Eulerian_filter = false
     end
 
-    # The Eulerian filter in post-processing doesn't support a frequency scale
-    if compute_Eulerian_filter && !isnothing(frequency_scale_func)
-        @warn "compute_Eulerian_filter=true with a frequency_scale_func, but the Eulerian filter in post-processing doesn't support a frequency scale, so it won't be computed. Run the filter again with lagrangian = false for the Eulerian filter with the same frequency scale."
+    # The Eulerian filter in post-processing only supports a frequency scale that doesn't vary in time
+    if compute_Eulerian_filter && !isempty(frequency_scale_dependencies)
+        @warn "compute_Eulerian_filter=true with frequency_scale_dependencies, but the Eulerian filter in post-processing only supports a frequency scale that depends on the coordinates alone (so doesn't vary in time), so it won't be computed. Run the filter again with lagrangian = false for the Eulerian filter with the same frequency scale."
         compute_Eulerian_filter = false
     end
 

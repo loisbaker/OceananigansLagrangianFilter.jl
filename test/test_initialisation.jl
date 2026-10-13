@@ -401,5 +401,7 @@ end
 
     # The time shift and the Eulerian filter in post-processing aren't available with a frequency scale
     @test_throws ErrorException compute_time_shift!(config(1; scale...))
-    @test_throws ErrorException compute_Eulerian_filter!(config(1; scale...))
+    # (the Eulerian filter only with frequency_scale_dependencies, which make the frequency scale vary in time)
+    @test_throws ErrorException compute_Eulerian_filter!(config(1; frequency_scale_func = M_b, frequency_scale_dependencies = (:b,),
+                                                                   frequency_scale_params = (; m)))
 end

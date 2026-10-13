@@ -67,9 +67,13 @@ end
     config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,))
     @test config.frequency_scale_dependencies == (:b,)
 
-    # The Eulerian filter in post-processing doesn't support a frequency scale, so is switched off with a warning
-    config = @test_logs (:warn, r"frequency_scale_func") match_mode=:any OfflineFilterConfig(; offline...,
-                            frequency_scale_func = (x, z, p) -> 1.0, compute_Eulerian_filter = true)
+    # The Eulerian filter in post-processing supports a frequency scale that only depends on the coordinates, but not one
+    # with dependencies (which varies in time), so that is switched off with a warning
+    config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, p) -> 1.0, compute_Eulerian_filter = true)
+    @test config.compute_Eulerian_filter
+    config = @test_logs (:warn, r"frequency_scale_dependencies") match_mode=:any OfflineFilterConfig(; offline...,
+                            frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,),
+                            compute_Eulerian_filter = true)
     @test !config.compute_Eulerian_filter
 end
 

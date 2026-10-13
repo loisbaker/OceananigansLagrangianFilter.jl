@@ -9,7 +9,7 @@ using JLD2: Group
 using Oceananigans
 using Oceananigans.Fields: Center, location
 using Oceananigans.Units: Time
-using Oceananigans.OutputReaders: InMemory
+using Oceananigans.OutputReaders: InMemory, load_serialized_grid
 using Oceananigans: AbstractModel
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
 using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture

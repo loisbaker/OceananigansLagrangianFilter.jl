@@ -82,5 +82,6 @@ config = OfflineFilterConfig(...,
 - ``M`` can't depend on the filtered fields of the same run (see [Varying cutoff frequency](@ref)): to use a
   filtered field, filter it in a first run and read it in with `extra_auxiliary_var_names` in a second.
 - Choose `Δt` for the largest local cutoff during the run, and leave enough time for spin-up at the smallest one.
-- The time shift is not defined, and the Eulerian filter in post-processing is not computed. For the Eulerian
-  counterpart, run the filter again with `lagrangian = false`.
+- The time shift is not defined. The Eulerian filter in post-processing (`compute_Eulerian_filter = true`) uses the
+  same ``M`` at fixed points if it only depends on the coordinates. With `frequency_scale_dependencies`, ``M`` varies in
+  time and it isn't computed: for the Eulerian counterpart, run the filter again with `lagrangian = false`.

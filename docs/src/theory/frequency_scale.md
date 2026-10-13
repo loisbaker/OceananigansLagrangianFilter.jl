@@ -70,8 +70,10 @@ no longer linear.
 
 Whether ``M`` varies in space or time, the filter has no single frequency response or time shift, so
 [`compute_time_shift!`](@ref) is not available. The Eulerian counterpart of the filter is the same filter without
-advection (`lagrangian = false`), which uses the same ``M`` at fixed points; the Eulerian filter in
-post-processing ([`compute_Eulerian_filter!`](@ref)) does not support a frequency scale.
+advection (`lagrangian = false`), which uses the same ``M`` at fixed points. If ``M`` only depends on position, it
+doesn't vary in time at a fixed point, so the Eulerian weight function there is ``M\,G(M\tau)``, which the Eulerian
+filter in post-processing ([`compute_Eulerian_filter!`](@ref)) also uses; if ``M`` varies in time, only the filter
+without advection gives the Eulerian counterpart.
 
 ## Mean velocities
 

@@ -117,7 +117,7 @@ if filter_config.regrid_to_mean
 end
 ```
 
-- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref). This isn't available with a frequency scale.
+- Optionally compute the Eulerian filter (with the same `filter_params`) using [`compute_Eulerian_filter!`](@ref). With a frequency scale, this is only available if it depends on the coordinates alone (no `frequency_scale_dependencies`); otherwise, see `lagrangian = false` above.
     
 ```julia
 compute_Eulerian_filter!(filter_config)
