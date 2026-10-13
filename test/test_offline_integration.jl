@@ -136,3 +136,36 @@ end
         end
     end
 end
+
+@testset "Offline Eulerian filter in post-processing with a frequency scale" begin
+    # compute_Eulerian_filter! on copies of the reference output, with a frequency scale M that only depends on the
+    # coordinates. At a fixed point the weight function is then M G(M tau), so a uniform M = m is the same as a cutoff
+    # m * freq_c, and a varying M is, at each point, the uniform filter with the local value of M there (evaluated where
+    # each variable is saved, e.g. at the u points for u)
+    freq_c = 1e-4 / 4
+    config(filename; kwargs...) = OfflineFilterConfig(; original_data_filename = "data/reference_sim.jld2", output_filename = filename,
+                                                      var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 2, kwargs...)
+    Eulerian_filter(; kwargs...) = (filename = reference_output_without_Eulerian_filter("data/reference_offline_output.jld2");
+                                    compute_Eulerian_filter!(config(filename; kwargs...)); filename)
+    output(filename, name) = FieldTimeSeries(filename, name)
+
+    m = 1.7
+    scaled = Eulerian_filter(; freq_c, frequency_scale_func = (x, z, p) -> p.m, frequency_scale_params = (; m))
+    faster = Eulerian_filter(; freq_c = m * freq_c)
+    for name in ("b_Eulerian_filtered", "u_Eulerian_filtered", "w_Eulerian_filtered")
+        @test output(scaled, name).data ≈ output(faster, name).data
+    end
+
+    M_func(x, z, p) = 1 + 0.5 * cos(2pi * x / 10kilometers) * (1 + z / 100)
+    varying = Eulerian_filter(; freq_c, frequency_scale_func = M_func)
+    for name in ("b_Eulerian_filtered", "u_Eulerian_filtered")
+        varying_output = output(varying, name)
+        @test all(isfinite, varying_output.data) # including the halo points, which are saved too
+        loc = map(L -> L(), Oceananigans.Fields.location(varying_output))
+        for (i, k) in ((1, 1), (6, 10)) # points at different x and z
+            x, z = Oceananigans.Grids.xnode(i, 1, k, varying_output.grid, loc...), Oceananigans.Grids.znode(i, 1, k, varying_output.grid, loc...)
+            uniform = Eulerian_filter(; freq_c = M_func(x, z, nothing) * freq_c)
+            @test varying_output.data[i, 1, k, :] ≈ output(uniform, name).data[i, 1, k, :]
+        end
+    end
+end

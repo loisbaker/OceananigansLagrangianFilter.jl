@@ -67,9 +67,13 @@ end
     config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,))
     @test config.frequency_scale_dependencies == (:b,)
 
-    # The Eulerian filter in post-processing doesn't support a frequency scale, so is switched off with a warning
-    config = @test_logs (:warn, r"frequency_scale_func") match_mode=:any OfflineFilterConfig(; offline...,
-                            frequency_scale_func = (x, z, p) -> 1.0, compute_Eulerian_filter = true)
+    # The Eulerian filter in post-processing supports a frequency scale that only depends on the coordinates, but not one
+    # with dependencies (which varies in time), so that is switched off with a warning
+    config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, p) -> 1.0, compute_Eulerian_filter = true)
+    @test config.compute_Eulerian_filter
+    config = @test_logs (:warn, r"frequency_scale_dependencies") match_mode=:any OfflineFilterConfig(; offline...,
+                            frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,),
+                            compute_Eulerian_filter = true)
     @test !config.compute_Eulerian_filter
 end
 
@@ -91,7 +95,7 @@ end
     @test config.compute_maps && config.regrid_to_mean
 
     # For the Eulerian filter the maps and mean velocities can still be computed, but not regridded
-    config = @test_logs (:warn, r"Eulerian") match_mode=:any OfflineFilterConfig(; base..., advection = nothing)
+    config = @test_logs (:warn, r"Eulerian") match_mode=:any OfflineFilterConfig(; base..., lagrangian = false)
     @test config.compute_maps && !config.regrid_to_mean && config.compute_mean_velocities
 
     # Likewise for un-normalised filter coefficients
@@ -101,6 +105,37 @@ end
 
     # The removed option map_to_mean gives an error explaining what to use instead
     @test_throws r"compute_maps" OfflineFilterConfig(; base..., map_to_mean = true)
+end
+
+@testset "Eulerian filter (lagrangian = false)" begin
+
+    grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded))
+    base = (; grid, var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 1, freq_c = 1e-4)
+    output_names(config) = [q.combined_name for q in OceananigansLagrangianFilter.Utils.filtered_output_quantities(config)]
+
+    # The online config warns that the filtered variables mustn't be advected. The outputs are named as Eulerian, and
+    # the mean velocities can still be computed, but not regridded
+    lagrangian = OnlineFilterConfig(; base...)
+    eulerian = @test_logs (:warn, r"must not be advected") match_mode=:any OnlineFilterConfig(; base..., lagrangian = false)
+    @test !eulerian.regrid_to_mean && eulerian.compute_mean_velocities
+    @test "b_Eulerian_filtered" in output_names(eulerian) && "u_Eulerian_filtered" in output_names(eulerian)
+    @test !any(occursin("Lagrangian"), output_names(eulerian))
+    @test "b_Lagrangian_filtered" in output_names(lagrangian)
+
+    # filtered_vars_advection gives the scheme for each filtered variable, or nothing for the Eulerian filter
+    @test keys(filtered_vars_advection(lagrangian)) == create_filtered_vars(lagrangian)
+    @test all(scheme -> scheme isa WENO, filtered_vars_advection(lagrangian))
+    @test all(scheme -> scheme isa Centered, filtered_vars_advection(lagrangian; advection = Centered()))
+    @test all(isnothing, filtered_vars_advection(eulerian))
+
+    # As a safety net, initialise_filtered_vars_from_model and create_output_fields warn if the model's advection of the
+    # filtered variables doesn't match lagrangian. Only the model's advection is used, so this checks it with a stand-in
+    check = OceananigansLagrangianFilter.Utils.check_filtered_vars_advection
+    model_with(advection) = (; advection = merge((; momentum = WENO(), b = WENO()), advection))
+    @test_logs check(model_with(filtered_vars_advection(lagrangian)), lagrangian)
+    @test_logs check(model_with(filtered_vars_advection(eulerian)), eulerian)
+    @test_logs (:warn, r"lagrangian = false, but the model advects") check(model_with(filtered_vars_advection(lagrangian)), eulerian)
+    @test_logs (:warn, r"doesn't advect some") check(model_with(filtered_vars_advection(eulerian)), lagrangian)
 end
 
 @testset "Filter output options (outputs, sine_parity)" begin

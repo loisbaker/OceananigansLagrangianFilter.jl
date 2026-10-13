@@ -56,8 +56,9 @@ equilibria used for initialisation and boundary relaxation use the current value
 ``M`` must stay positive: it is the rate at which the filter clock runs, so if it reached zero the filter would
 stop, and if it became negative the clock would run backwards and the filter would amplify rather than damp. With
 dependencies, ``M`` is only checked when the filtered variables are initialised, so choose `frequency_scale_func`
-so that it is positive for any values the fields can take, for example ``M = 1 + |\zeta|/f`` rather than
-``M = 1 + \zeta/f``.
+so that it is positive for any values the fields can take. For example, ``M = \max(1 + \zeta/2f, M_{\min})``, with
+a small positive floor ``M_{\min}``, follows the effective inertial frequency ``f + \zeta/2``
+[kunzeNearInertialWavePropagation1985](@citep), whereas ``M = 1 + \zeta/2f`` is negative where ``\zeta < -2f``.
 
 Offline, ``M`` can't depend on the filtered fields themselves. The offline filter is the sum of a forward pass,
 for the past, and a backward pass, for the future, and both must use the same ``M`` along each trajectory for the
@@ -70,8 +71,10 @@ no longer linear.
 
 Whether ``M`` varies in space or time, the filter has no single frequency response or time shift, so
 [`compute_time_shift!`](@ref) is not available. The Eulerian counterpart of the filter is the same filter without
-advection (offline, `advection = nothing`), which uses the same ``M`` at fixed points; the Eulerian filter in
-post-processing ([`compute_Eulerian_filter!`](@ref)) does not support a frequency scale.
+advection (`lagrangian = false`), which uses the same ``M`` at fixed points. If ``M`` only depends on position, it
+doesn't vary in time at a fixed point, so the Eulerian weight function there is ``M\,G(M\tau)``, which the Eulerian
+filter in post-processing ([`compute_Eulerian_filter!`](@ref)) also uses; if ``M`` varies in time, only the filter
+without advection gives the Eulerian counterpart.
 
 ## Mean velocities
 

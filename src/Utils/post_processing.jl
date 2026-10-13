@@ -292,7 +292,7 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
     label = config.label
 
 
-    if (config isa AbstractOfflineConfig) && config.advection === nothing
+    if !config.lagrangian
         error("Regridding to mean position is not meaningful for Eulerian filtering")
     end
     if compute_mean_velocities
@@ -719,22 +719,108 @@ function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::
     
 end
 
+# The terms of a weight function (see get_weight_function) as complex exponentials: at a time a lag tau before the
+# output time, a term is Re[past * exp(-lambda * tau)], and at a time a lag tau after it, Re[future * exp(-lambda * tau)],
+# with lambda = c - i d. The sine terms change sign after the output time if they're odd.
+function exponential_terms(filter_params)
+    if filter_params.N_coeffs == 0.5
+        a, c = complex(filter_params.a1), complex(filter_params.c1)
+        return [(; past = a, future = a, lambda = c)]
+    end
+    _, sine_parity = filter_output_options(filter_params)
+    sign_after = sine_parity === :odd ? -1 : 1
+    return map(1:filter_params.N_coeffs) do i
+        a, b, c, d = (getproperty(filter_params, Symbol(coefficient, i)) for coefficient in ("a", "b", "c", "d"))
+        (; past = complex(a, -b), future = complex(a, -sign_after * b), lambda = complex(c, -d))
+    end
+end
+
+# With a frequency scale M that doesn't vary in time, the weight function at a fixed point is M G(M tau), so each term's
+# amplitudes and decay rate are multiplied by M (an array of its values at the saved points)
+scale_terms(terms, ::Nothing) = terms
+scale_terms(terms, M) = [(; past = M .* term.past, future = M .* term.future, lambda = M .* term.lambda) for term in terms]
+
+# The frequency scale at the points where var_name is saved in the output file (which may include halo points), or
+# nothing for a uniform filter. It can only depend on the coordinates (not on frequency_scale_dependencies), so that it
+# doesn't vary in time
+function saved_frequency_scale(config::AbstractConfig, file, var_name, saved_size)
+    isnothing(config.frequency_scale_func) && return nothing
+    func, params = config.frequency_scale_func, config.frequency_scale_params
+    grid = on_architecture(CPU(), load_serialized_grid(file, var_name))
+    LX, LY, LZ = file["timeseries/$var_name/serialized/location"]
+    M = Field{LX, LY, LZ}(grid; indices = file["timeseries/$var_name/serialized/indices"])
+    for index in CartesianIndices(M.data)
+        M.data[index] = func(node(Tuple(index)..., grid, LX(), LY(), LZ())..., params)
+    end
+    size(parent(M)) == saved_size && return Array(parent(M))
+    size(interior(M)) == saved_size && return Array(interior(M))
+    error("The saved $var_name, of size $saved_size, doesn't match its grid, of size $(size(parent(M))) with halos or " *
+          "$(size(interior(M))) without")
+end
+
+# Decays the running sums of each term over the time interval dt, adds f * dt_weight to them, and returns the sum over
+# the terms of Re[amplitude * running sum], where amplitude is the past or future amplitude of the term
+function update_running_sums!(running_sums, terms, amplitude, f, dt_weight, dt)
+    value = zeros(size(f))
+    for (running_sum, term) in zip(running_sums, terms)
+        running_sum .*= exp.(-term.lambda .* dt)
+        running_sum .+= f .* dt_weight
+        value .+= real.(getproperty(term, amplitude) .* running_sum)
+    end
+    return value
+end
+
+# The Eulerian filter as running sums, so that each field is read at most twice (rather than once for every output
+# time). read(j) gives the input f_j for each weight function in terms_list (each a list of exponential terms), and for
+# each output time t_i, output(i, values) is called with the sums over j of G(t_i - t_j) * f_j * dt_weights[j], one for
+# each weight function. For direction = :both, the sums over
+# later times are built up first, backwards in time, and kept in backward_store (anything indexed by a String, e.g. a
+# Dict or a JLD2 file), and then the sums over earlier times, forwards in time, so that the outputs are written in order.
+function Eulerian_running_sums(read, output, times, dt_weights, terms_list, direction, backward_store)
+    n = length(times)
+    new_running_sums(inputs) = [[zeros(ComplexF64, size(f)) for _ in terms] for (terms, f) in zip(terms_list, inputs)]
+
+    if direction === :both
+        running_sums = nothing
+        for i in n:-1:1
+            inputs = read(i)
+            running_sums = something(running_sums, new_running_sums(inputs))
+            dt = i < n ? times[i+1] - times[i] : 0.0
+            for (w, (terms, sums, f)) in enumerate(zip(terms_list, running_sums, inputs))
+                value = update_running_sums!(sums, terms, :future, f, dt_weights[i], dt)
+                # The output time itself is counted in both the earlier and the later times, with G(0) = sum of a
+                value .-= sum(real.(term.future) for term in terms) .* f .* dt_weights[i]
+                backward_store["$i/$w"] = value
+            end
+        end
+    end
+
+    running_sums = nothing
+    for i in 1:n
+        inputs = read(i)
+        running_sums = something(running_sums, new_running_sums(inputs))
+        dt = i > 1 ? times[i] - times[i-1] : 0.0
+        values = map(enumerate(zip(terms_list, running_sums, inputs))) do (w, (terms, sums, f))
+            value = update_running_sums!(sums, terms, :past, f, dt_weights[i], dt)
+            direction === :both ? value .+ backward_store["$i/$w"] : value
+        end
+        output(i, values)
+    end
+    return nothing
+end
+
 """
     compute_Eulerian_filter!(config::AbstractConfig)
 
 Computes the Eulerian filter for specified variables and writes the results to a
-combined output file. This function performs a direct, convolution-style
-filtering of a time series by applying a weighting function to the data at each
-time step.
-
-The function iterates through each variable to be filtered:
-1.  **Reads data**: The entire time series of the variable is read from the
-    JLD2 file.
-2.  **Applies weighting**: At each output time, a weighting function `G` is
-    computed and applied to the entire time series. The weighted data is summed
-    to produce the filtered field.
-3.  **Writes output**: The resulting filtered field is saved back to the
-    same JLD2 file in a new group with the `_Eulerian_filtered` suffix.
+combined output file. At each grid point, the saved fields are filtered in time with
+the filter's weight function. Each term of the weight function is a decaying complex
+exponential, so the filtered fields at all the output times are built up as running
+sums: forwards in time over the earlier times, and offline also backwards over the later
+times. Each saved field is read once in each direction, so the cost grows linearly with
+the number of saved times. Offline, the sums over the later times are kept in a temporary
+file next to the output file. The results are saved to the same JLD2 file in a new group
+with the `_Eulerian_filtered` suffix.
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
@@ -743,6 +829,11 @@ weight function, and named like the Lagrangian outputs with `_Eulerian_filtered`
 `b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`. The outputs are only divided by the integral
 of the weight function (correcting for it being cut off at the ends of the data) if the whole filter is normalised,
 in which case every term is divided by the same integral, so that the terms add up to the combined output.
+
+With a frequency scale ``M`` that only depends on the coordinates (no `frequency_scale_dependencies`), the weight
+function at each point is ``M G(M \\tau)``, with ``M`` evaluated where each variable is saved (e.g. at the `u` points
+for `u`). A frequency scale with `frequency_scale_dependencies` varies in time, which isn't supported here: for the
+Eulerian filter with that frequency scale, run the filter with `lagrangian = false` instead.
 
 The method uses data saved to the filter output file - incase we decide to save this
 at lower frequency than the original data, it should be rewritten to use the original
@@ -754,9 +845,10 @@ Arguments
   names, and filter parameters.
 """
 function compute_Eulerian_filter!(config::AbstractConfig)
-    isnothing(config.frequency_scale_func) ||
-        error("compute_Eulerian_filter! doesn't support a frequency scale. For the Eulerian filter with the same frequency " *
-              "scale, run the filter without advection (offline, advection = nothing)")
+    isempty(config.frequency_scale_dependencies) ||
+        error("compute_Eulerian_filter! doesn't support a frequency scale with frequency_scale_dependencies, which varies " *
+              "in time. For the Eulerian filter with the same frequency scale, run the filter without advection " *
+              "(lagrangian = false)")
     filter_params = config.filter_params
     outputs, _ = filter_output_options(filter_params)
     output_filename = config.output_filename
@@ -788,7 +880,11 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         times = [file["timeseries/t/$iter"] for iter in iterations]
-        dt = times[2] - times[1] # Initialise time interval
+        n = length(times)
+
+        # Each field is weighted by the time interval to the next one (the last by the one before it)
+        dt_weights = [diff(times); times[n] - times[n-1]]
+
 
         # Loop over variables to filter
         for var_name in var_names_to_Eulerian_filter
@@ -805,25 +901,35 @@ function compute_Eulerian_filter!(config::AbstractConfig)
                 g_EF
             end
 
-            # Loop over times to compute filtered fields at each time
-            for (i, t) in enumerate(times)
-                # Every output is normalised by the whole filter's weight function, so the terms add up to the whole
-                G = get_weight_function(t = times, tref = t, filter_params = filter_params, direction = direction)
-                normalisation = sum(G[1:end-1] .* diff(times))
-                Gs = [get_weight_function(t = times, tref = t, filter_params = p, direction = direction) for (_, p) in weights]
+            # Every output is normalised by the discrete integral of the whole filter's weight function, so the terms
+            # add up to the whole. It's found with the same running sums, as the filter of one at each time except the
+            # last (which it leaves out, unlike the filtered fields), and depends on position with a frequency scale
+            M = saved_frequency_scale(config, file, var_name, size(file["timeseries/$(var_name)/$(iterations[1])"]))
+            terms_list = [[scale_terms(exponential_terms(p), M) for (_, p) in weights]; [scale_terms(exponential_terms(filter_params), M)]]
+            ones_shape = isnothing(M) ? () : size(M)
+            function read_inputs(i)
+                field = file["timeseries/$(var_name)/$(iterations[i])"]
+                return [fill(field, length(weights)); [fill(i < n ? 1.0 : 0.0, ones_shape)]]
+            end
+            function write_outputs(i, values)
+                normalisation = values[end]
+                for (g_EF, value) in zip(groups, values[1:end-1])
+                    g_EF["$(iterations[i])"] = normalised ? value ./ normalisation : value
+                end
+            end
 
-                # Construct the means sequentially, reading each field once
-                mean_fields = [file["timeseries/$(var_name)/$(iterations[1])"]*0.0 for _ in weights]
-                for j in 1:length(times)
-                    field = file["timeseries/$(var_name)/$(iterations[j])"]
-                    dt = j < length(times) ? times[j+1] - times[j] : dt
-                    for (mean_field, Gk) in zip(mean_fields, Gs)
-                        mean_field .+= Gk[j] .* field .* dt
+            # The offline filter keeps the sums over later times in a temporary file next to the output
+            if direction === :both
+                backward_filename = output_filename * ".Eulerian_backward_sums.jld2"
+                try
+                    jldopen(backward_filename, "w") do backward_store
+                        Eulerian_running_sums(read_inputs, write_outputs, times, dt_weights, terms_list, direction, backward_store)
                     end
+                finally
+                    rm(backward_filename, force = true)
                 end
-                for (g_EF, mean_field) in zip(groups, mean_fields)
-                    g_EF["$(iterations[i])"] = normalised ? mean_field./normalisation : mean_field
-                end
+            else
+                Eulerian_running_sums(read_inputs, write_outputs, times, dt_weights, terms_list, direction, nothing)
             end
         end
     end

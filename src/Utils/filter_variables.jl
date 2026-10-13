@@ -60,8 +60,8 @@ function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagran
     end
 
     if !lagrangian
-        compute_maps && @warn "Advection scheme is `nothing` (Eulerian filter), so the maps are not displacements from the mean position."
-        regrid_to_mean && @warn "Advection scheme is `nothing` (Eulerian filter), so setting regrid_to_mean = false."
+        compute_maps && @warn "lagrangian = false (Eulerian filter), so the maps are not displacements from the mean position."
+        regrid_to_mean && @warn "lagrangian = false (Eulerian filter), so setting regrid_to_mean = false."
         regrid_to_mean = false
     end
 

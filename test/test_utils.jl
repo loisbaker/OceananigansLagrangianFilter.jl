@@ -39,6 +39,23 @@ function compare_filter_output_to_reference(test_filename_stem::String, ref_file
 end
 
 """
+    reference_output_without_Eulerian_filter(filename)
+
+Return the path to a temporary copy of the filter output `filename` without its Eulerian filtered outputs, for testing
+`compute_Eulerian_filter!` on it. The original file is not changed.
+"""
+function reference_output_without_Eulerian_filter(filename)
+    filename_copy = joinpath(mktempdir(), basename(filename))
+    cp(filename, filename_copy)
+    jldopen(filename_copy, "a+") do file
+        for name in filter(contains("Eulerian"), collect(keys(file["timeseries"])))
+            Base.delete!(file["timeseries"], name)
+        end
+    end
+    return filename_copy
+end
+
+"""
     reference_sim_with_extra_variable()
 
 Return the path to a temporary copy of `data/reference_sim.jld2` with an extra variable `b2 = 2b`, for testing

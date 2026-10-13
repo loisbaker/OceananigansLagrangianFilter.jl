@@ -43,6 +43,35 @@ run_offline_Lagrangian_filter(filter_config)
 # The filtered data is now saved to `my_filtered_simulation.jld2`
 ```
 
+## Eulerian filter
+
+With `lagrangian = false`, the filtered variables aren't advected, so the same filter is applied in time at fixed
+points: the Eulerian filter. Its outputs are named `_Eulerian_filtered`, e.g. `b_Eulerian_filtered`. The maps and
+mean velocities can still be computed, but nothing is regridded to the mean position. This is solved in the same way
+as the Lagrangian filter, so it suits large datasets, and it works with any frequency scale.
+
+For a quick comparison with the Lagrangian filter, `compute_Eulerian_filter = true` instead filters the saved filter
+output in post-processing, so only at the output times `T_out` (see [Helpful tips](@ref "Helpful tips")).
+
+## Boundary relaxation
+
+The filtered variables can be relaxed towards their local equilibrium: the values they would have if the fields
+(and the frequency scale) had been constant along Lagrangian trajectories, or constant in time at fixed points for the
+Eulerian filter (`lagrangian = false`). For a normalised filter, the filtered fields are then equal to the unfiltered
+fields, and the mean velocities to the velocities. These are also the values the filtered variables are initialised
+to. This is useful, for example, near open boundaries, where fluid enters the domain without a filtered history.
+`relaxation_mask_func` takes the non-flat coordinates and `relaxation_params`, and should be 1 for full relaxation and
+0 for none. `relaxation_params` must include the relaxation `timescale`:
+
+```julia
+# Relax within about 1 km of the boundaries at x = 0 and x = L
+relaxation_mask(x, z, p) = exp(-x / p.width) + exp(-(p.L - x) / p.width)
+
+config = OfflineFilterConfig(...,
+                             relaxation_mask_func = relaxation_mask,
+                             relaxation_params = (; width = 1kilometers, L = 10kilometers, timescale = 1hour))
+```
+
 ## Frequency scale
 
 The cutoff frequency can vary in space, and in time, through a frequency scale ``M`` that multiplies the filter's
@@ -64,13 +93,14 @@ config = OfflineFilterConfig(original_data_filename = "my_simulation.jld2",
 `frequency_scale_dependencies`. Their values at the cell centre are passed after the coordinates:
 
 ```julia
-frequency_scale(x, z, zeta, p) = 1 + abs(zeta) / p.f
+# The effective inertial frequency f + zeta/2 (Kunze, 1985), relative to f, with a floor so that M stays positive
+frequency_scale(x, z, zeta, p) = max(1 + zeta / (2 * p.f), p.min_scale)
 
 config = OfflineFilterConfig(...,
                              extra_auxiliary_var_names = ("zeta",),
                              frequency_scale_func = frequency_scale,
                              frequency_scale_dependencies = (:zeta,),
-                             frequency_scale_params = (; f = 1e-4))
+                             frequency_scale_params = (; f = 1e-4, min_scale = 0.1))
 ```
 
 - ``M`` must be finite and positive. This is checked at every cell centre when the config is built, but with
@@ -82,5 +112,6 @@ config = OfflineFilterConfig(...,
 - ``M`` can't depend on the filtered fields of the same run (see [Varying cutoff frequency](@ref)): to use a
   filtered field, filter it in a first run and read it in with `extra_auxiliary_var_names` in a second.
 - Choose `Δt` for the largest local cutoff during the run, and leave enough time for spin-up at the smallest one.
-- The time shift is not defined, and the Eulerian filter in post-processing is not computed. For the Eulerian
-  counterpart, run the filter again with `advection = nothing`.
+- The time shift is not defined. The Eulerian filter in post-processing (`compute_Eulerian_filter = true`) uses the
+  same ``M`` at fixed points if it only depends on the coordinates. With `frequency_scale_dependencies`, ``M`` varies in
+  time and it isn't computed: for the Eulerian counterpart, run the filter again with `lagrangian = false`.

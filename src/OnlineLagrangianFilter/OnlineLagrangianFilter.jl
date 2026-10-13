@@ -27,6 +27,7 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     compute_maps::Bool
     regrid_to_mean::Bool
     compute_mean_velocities::Bool
+    lagrangian::Bool
     npad::Int
     label::String
     relaxation_mask_func::Union{Function, Nothing}
@@ -47,6 +48,7 @@ end
                             compute_maps::Bool = true,
                             regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
+                            lagrangian::Bool = true,
                             npad::Int = 5,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
@@ -73,11 +75,12 @@ Keyword arguments
   - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
   - `regrid_to_mean`: A `Bool` indicating whether the filtered fields should be interpolated to the mean position after the simulation (i.e. calculate the generalised Lagrangian mean), using [`regrid_to_mean_position!`](@ref). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
   - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
+  - `lagrangian`: `true` for the Lagrangian filter, or `false` for the Eulerian filter, which filters at fixed points: the filtered variables mustn't be advected (set the model's `tracer_advection` with [`filtered_vars_advection`](@ref)), and the outputs are named `_Eulerian_filtered`. The maps and mean velocities can still be computed, but not regridded. Default: `true`.
   - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
-  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
+  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered variables towards their local equilibrium (see [Boundary relaxation](@ref "Boundary relaxation")), e.g. near the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
   - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
   - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
@@ -115,7 +118,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, 5, "", nothing, nothing, nothing, nothing, ())
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, true, 5, "", nothing, nothing, nothing, nothing, ())
 ```
 
 
@@ -130,6 +133,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             compute_maps::Bool = true,
                             regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
+                            lagrangian::Bool = true,
                             npad::Int = 5,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
@@ -153,7 +157,12 @@ function OnlineFilterConfig(; grid::AbstractGrid,
     end
     
     # Notify about the velocities that will be used
-    if compute_maps || regrid_to_mean
+    if !lagrangian
+        @warn "lagrangian = false (Eulerian filter): the filtered variables must not be advected. Set the model's " *
+              "tracer_advection with filtered_vars_advection, e.g. " *
+              "tracer_advection = merge((; b = WENO(), ...), filtered_vars_advection(filter_config)), listing all the other " *
+              "tracers too, since tracers missing from a NamedTuple tracer_advection are advected with Centered()."
+    elseif compute_maps || regrid_to_mean
         @info "Advection for Lagrangian filtering will be performed using full model velocities u, v, and w. 
         Maps (displacements from the mean position) will be computed corresponding to velocities: $(velocity_names)."
     else
@@ -234,7 +243,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
 
     # Check and reconcile the options for the maps (e.g. no regridding for non-rectilinear grids)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
-                                                       lagrangian = true, normalised,
+                                                       lagrangian, normalised,
                                                        rectilinear = underlying_rectilinear_grid,
                                                        combined_outputs = outputs === :combined)
 
@@ -252,6 +261,7 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             compute_maps,
                             regrid_to_mean,
                             compute_mean_velocities,
+                            lagrangian,
                             npad,
                             label,
                             relaxation_mask_func,

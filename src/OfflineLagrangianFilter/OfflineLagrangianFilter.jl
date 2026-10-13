@@ -105,7 +105,8 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     compute_Eulerian_filter::Bool
     output_netcdf::Bool
     output_original_data::Bool
-    advection::Union{AbstractAdvectionScheme, Nothing}
+    lagrangian::Bool
+    advection::AbstractAdvectionScheme
     grid::AbstractGrid
     label::String
     relaxation_mask_func::Union{Function, Nothing}
@@ -141,7 +142,8 @@ end
                         compute_Eulerian_filter::Bool = false,
                         output_netcdf::Bool = false,
                         output_original_data::Bool = true,
-                        advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
+                        lagrangian::Bool = true,
+                        advection::AbstractAdvectionScheme = WENO(),
                         grid::Union{AbstractGrid, Nothing} = nothing,
                         label::String = "",
                         relaxation_mask_func::Union{Function, Nothing} = nothing,
@@ -181,11 +183,12 @@ Keyword arguments
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `output_netcdf`: A `Bool` indicating whether to also convert the final JLD2 output file to a NetCDF file. Default: `false`.
     - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
-  - `advection`: The advection scheme to use for the Lagrangian filter simulation. Default: `WENO()`. Using lower-order schemes may be a source of error.
+  - `lagrangian`: `true` for the Lagrangian filter, or `false` for the Eulerian filter, which filters at fixed points: the filtered variables aren't advected, and the outputs are named `_Eulerian_filtered`. The maps and mean velocities can still be computed, but not regridded. Default: `true`.
+  - `advection`: The advection scheme to use for the Lagrangian filter simulation (not used if `lagrangian = false`). Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
-  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered fields to the original data at the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
+  - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered variables towards their local equilibrium (see [Boundary relaxation](@ref "Boundary relaxation")), e.g. near the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
   - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
   - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
@@ -217,7 +220,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -252,7 +255,8 @@ function OfflineFilterConfig(; original_data_filename::String,
                             compute_Eulerian_filter::Bool = false,
                             output_netcdf::Bool = false,
                             output_original_data::Bool = true,
-                            advection::Union{AbstractAdvectionScheme, Nothing} = WENO(),
+                            lagrangian::Bool = true,
+                            advection::AbstractAdvectionScheme = WENO(),
                             grid::Union{AbstractGrid, Nothing} = nothing,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
@@ -289,12 +293,12 @@ a different name in the original simulation.")
         end
     end
 
-    # Notify about the velocities that will be used
-    if compute_maps || regrid_to_mean
+    # Notify about the velocities that will be used (the Eulerian filter is noted below)
+    if lagrangian && (compute_maps || regrid_to_mean)
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
 any other velocity components will be zero by default. Maps (displacements from the mean position) will
 be computed corresponding to velocities: $(velocity_names)."
-    else
+    elseif lagrangian
         @info "Advection for Lagrangian filtering will be performed using only velocities $(velocity_names) - 
 any other velocity components will be zero by default."
     end
@@ -464,25 +468,25 @@ any other velocity components will be zero by default."
         output_netcdf = false
     end
 
-    if isnothing(advection)
-        @info "Advection scheme is 'nothing' so the Eulerian (not Lagrangian) filter will be computed."
+    if !lagrangian
+        @info "lagrangian = false, so the Eulerian (not Lagrangian) filter will be computed."
     end
 
     # Check and reconcile the options for the maps (e.g. no regridding for the Eulerian filter)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
-                                                       lagrangian = !isnothing(advection), normalised,
+                                                       lagrangian, normalised,
                                                        rectilinear = underlying_rectilinear_grid,
                                                        combined_outputs = outputs === :combined)
 
     # Warn if Eulerian filter is being calculated twice
-    if compute_Eulerian_filter && isnothing(advection)
-        @warn "compute_Eulerian_filter=true and advection is 'nothing' - Eulerian filter will be computed twice, so you should probably set compute_Eulerian_filter=false."
+    if compute_Eulerian_filter && !lagrangian
+        @warn "compute_Eulerian_filter=true and lagrangian=false - Eulerian filter will be computed twice, so you should probably set compute_Eulerian_filter=false."
         compute_Eulerian_filter = false
     end
 
-    # The Eulerian filter in post-processing doesn't support a frequency scale
-    if compute_Eulerian_filter && !isnothing(frequency_scale_func)
-        @warn "compute_Eulerian_filter=true with a frequency_scale_func, but the Eulerian filter in post-processing doesn't support a frequency scale, so it won't be computed. Run the filter again with advection = nothing for the Eulerian filter with the same frequency scale."
+    # The Eulerian filter in post-processing only supports a frequency scale that doesn't vary in time
+    if compute_Eulerian_filter && !isempty(frequency_scale_dependencies)
+        @warn "compute_Eulerian_filter=true with frequency_scale_dependencies, but the Eulerian filter in post-processing only supports a frequency scale that depends on the coordinates alone (so doesn't vary in time), so it won't be computed. Run the filter again with lagrangian = false for the Eulerian filter with the same frequency scale."
         compute_Eulerian_filter = false
     end
 
@@ -519,6 +523,7 @@ any other velocity components will be zero by default."
                             compute_Eulerian_filter,
                             output_netcdf,
                             output_original_data,
+                            lagrangian,
                             advection,
                             grid,
                             label,
