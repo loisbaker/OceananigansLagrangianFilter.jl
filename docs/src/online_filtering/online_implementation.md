@@ -30,6 +30,9 @@ using OceananigansLagrangianFilter.Utils
     - `regrid_to_mean`: A Bool determining whether the filtered fields should be interpolated to the mean position after the simulation (see below). This requires the maps, so if `regrid_to_mean=true` the maps will be computed.
     - `compute_mean_velocities`: A Bool determining whether to compute and output the mean velocities. They are computed from the maps ``\vb*{\xi}_{Ck}`` and ``\vb*{\xi}_{Sk}``, so if `compute_maps=false` and `compute_mean_velocities=true` the maps will still be solved for (but not output). 
     - `lagrangian`: `true` (default) for the Lagrangian filter, or `false` for the Eulerian filter (see below).
+    - `relaxation_mask_func` and `relaxation_params`: optionally, relaxation of the filtered variables towards their
+      local equilibrium where the mask is non-zero, e.g. near open boundaries, as for the offline filter (see
+      [Boundary relaxation](@ref "Boundary relaxation")).
     - `frequency_scale_func`, `frequency_scale_params` and `frequency_scale_dependencies`: optionally, a frequency scale that varies the cutoff frequency in space and time, as for the offline filter (see [Varying cutoff frequency](@ref "Varying cutoff frequency")). Online, the dependencies can be any fields of the model.
 
 ```julia
