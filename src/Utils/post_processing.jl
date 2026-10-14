@@ -185,53 +185,74 @@ function saved_frequency_scale(config::AbstractConfig, file, var_name, saved_siz
           "$(size(interior(M))) without")
 end
 
-# Decays the running sums of each term over the time interval dt, adds f * dt_weight to them, and returns the sum over
-# the terms of Re[amplitude * running sum], where amplitude is the past or future amplitude of the term
-function update_running_sums!(running_sums, terms, amplitude, f, dt_weight, dt)
-    value = zeros(size(f))
-    for (running_sum, term) in zip(running_sums, terms)
-        running_sum .*= exp.(-term.lambda .* dt)
-        running_sum .+= f .* dt_weight
-        value .+= real.(getproperty(term, amplitude) .* running_sum)
-    end
-    return value
+# The integral of exp(-lambda u) f over an interval 0 <= u <= dt, where f varies linearly from f_near (at u = 0) to
+# f_far (at u = dt), is near_weight * f_near + far_weight * f_far, with
+#   far_weight = (1 - exp(-lambda dt) (1 + lambda dt)) / (lambda^2 dt)
+#   near_weight = (1 - exp(-lambda dt)) / lambda - far_weight
+# Where lambda dt is small, far_weight comes from its series, as the formula loses precision.
+@inline function far_weight(lambda, dt)
+    z = lambda * dt
+    return abs(z) < 1e-3 ? dt * (1/2 - z/3 + z^2/8) : (-expm1(-z) - z * exp(-z)) / (lambda^2 * dt)
 end
+@inline near_weight(lambda, dt) = -expm1(-lambda * dt) / lambda - far_weight(lambda, dt)
+
+# Moves the running sum of each term on by dt, to the next saved time: it decays by exp(-lambda dt) and gains the
+# integral over the interval, with the field taken to vary linearly from f_far (the previous saved time) to f_near
+function step_running_sums!(running_sums, terms, f_near, f_far, dt)
+    for (running_sum, term) in zip(running_sums, terms)
+        running_sum .= exp.(-term.lambda .* dt) .* running_sum .+
+                       near_weight.(term.lambda, dt) .* f_near .+ far_weight.(term.lambda, dt) .* f_far
+    end
+    return running_sums
+end
+
+# The sum over the terms of Re[amplitude * running sum], where amplitude is the past or future amplitude of the term
+running_sums_value(running_sums, terms, amplitude) =
+    sum(real.(getproperty(term, amplitude) .* running_sum) for (running_sum, term) in zip(running_sums, terms))
 
 # The Eulerian filter as running sums, so that each field is read at most twice (rather than once for every output
 # time). read(j) gives the input f_j for each weight function in terms_list (each a list of exponential terms), and for
-# each output time t_i, output(i, values) is called with the sums over j of G(t_i - t_j) * f_j * dt_weights[j], one for
-# each weight function. For direction = :both, the sums over
-# later times are built up first, backwards in time, and kept in backward_store (anything indexed by a String, e.g. a
-# Dict or a JLD2 file), and then the sums over earlier times, forwards in time, so that the outputs are written in order.
-function Eulerian_running_sums(read, output, times, dt_weights, terms_list, direction, backward_store)
+# each output time t_i, output(i, values) is called with the integrals of G(t_i - t) f(t) over t, one for each weight
+# function. Between saved times each field is taken to vary linearly, and the exponentials are integrated exactly. The
+# ends are treated as by the Lagrangian filter: the sums over earlier times start from their steady values f / lambda,
+# as if each field were constant before the first saved time; and offline (direction = :both), the sums over later
+# times start at the last saved time from the sums over earlier times, as the backward pass of the offline filter
+# starts from the end of the forward pass. The sums are kept in `store` (anything indexed by a String, e.g. a JLD2
+# file) until the outputs are written, in order.
+function Eulerian_running_sums(read, output, times, terms_list, direction, store)
     n = length(times)
-    new_running_sums(inputs) = [[zeros(ComplexF64, size(f)) for _ in terms] for (terms, f) in zip(terms_list, inputs)]
 
-    if direction === :both
-        running_sums = nothing
-        for i in n:-1:1
+    # Sweep through the saved times in `order` from the running sums `start` (the steady values if `nothing`), calling
+    # emit(i, values) at each; returns the running sums at the last time of the sweep
+    function sweep(order, amplitude, start, emit)
+        running_sums = deepcopy(start)
+        previous_inputs, previous_i = nothing, 0
+        for i in order
             inputs = read(i)
-            running_sums = something(running_sums, new_running_sums(inputs))
-            dt = i < n ? times[i+1] - times[i] : 0.0
-            for (w, (terms, sums, f)) in enumerate(zip(terms_list, running_sums, inputs))
-                value = update_running_sums!(sums, terms, :future, f, dt_weights[i], dt)
-                # The output time itself is counted in both the earlier and the later times, with G(0) = sum of a
-                value .-= sum(real.(term.future) for term in terms) .* f .* dt_weights[i]
-                backward_store["$i/$w"] = value
+            if isnothing(running_sums)
+                running_sums = [[complex.(f ./ term.lambda) for term in terms]
+                                for (terms, f) in zip(terms_list, inputs)]
+            elseif previous_i != 0
+                dt = abs(times[i] - times[previous_i])
+                for (terms, sums, f, f_previous) in zip(terms_list, running_sums, inputs, previous_inputs)
+                    step_running_sums!(sums, terms, f, f_previous, dt)
+                end
             end
+            emit(i, [running_sums_value(sums, terms, amplitude) for (terms, sums) in zip(terms_list, running_sums)])
+            previous_inputs, previous_i = inputs, i
         end
+        return running_sums
     end
 
-    running_sums = nothing
-    for i in 1:n
-        inputs = read(i)
-        running_sums = something(running_sums, new_running_sums(inputs))
-        dt = i > 1 ? times[i] - times[i-1] : 0.0
-        values = map(enumerate(zip(terms_list, running_sums, inputs))) do (w, (terms, sums, f))
-            value = update_running_sums!(sums, terms, :past, f, dt_weights[i], dt)
-            direction === :both ? value .+ backward_store["$i/$w"] : value
+    if direction === :forward
+        sweep(1:n, :past, nothing, output)
+    else
+        keep(key) = (i, values) -> foreach(((w, value),) -> store["$key/$i/$w"] = value, enumerate(values))
+        sums_at_end = sweep(1:n, :past, nothing, keep("past"))
+        sweep(n:-1:1, :future, sums_at_end, keep("future"))
+        for i in 1:n
+            output(i, [store["past/$i/$w"] .+ store["future/$i/$w"] for w in eachindex(terms_list)])
         end
-        output(i, values)
     end
     return nothing
 end
@@ -245,17 +266,21 @@ the filter's weight function. Each term of the weight function is a decaying com
 exponential, so the filtered fields at all the output times are built up as running
 sums: forwards in time over the earlier times, and offline also backwards over the later
 times. Each saved field is read once in each direction, so the cost grows linearly with
-the number of saved times. Offline, the sums over the later times are kept in a temporary
-file next to the output file. The results are saved to the same JLD2 file in a new group
+the number of saved times. Offline, the sums are kept in a temporary file next to the output
+file until they are written. The results are saved to the same JLD2 file in a new group
 with the `_Eulerian_filtered` suffix.
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
 If the filter outputs its terms separately (`outputs = :separate`), each term is Eulerian filtered with its own
 weight function, and named like the Lagrangian outputs with `_Eulerian_filtered` in the stem, e.g.
-`b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`. The outputs are only divided by the integral
-of the weight function (correcting for it being cut off at the ends of the data) if the whole filter is normalised,
-in which case every term is divided by the same integral, so that the terms add up to the combined output.
+`b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`.
+
+The ends of the data are treated as by the Lagrangian filter, so that the two can be compared: each field is taken
+to be constant before the first saved time (see [`initialise_filtered_vars_from_model`](@ref)), and offline, the
+sums over later times start at the last saved time from the sums over earlier times, as the backward pass of the
+offline filter starts from the end of the forward pass. Between saved times each field is taken to vary linearly, and
+the weight function is integrated exactly, so a field that is constant in time is unchanged by a normalised filter.
 
 With a frequency scale ``M`` that only depends on the coordinates (no `frequency_scale_dependencies`), the weight
 function at each point is ``M G(M \\tau)``, with ``M`` evaluated where each variable is saved (e.g. at the `u` points
@@ -295,11 +320,6 @@ function compute_Eulerian_filter!(config::AbstractConfig)
         direction = :forward
     end
 
-    # Dividing by the discrete integral of the weight function corrects for it being cut off at the ends of the
-    # data, which only makes sense for a normalised filter, whether its terms are output combined or separately
-    # (for a band-pass filter, it can be close to zero)
-    normalised = zero_frequency_gain(filter_params, direction) ≈ 1
-
     # The weight functions to filter with: the whole filter, or each of its terms if they are output separately
     weights = outputs === :combined ? [("", filter_params)] : separate_term_params(filter_params)
 
@@ -307,11 +327,6 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
         times = [file["timeseries/t/$iter"] for iter in iterations]
-        n = length(times)
-
-        # Each field is weighted by the time interval to the next one (the last by the one before it)
-        dt_weights = [diff(times); times[n] - times[n-1]]
-
 
         # Loop over variables to filter
         for var_name in var_names_to_Eulerian_filter
@@ -328,35 +343,28 @@ function compute_Eulerian_filter!(config::AbstractConfig)
                 g_EF
             end
 
-            # Every output is normalised by the discrete integral of the whole filter's weight function, so the terms
-            # add up to the whole. It's found with the same running sums, as the filter of one at each time except the
-            # last (which it leaves out, unlike the filtered fields), and depends on position with a frequency scale
+            # The terms of each weight function, scaled by the frequency scale where there is one
             M = saved_frequency_scale(config, file, var_name, size(file["timeseries/$(var_name)/$(iterations[1])"]))
-            terms_list = [[scale_terms(exponential_terms(p), M) for (_, p) in weights]; [scale_terms(exponential_terms(filter_params), M)]]
-            ones_shape = isnothing(M) ? () : size(M)
-            function read_inputs(i)
-                field = file["timeseries/$(var_name)/$(iterations[i])"]
-                return [fill(field, length(weights)); [fill(i < n ? 1.0 : 0.0, ones_shape)]]
-            end
+            terms_list = [scale_terms(exponential_terms(p), M) for (_, p) in weights]
+            read_inputs(i) = fill(file["timeseries/$(var_name)/$(iterations[i])"], length(weights))
             function write_outputs(i, values)
-                normalisation = values[end]
-                for (g_EF, value) in zip(groups, values[1:end-1])
-                    g_EF["$(iterations[i])"] = normalised ? value ./ normalisation : value
+                for (g_EF, value) in zip(groups, values)
+                    g_EF["$(iterations[i])"] = value
                 end
             end
 
-            # The offline filter keeps the sums over later times in a temporary file next to the output
+            # The offline filter keeps the running sums in a temporary file next to the output
             if direction === :both
-                backward_filename = output_filename * ".Eulerian_backward_sums.jld2"
+                sums_filename = output_filename * ".Eulerian_sums.jld2"
                 try
-                    jldopen(backward_filename, "w") do backward_store
-                        Eulerian_running_sums(read_inputs, write_outputs, times, dt_weights, terms_list, direction, backward_store)
+                    jldopen(sums_filename, "w") do store
+                        Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, store)
                     end
                 finally
-                    rm(backward_filename, force = true)
+                    rm(sums_filename, force = true)
                 end
             else
-                Eulerian_running_sums(read_inputs, write_outputs, times, dt_weights, terms_list, direction, nothing)
+                Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, nothing)
             end
         end
     end
