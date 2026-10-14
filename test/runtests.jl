@@ -6,6 +6,7 @@
 #   test_halo_inflation.jl      - saved data with a smaller halo than the model grid (e.g. WENO9 on WENO5 output)
 #   test_old_oceananigans_data.jl - filtering data saved by an older Oceananigans version, by passing the grid
 #   test_online_integration.jl  - end-to-end online filter run vs. saved reference data
+#   test_regrid.jl              - regridding to the mean position: exact cases, convergence, folds, immersed bottom
 using Test
 import CUDA
 using Oceananigans.Units
@@ -21,3 +22,4 @@ include("test_offline_integration.jl")
 include("test_halo_inflation.jl")
 include("test_old_oceananigans_data.jl")
 include("test_online_integration.jl")
+include("test_regrid.jl") # after the integration tests, which compile the regridding kernels
