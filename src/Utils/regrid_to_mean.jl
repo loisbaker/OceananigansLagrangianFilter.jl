@@ -377,7 +377,9 @@ Each filtered field ``f^*`` is stored at the regular grid points, which label th
 position ``\\Xi(\\boldsymbol{x}) = \\boldsymbol{x} + \\boldsymbol{\\xi}(\\boldsymbol{x})``. For each grid point
 ``\\boldsymbol{y}``, the label ``\\boldsymbol{x}^*`` with ``\\Xi(\\boldsymbol{x}^*) = \\boldsymbol{y}`` is found by
 Newton's method, with the maps ``\\boldsymbol{\\xi}`` interpolated linearly between cell centres, and the regridded
-field is ``f^*(\\boldsymbol{x}^*)``. This runs on the CPU or GPU.
+field is ``f^*(\\boldsymbol{x}^*)``. This runs on the CPU or GPU, on a `RectilinearGrid` or `LatitudeLongitudeGrid`.
+On a `LatitudeLongitudeGrid` the maps are converted from metres to degrees, which assumes the grid is locally Cartesian
+over the trajectory excursions (see [Regridding to the mean position](@ref)).
 
 The regridded field is `NaN` at grid points that are not the mean position of any particle in the fluid: where the
 label ``\\boldsymbol{x}^*`` lies outside the domain, or in an immersed solid (in a solid cell, or below the bottom
