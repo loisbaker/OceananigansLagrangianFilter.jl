@@ -1,9 +1,9 @@
 # Regridding to the mean position
 
-The filter finds ``f^*(\vb*{x},t)``, the average along the trajectory of the particle that is at ``\vb*{x}`` at time ``t`` (see [Eulerian and Lagrangian averaging](@ref)). The Lagrangian mean ``\bar{f}^{\mathrm{L}}`` belongs instead at that particle's mean position, ``\vb*{\Xi}(\vb*{x}) = \vb*{x} + \vb*{\xi}(\vb*{x})``, where ``\vb*{\xi}`` are the maps computed by the filter. [`regrid_to_mean_position!`](@ref) moves ``f^*`` from the grid points, which label the particles, to their mean positions, and interpolates it back onto the grid:
+The filter finds ``f^*(\vb*{x},t)``, the average along the trajectory of the particle that is at ``\vb*{x}`` at time ``t`` (see [Eulerian and Lagrangian averaging](@ref)). The Lagrangian mean ``\bar{f}^{\mathrm{L}}`` belongs instead at that particle's mean position, ``\vb*{\Xi}(\vb*{x}) = \vb*{x} + \vb*{\xi}(\vb*{x})``, where ``\vb*{\xi}`` are the maps computed by the filter. [`regrid_to_mean_position!`](@ref) moves ``f^*`` from the grid points, which label the particles, to their mean positions, and interpolates it back onto the grid. This is done separately at each time, so ``t`` is dropped below:
 ```math
 \begin{equation}
-    \bar{f}^{\mathrm{L}}(\vb*{y}) = f^*(\vb*{x}^*)\,, \qquad \text{where} \qquad \vb*{x}^* + \vb*{\xi}(\vb*{x}^*) = \vb*{y}\,.
+    \bar{f}^{\mathrm{L}}(\vb*{\Xi}(\vb*{x})) = f^*(\vb*{x})\,, \qquad \text{so} \qquad \bar{f}^{\mathrm{L}}(\vb*{y}) = f^*(\vb*{\Xi}^{-1}(\vb*{y}))\,.
 \end{equation}
 ```
 
@@ -11,9 +11,9 @@ The filter finds ``f^*(\vb*{x},t)``, the average along the trajectory of the par
 
 Carrying every grid point to its mean position gives a deformed mesh with the same connections as the grid, so no triangulation is needed. For each grid point ``\vb*{y}``:
 
-1. the label ``\vb*{x}^*`` with mean position ``\vb*{y}`` is found by Newton's method, with the maps ``\vb*{\xi}`` interpolated linearly between cell centres;
-2. if ``\vb*{x}^*`` is in the fluid (inside the domain, in a fluid cell, and above the bottom of an immersed boundary), the regridded field at ``\vb*{y}`` is ``f^*(\vb*{x}^*)``, interpolated in the same way;
-3. otherwise, no particle in the fluid has its mean position at ``\vb*{y}``, and the regridded field there is `NaN`.
+1. the position ``\vb*{x} = \vb*{\Xi}^{-1}(\vb*{y})``, whose mean position is ``\vb*{y}``, is found by solving ``\vb*{x} + \vb*{\xi}(\vb*{x}) = \vb*{y}`` with Newton's method, with the maps ``\vb*{\xi}`` interpolated linearly between cell centres;
+2. if ``\vb*{x}`` is in the fluid (inside the domain, in a fluid cell, and above the bottom of an immersed boundary), ``\bar{f}^{\mathrm{L}}(\vb*{y}) = f^*(\vb*{x})``, with ``f^*`` interpolated in the same way;
+3. otherwise, no particle in the fluid has its mean position at ``\vb*{y}``, and ``\bar{f}^{\mathrm{L}}(\vb*{y})`` is `NaN`.
 
 Beyond a bounded boundary, the maps and fields are extrapolated linearly into one ghost cell, so nothing is assumed about the flow at the boundary; periodic dimensions wrap around. Both steps are second order in the grid spacing, and the same kernel runs on CPU and GPU.
 
