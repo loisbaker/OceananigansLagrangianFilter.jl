@@ -49,7 +49,11 @@ function run_offline_Lagrangian_filter(config)
     initialise_filtered_vars_from_data(model, forward_reader, config)
     @info "Initialised filtered variables"
 
-    # Define our outputs
+    # Define our outputs. Oceananigans names interpolation operators with a global counter, so building the same
+    # outputs again for the backward pass would give new types, and the output writer would be compiled again.
+    # Restoring the counter before the backward pass gives the same types (if a future Oceananigans has no such
+    # counter, the backward pass is just compiled again)
+    identity_counter = output_identity_counter()
     filtered_outputs = create_output_fields(model, config)
     @info "Defined outputs"
 
@@ -96,6 +100,7 @@ function run_offline_Lagrangian_filter(config)
     simulation.callbacks[:update_input_data] = Callback(update_input_data!, callsite = UpdateStateCallsite(), parameters = backward_reader)
 
     # Write outputs: the backward pass's contributions to the filtered fields
+    restore_output_identity_counter!(identity_counter)
     backward_outputs = create_output_fields(model, config; direction = :backward)
     simulation.output_writers[:vars] = JLD2Writer(model, backward_outputs,
                                                             filename = config.backward_output_filename,
@@ -132,3 +137,9 @@ function run_offline_Lagrangian_filter(config)
     end
 
 end
+
+# The global counter that Oceananigans uses to name interpolation operators, or nothing if there is none
+output_identity_counter() = isdefined(Oceananigans.Operators, :identity_counter) ? Oceananigans.Operators.identity_counter : nothing
+
+restore_output_identity_counter!(::Nothing) = nothing
+restore_output_identity_counter!(counter) = setglobal!(Oceananigans.Operators, :identity_counter, counter)

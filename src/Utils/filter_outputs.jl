@@ -97,7 +97,8 @@ end
 
 # The backward pass of the offline filter runs with the velocities negated, so its outputs of quantities that
 # change sign under time reversal (the mean velocities) are negated to give its contribution to the filtered field.
-time_reversed(output, direction) = direction === :backward ? -output : output
+# The sign multiplies the output in both passes, so that their outputs have the same types (and are compiled once).
+time_reversed(output, direction) = (direction === :backward ? -1 : 1) * output
 
 # The mean velocities computed from the maps are the velocities in filter time, (u/M)*, so are multiplied by the
 # frequency scale M to give the velocity of the mean position (see docs/src/theory/frequency_scale.md)
