@@ -169,3 +169,32 @@ end
         end
     end
 end
+
+@testset "Eulerian filter in post-processing of a constant field" begin
+    # Each field is taken to be constant before the first saved time (and offline, the sums over later times start
+    # from the sums over earlier times), and the weight function is integrated exactly between saved times, so a field
+    # that is constant in time is unchanged by the normalised filter, including at the ends of the data
+    function constant_b_copy(reference)
+        filename = reference_output_without_Eulerian_filter(reference)
+        jldopen(filename, "a+") do file
+            for iter in filter(!=("serialized"), collect(keys(file["timeseries/b"])))
+                data = file["timeseries/b/$iter"]
+                Base.delete!(file, "timeseries/b/$iter")
+                file["timeseries/b/$iter"] = fill(2.5, size(data))
+            end
+        end
+        return filename
+    end
+
+    offline = constant_b_copy("data/reference_offline_output.jld2")
+    compute_Eulerian_filter!(OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2", output_filename = offline,
+                                                 var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 2,
+                                                 freq_c = 1e-4 / 4))
+    @test all(FieldTimeSeries(offline, "b_Eulerian_filtered").data .≈ 2.5)
+
+    online = constant_b_copy("data/reference_online_output.jld2")
+    compute_Eulerian_filter!(OnlineFilterConfig(grid = jldopen(file -> file["serialized/grid"], online), output_filename = online,
+                                                var_names_to_filter = ("b", "T"), velocity_names = ("u", "w"), N = 1,
+                                                freq_c = 1e-4 / 4))
+    @test all(FieldTimeSeries(online, "b_Eulerian_filtered").data .≈ 2.5)
+end
