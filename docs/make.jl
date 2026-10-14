@@ -67,6 +67,7 @@ example_pages = [
 
 theory_pages = [
     "Eulerian and Lagrangian averaging" => "theory/Eulerian_Lagrangian_definitions.md",
+    "Regridding to the mean position" => "theory/regridding.md",
     "Background: PDEs for Lagrangian filtering" => "theory/filtering_PDEs.md",
     "Online Lagrangian filtering equations" => "theory/online_equations.md",
     "Offline Lagrangian filtering equations" => "theory/offline_equations.md",
