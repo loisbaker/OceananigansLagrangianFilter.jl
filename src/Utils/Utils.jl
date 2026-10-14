@@ -9,7 +9,7 @@ using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory, load_serialized_grid
 using Oceananigans: AbstractModel
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
-using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture, φnodes
+using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture, λnodes, φnodes
 using Oceananigans.ImmersedBoundaries: immersed_cell
 using KernelAbstractions: @kernel, @index
 using DataStructures: OrderedDict

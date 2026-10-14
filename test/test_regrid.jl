@@ -1,11 +1,13 @@
 using OceananigansLagrangianFilter.Utils: regrid_fields, REGRID_OK, REGRID_SOLID_POINT, REGRID_NO_MEAN_POSITION
 
-# A field at cell centres, with halos, as saved in the output file; f takes the coordinates of the non-Flat dimensions.
-# (Built directly from the coordinates, rather than with set!, which would compile a kernel for every function.)
+# A field at cell centres, with halos, as saved in the output file; f takes the coordinates of the non-Flat dimensions
+# (longitude and latitude in degrees on a LatitudeLongitudeGrid). Built directly from the coordinates, rather than with
+# set!, which would compile a kernel for every function.
 function centre_data(grid, f)
     underlying = grid isa ImmersedBoundaryGrid ? grid.underlying_grid : grid
-    coordinates = map(n -> isnothing(n) ? [nothing] : vcat(n...), (xnodes(underlying, Center(); with_halos = true),
-                                                                  ynodes(underlying, Center(); with_halos = true),
+    horizontal = underlying isa LatitudeLongitudeGrid ? (λnodes, φnodes) : (xnodes, ynodes)
+    coordinates = map(n -> isnothing(n) ? [nothing] : vcat(n...), (horizontal[1](underlying, Center(); with_halos = true),
+                                                                  horizontal[2](underlying, Center(); with_halos = true),
                                                                   znodes(underlying, Center(); with_halos = true)))
     return [f(filter(!isnothing, (x, y, z))...) for x in coordinates[1], y in coordinates[2], z in coordinates[3]]
 end
@@ -87,6 +89,27 @@ end
         maps = (centre_data(grid, (x, z) -> a / 2pi * sin(2pi * x)), nothing, centre_data(grid, (x, z) -> 0))
         _, _, folded = regrid_fields(grid, maps, (centre_data(grid, (x, z) -> x),))
         @test folded > 0
+    end
+
+    # A uniform shift in longitude, latitude and depth. The maps are distances in metres, converted to degrees at each
+    # cell's latitude, so the eastward map is c_lon degrees of arc along each latitude circle for the shift in longitude
+    # to be uniform. A field linear in all three coordinates is then regridded exactly.
+    @testset "uniform shift on a LatitudeLongitudeGrid" begin
+        Nlon, Nlat, Nz = 8, 6, 4
+        grid = LatitudeLongitudeGrid(CPU(), size = (Nlon, Nlat, Nz), longitude = (0, 20), latitude = (30, 50),
+                                     z = (-100, 0), topology = (Bounded, Bounded, Bounded))
+        R = grid.radius
+        c_lon, c_lat, c_z = 0.3 * 20 / Nlon, 0.25 * 20 / Nlat, 0.3 * 100 / Nz # degrees, degrees, metres
+        fstar(lon, lat, z) = 1 + 2lon + 3lat + 4z / 100
+        maps = (centre_data(grid, (lon, lat, z) -> deg2rad(c_lon) * R * cosd(lat)),
+                centre_data(grid, (lon, lat, z) -> deg2rad(c_lat) * R),
+                centre_data(grid, (lon, lat, z) -> c_z))
+        regridded, status, folded = regrid_fields(grid, maps, (centre_data(grid, fstar),))
+        exact = [fstar(lon - c_lon, lat - c_lat, z - c_z) for lon in λnodes(grid, Center()), lat in φnodes(grid, Center()),
+                                                             z in znodes(grid, Center())]
+        @test all(status .== REGRID_OK)
+        @test regridded[:, :, :, 1] ≈ exact atol = 1e-9
+        @test folded == 0
     end
 
     # A flat immersed bottom at z = 0.3: grid points below it are solid, and a shift of 0.7 cells up leaves the lowest

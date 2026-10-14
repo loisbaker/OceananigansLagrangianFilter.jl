@@ -173,7 +173,7 @@ Keyword arguments
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
   - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
-  - `regrid_to_mean`: A `Bool` indicating whether to interpolate the filtered fields to the mean position (i.e. calculate the generalised Lagrangian mean). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible for a Lagrangian filter with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
+  - `regrid_to_mean`: A `Bool` indicating whether to interpolate the filtered fields to the mean position (i.e. calculate the generalised Lagrangian mean). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible for a Lagrangian filter with normalised filter coefficients on a `RectilinearGrid` or `LatitudeLongitudeGrid`, and set to `false` otherwise. Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
   - `output_filename`: The filename for the final combined and mapped output. Default: `"filtered_output.jld2"`.
@@ -456,12 +456,17 @@ any other velocity components will be zero by default."
 
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid && regrid_to_mean
-        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting regrid_to_mean=false"
+        @info "Regridding to the mean position next to an immersed boundary is approximate: the first fluid cells use maps " *
+              "and fields extrapolated from the fluid, and points that are not the mean position of any particle in the " *
+              "fluid are NaN."
     end
 
     underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
 
     underlying_latlon_grid = (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
+
+    underlying = grid isa ImmersedBoundaryGrid ? grid.underlying_grid : grid
+    regrid_supported_grid = underlying isa Union{RectilinearGrid, LatitudeLongitudeGrid}
 
     if !underlying_rectilinear_grid && !underlying_latlon_grid && output_netcdf
         @warn "The grid type $(typeof(grid)) won't work with NetCDF output functionality - setting output_netcdf=false"
@@ -475,7 +480,7 @@ any other velocity components will be zero by default."
     # Check and reconcile the options for the maps (e.g. no regridding for the Eulerian filter)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
                                                        lagrangian, normalised,
-                                                       rectilinear = underlying_rectilinear_grid,
+                                                       supported_grid = regrid_supported_grid,
                                                        combined_outputs = outputs === :combined)
 
     # Warn if Eulerian filter is being calculated twice

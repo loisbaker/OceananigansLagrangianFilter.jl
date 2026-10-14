@@ -224,13 +224,18 @@ dimension_kind(::Type{Flat}) = FLAT_DIMENSION
 dimension_kind(::Type{Periodic}) = PERIODIC_DIMENSION
 dimension_kind(::Type{Bounded}) = BOUNDED_DIMENSION
 
+# The coordinates along dimension d at location loc: longitude and latitude in degrees on a LatitudeLongitudeGrid
+# (whose xnodes and ynodes are distances in metres)
+regrid_coordinates(grid::LatitudeLongitudeGrid, d, loc) = collect((λnodes, φnodes, znodes)[d](grid, loc))
+regrid_coordinates(grid, d, loc) = collect((xnodes, ynodes, znodes)[d](grid, loc))
+
 # Cell-centre coordinates, with a ghost centre beyond each end: one period away for a periodic dimension, mirrored in
 # the boundary for a bounded one. Longitude and latitude are in degrees.
 function padded_nodes(grid, d, kind)
     grid = grid isa ImmersedBoundaryGrid ? grid.underlying_grid : grid
     kind == FLAT_DIMENSION && return [zero(eltype(grid))]
-    centres = collect((xnodes, ynodes, znodes)[d](grid, Center()))
-    faces = collect((xnodes, ynodes, znodes)[d](grid, Face())) # only N faces in a periodic dimension
+    centres = regrid_coordinates(grid, d, Center())
+    faces = regrid_coordinates(grid, d, Face()) # only N faces in a periodic dimension
     N = length(centres)
     if kind == PERIODIC_DIMENSION
         L = (grid.Lx, grid.Ly, grid.Lz)[d]
