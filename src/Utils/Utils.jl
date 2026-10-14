@@ -1,8 +1,5 @@
 module Utils
 
-using CondaPkg
-using PythonCall
-
 using OceananigansLagrangianFilter: AbstractConfig, AbstractOfflineConfig, AbstractOnlineConfig
 using JLD2
 using JLD2: Group
@@ -12,7 +9,9 @@ using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory, load_serialized_grid
 using Oceananigans: AbstractModel
 using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
-using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture
+using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture, φnodes
+using Oceananigans.ImmersedBoundaries: immersed_cell
+using KernelAbstractions: @kernel, @index
 using DataStructures: OrderedDict
 using NCDatasets
 using Oceananigans.Forcings: DiscreteForcing
@@ -28,6 +27,7 @@ include("filter_outputs.jl")
 include("initialisation.jl")
 include("file_utils.jl")
 include("post_processing.jl")
+include("regrid_to_mean.jl")
 
 export create_buffered_reader, set_offline_BW2_filter_params, set_online_BW_filter_params, set_offline_spectrum_filter_params, set_online_spectrum_filter_params
 export create_original_vars, create_filtered_vars, create_forcing, create_output_fields

@@ -8,7 +8,6 @@
 #   test_online_integration.jl  - end-to-end online filter run vs. saved reference data
 using Test
 import CUDA
-using PythonCall
 using Oceananigans.Units
 using OceananigansLagrangianFilter
 
