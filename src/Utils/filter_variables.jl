@@ -37,7 +37,7 @@ function create_original_vars(config::AbstractConfig)
 end
 
 """
-    resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear, combined_outputs)
+    resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, supported_grid, combined_outputs)
 
 Check and reconcile the options controlling the displacement maps ``\\vb*{\\xi}``, for both filter configs:
 
@@ -47,13 +47,13 @@ Check and reconcile the options controlling the displacement maps ``\\vb*{\\xi}`
 
 The maps are only displacements from the mean position for a Lagrangian filter (`lagrangian`) with normalised
 filter coefficients (`normalised`), so otherwise `regrid_to_mean` is set to `false`. Regridding also currently
-requires a rectilinear grid (`rectilinear`), and filtered fields that are output combined rather than as separate
+requires a `RectilinearGrid` or `LatitudeLongitudeGrid` (`supported_grid`), and filtered fields that are output combined rather than as separate
 terms (`combined_outputs`, see `filter_output_options`). `map_to_mean` is the name of a removed option, and throws
 an error if given.
 
 Returns the reconciled `(compute_maps, regrid_to_mean)`.
 """
-function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, rectilinear, combined_outputs)
+function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagrangian, normalised, supported_grid, combined_outputs)
     if !isnothing(map_to_mean)
         error("The option `map_to_mean` has been removed. Use `compute_maps` to solve for and output the " *
               "displacement maps, and `regrid_to_mean` to interpolate the filtered fields to the mean position.")
@@ -71,8 +71,8 @@ function resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean, lagran
         regrid_to_mean = false
     end
 
-    if !rectilinear && regrid_to_mean
-        @warn "The final interpolation to mean position currently only works for RectilinearGrids, so setting regrid_to_mean = false."
+    if !supported_grid && regrid_to_mean
+        @warn "The final interpolation to mean position currently only works for RectilinearGrids and LatitudeLongitudeGrids, so setting regrid_to_mean = false."
         regrid_to_mean = false
     end
 

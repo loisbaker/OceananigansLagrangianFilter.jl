@@ -99,7 +99,6 @@ struct OfflineFilterConfig <: AbstractOfflineConfig
     forward_output_filename::String
     backward_output_filename::String
     output_filename::String
-    npad::Int
     compute_mean_velocities::Bool
     delete_intermediate_files::Bool
     compute_Eulerian_filter::Bool
@@ -136,7 +135,6 @@ end
                         forward_output_filename::String = "forward_output.jld2",
                         backward_output_filename::String = "backward_output.jld2",
                         output_filename::String = "filtered_output.jld2",
-                        npad::Int = 5,
                         compute_mean_velocities::Bool = true,
                         delete_intermediate_files::Bool = true,
                         compute_Eulerian_filter::Bool = false,
@@ -173,11 +171,10 @@ Keyword arguments
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `Δt`: The time step for the internal Lagrangian filter simulation. If `nothing`, it defaults to `T_out / 10`, but this may not be appropriate.
   - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
-  - `regrid_to_mean`: A `Bool` indicating whether to interpolate the filtered fields to the mean position (i.e. calculate the generalised Lagrangian mean). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible for a Lagrangian filter with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
+  - `regrid_to_mean`: A `Bool` indicating whether to interpolate the filtered fields to the mean position (i.e. calculate the generalised Lagrangian mean). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible for a Lagrangian filter with normalised filter coefficients on a `RectilinearGrid` or `LatitudeLongitudeGrid`, and set to `false` otherwise. On a `LatitudeLongitudeGrid` it assumes the grid is locally Cartesian over the trajectory excursions (see [Regridding to the mean position](@ref)). Default: `true`.
   - `forward_output_filename`: The filename for the output of the forward filter pass. Default: `"forward_output.jld2"`.
   - `backward_output_filename`: The filename for the output of the backward filter pass. Default: `"backward_output.jld2"`.
   - `output_filename`: The filename for the final combined and mapped output. Default: `"filtered_output.jld2"`.
-  - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
   - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
@@ -220,7 +217,7 @@ filter_config = OfflineFilterConfig(original_data_filename=path_to_sim,
 [ Info: Mean velocities corresponding to ("u", "w") will be computed.
 [ Info: Filter interval will be from T_start=0.0 to T_end=86400.0, duration T=86400.0
 [ Info: Setting filter parameters to use Butterworth squared, order 2, cutoff frequency 5.0e-5
-OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", 5, true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OfflineFilterConfig("../test/data/reference_sim.jld2", ("b",), ("u", "w"), (), 0.0, 86400.0, 86400.0, CPU(), 3600.0, (a1 = 1.767766952966369e-5, b1 = 1.767766952966369e-5, c1 = 3.535533905932738e-5, d1 = 3.535533905932738e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "output_file.jld2", true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 10×1×10 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
@@ -249,7 +246,6 @@ function OfflineFilterConfig(; original_data_filename::String,
                             forward_output_filename::String = "forward_output.jld2",
                             backward_output_filename::String = "backward_output.jld2",
                             output_filename::String = "filtered_output.jld2",
-                            npad::Int = 5,
                             compute_mean_velocities::Bool = true,
                             delete_intermediate_files::Bool = true,
                             compute_Eulerian_filter::Bool = false,
@@ -456,12 +452,17 @@ any other velocity components will be zero by default."
 
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid && regrid_to_mean
-        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting regrid_to_mean=false"
+        @info "Regridding to the mean position next to an immersed boundary is approximate: the first fluid cells use maps " *
+              "and fields extrapolated from the fluid, and points that are not the mean position of any particle in the " *
+              "fluid are NaN."
     end
 
     underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
 
     underlying_latlon_grid = (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
+
+    underlying = grid isa ImmersedBoundaryGrid ? grid.underlying_grid : grid
+    regrid_supported_grid = underlying isa Union{RectilinearGrid, LatitudeLongitudeGrid}
 
     if !underlying_rectilinear_grid && !underlying_latlon_grid && output_netcdf
         @warn "The grid type $(typeof(grid)) won't work with NetCDF output functionality - setting output_netcdf=false"
@@ -475,7 +476,7 @@ any other velocity components will be zero by default."
     # Check and reconcile the options for the maps (e.g. no regridding for the Eulerian filter)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
                                                        lagrangian, normalised,
-                                                       rectilinear = underlying_rectilinear_grid,
+                                                       supported_grid = regrid_supported_grid,
                                                        combined_outputs = outputs === :combined)
 
     # Warn if Eulerian filter is being calculated twice
@@ -517,7 +518,6 @@ any other velocity components will be zero by default."
                             forward_output_filename,
                             backward_output_filename,
                             output_filename,
-                            npad,
                             compute_mean_velocities,
                             delete_intermediate_files,
                             compute_Eulerian_filter,

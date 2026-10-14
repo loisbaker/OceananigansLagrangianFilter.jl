@@ -28,7 +28,6 @@ struct OnlineFilterConfig <: AbstractOnlineConfig
     regrid_to_mean::Bool
     compute_mean_velocities::Bool
     lagrangian::Bool
-    npad::Int
     label::String
     relaxation_mask_func::Union{Function, Nothing}
     relaxation_params::Union{NamedTuple, Nothing}
@@ -49,7 +48,6 @@ end
                             regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             lagrangian::Bool = true,
-                            npad::Int = 5,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
                             relaxation_params::Union{NamedTuple, Nothing} = nothing,
@@ -73,10 +71,9 @@ Keyword arguments
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
   - `compute_maps`: A `Bool` indicating whether to solve for and output the maps (displacements from the mean position). Default: `true`.
-  - `regrid_to_mean`: A `Bool` indicating whether the filtered fields should be interpolated to the mean position after the simulation (i.e. calculate the generalised Lagrangian mean), using [`regrid_to_mean_position!`](@ref). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible with normalised filter coefficients on a `RectilinearGrid`, and set to `false` otherwise. Default: `true`.
+  - `regrid_to_mean`: A `Bool` indicating whether the filtered fields should be interpolated to the mean position after the simulation (i.e. calculate the generalised Lagrangian mean), using [`regrid_to_mean_position!`](@ref). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible with normalised filter coefficients on a `RectilinearGrid` or `LatitudeLongitudeGrid`, and set to `false` otherwise. On a `LatitudeLongitudeGrid` it assumes the grid is locally Cartesian over the trajectory excursions (see [Regridding to the mean position](@ref)). Default: `true`.
   - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
   - `lagrangian`: `true` for the Lagrangian filter, or `false` for the Eulerian filter, which filters at fixed points: the filtered variables mustn't be advected (set the model's `tracer_advection` with [`filtered_vars_advection`](@ref)), and the outputs are named `_Eulerian_filtered`. The maps and mean velocities can still be computed, but not regridded. Default: `true`.
-  - `npad`: The number of cells to pad the interpolation to mean position, used when there are periodic boundary conditions. Default: `5`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
@@ -118,7 +115,7 @@ filter_config = OnlineFilterConfig( grid = grid,
 OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=200.0
 ├── Flat y
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, true, 5, "", nothing, nothing, nothing, nothing, ())
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=5.0, "test_filter.jld2", ("b", "T"), ("u", "w"), (a1 = 1.421067568548072e-20, b1 = -7.071067811865475e-5, c1 = 3.535533905932738e-5, d1 = -3.535533905932738e-5, N_coeffs = 1, outputs = :combined), true, true, true, true, "", nothing, nothing, nothing, nothing, ())
 ```
 
 
@@ -134,7 +131,6 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             regrid_to_mean::Bool = true,
                             compute_mean_velocities::Bool = true,
                             lagrangian::Bool = true,
-                            npad::Int = 5,
                             label::String = "",
                             relaxation_mask_func::Union{Function, Nothing} = nothing,
                             relaxation_params::Union{NamedTuple, Nothing} = nothing,
@@ -236,15 +232,18 @@ function OnlineFilterConfig(; grid::AbstractGrid,
 
     # Give a warning if the grid has an immersed boundary
     if grid isa ImmersedBoundaryGrid && regrid_to_mean
-        @warn "The final interpolation to mean position does not yet work well with immersed boundaries - consider setting regrid_to_mean=false"
+        @info "Regridding to the mean position next to an immersed boundary is approximate: the first fluid cells use maps " *
+              "and fields extrapolated from the fluid, and points that are not the mean position of any particle in the " *
+              "fluid are NaN."
     end
 
-    underlying_rectilinear_grid = (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
+    underlying = grid isa ImmersedBoundaryGrid ? grid.underlying_grid : grid
+    regrid_supported_grid = underlying isa Union{RectilinearGrid, LatitudeLongitudeGrid}
 
     # Check and reconcile the options for the maps (e.g. no regridding for non-rectilinear grids)
     compute_maps, regrid_to_mean = resolve_map_options(; compute_maps, regrid_to_mean, map_to_mean,
                                                        lagrangian, normalised,
-                                                       rectilinear = underlying_rectilinear_grid,
+                                                       supported_grid = regrid_supported_grid,
                                                        combined_outputs = outputs === :combined)
 
     # Check relaxation fields are appropriate
@@ -262,7 +261,6 @@ function OnlineFilterConfig(; grid::AbstractGrid,
                             regrid_to_mean,
                             compute_mean_velocities,
                             lagrangian,
-                            npad,
                             label,
                             relaxation_mask_func,
                             relaxation_params,
