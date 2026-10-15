@@ -2,7 +2,7 @@
 
 *A package to compute Lagrangian temporal filters of Oceananigans.jl simulation output*
 
-This package builds on and is intended to be used with [*Oceananigans.jl*](https://github.com/CliMA/Oceananigans.jl) [Oceananigans-overview-paper-2025](@citep).
+This package builds on and is intended to be used with [*Oceananigans.jl*](https://github.com/CliMA/Oceananigans.jl) [wagnerHighlevelHighresolutionOcean2025](@citep).
 
 The Lagrangian filter can be run in two ways
 
