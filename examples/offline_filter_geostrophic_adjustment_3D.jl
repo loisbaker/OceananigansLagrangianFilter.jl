@@ -37,7 +37,10 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 
 filename_stem = "geostrophic_adjustment_3D"
 
-grid = RectilinearGrid(CPU(),size = (Nx, Ny, Nz), 
+# The example runs on the CPU. To run it on a GPU, install CUDA.jl, add `using CUDA`, and set `arch = GPU()`.
+arch = CPU()
+
+grid = RectilinearGrid(arch, size = (Nx, Ny, Nz),
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        y = (0, L_front/Nx*Ny),
@@ -122,7 +125,7 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
                                     output_filename = "geostrophic_adjustment_offline_filtered_3D.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","v","w"), # Velocities to use for Lagrangian filtering
-                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    architecture = arch, # CPU() or GPU(), set above
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data
                                     N = 2, # Order of Butterworth filter

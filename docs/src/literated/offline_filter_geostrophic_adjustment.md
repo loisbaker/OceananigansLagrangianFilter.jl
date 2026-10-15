@@ -45,8 +45,12 @@ filename_stem = "geostrophic_adjustment";
 
 ### Define the grid
 
+The example runs on the CPU. To run it on a GPU, install CUDA.jl, add `using CUDA`, and set `arch = GPU()`.
+
 ````julia
-grid = RectilinearGrid(CPU(),size = (Nx, Nz),
+arch = CPU()
+
+grid = RectilinearGrid(arch, size = (Nx, Nz),
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))
@@ -172,7 +176,7 @@ T = model.tracers.T
 ````
 
 ````
-400×1×80 Field{Oceananigans.Grids.Center, Oceananigans.Grids.Center, Oceananigans.Grids.Center} on Oceananigans.Grids.RectilinearGrid on CPU
+400×1×80 Field{Center, Center, Center} on RectilinearGrid on CPU
 ├── grid: 400×1×80 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── boundary conditions: FieldBoundaryConditions
 │   └── west: Periodic, east: Periodic, south: Nothing, north: Nothing, bottom: ZeroFlux, top: ZeroFlux, immersed: Nothing
@@ -210,32 +214,36 @@ run!(simulation)
 ````
 [ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
+[00.00%] i: 0, t: 0 seconds, wall time: 51.092 seconds, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
+[ Info:     ... simulation initialization complete (39.069 seconds)
 [ Info: Executing initial time step...
-[15.28%] i: 50, t: 11 hours, max(u): (2.205e-02, 5.272e-02, 3.914e-04) m/s, next Δt: 6.183 minutes
-[19.31%] i: 100, t: 13.906 hours, max(u): (2.981e-02, 2.366e-02, 5.021e-04) m/s, next Δt: 2.795 minutes
-[22.61%] i: 150, t: 16.282 hours, max(u): (1.448e-02, 3.717e-03, 1.989e-04) m/s, next Δt: 3.382 minutes
-[26.86%] i: 200, t: 19.341 hours, max(u): (1.885e-02, 6.552e-03, 3.549e-04) m/s, next Δt: 4.420 minutes
-[30.87%] i: 250, t: 22.226 hours, max(u): (3.049e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.712 minutes
-[34.20%] i: 300, t: 1.026 days, max(u): (1.763e-02, 5.629e-02, 3.552e-04) m/s, next Δt: 3.422 minutes
-[38.36%] i: 350, t: 1.151 days, max(u): (1.565e-02, 5.854e-02, 3.038e-04) m/s, next Δt: 4.141 minutes
-[42.41%] i: 400, t: 1.272 days, max(u): (3.055e-02, 3.396e-02, 6.365e-04) m/s, next Δt: 2.727 minutes
-[45.61%] i: 450, t: 1.368 days, max(u): (2.307e-02, 1.076e-02, 3.970e-04) m/s, next Δt: 3.076 minutes
-[49.47%] i: 500, t: 1.484 days, max(u): (9.182e-03, 3.661e-03, 2.610e-04) m/s, next Δt: 4.094 minutes
-[53.85%] i: 550, t: 1.616 days, max(u): (2.978e-02, 2.383e-02, 6.374e-04) m/s, next Δt: 2.965 minutes
-[57.01%] i: 600, t: 1.710 days, max(u): (2.578e-02, 4.763e-02, 5.998e-04) m/s, next Δt: 3.092 minutes
-[60.82%] i: 650, t: 1.825 days, max(u): (5.830e-03, 6.150e-02, 1.671e-04) m/s, next Δt: 3.741 minutes
-[65.28%] i: 700, t: 1.958 days, max(u): (2.783e-02, 4.469e-02, 7.864e-04) m/s, next Δt: 2.994 minutes
-[68.51%] i: 750, t: 2.055 days, max(u): (2.840e-02, 2.019e-02, 7.026e-04) m/s, next Δt: 2.800 minutes
-[72.01%] i: 800, t: 2.160 days, max(u): (1.031e-02, 6.012e-03, 1.518e-04) m/s, next Δt: 3.727 minutes
-[76.49%] i: 850, t: 2.295 days, max(u): (2.391e-02, 1.160e-02, 7.266e-04) m/s, next Δt: 4.419 minutes
-[80.12%] i: 900, t: 2.404 days, max(u): (2.944e-02, 3.850e-02, 8.380e-04) m/s, next Δt: 2.831 minutes
-[83.57%] i: 950, t: 2.507 days, max(u): (1.288e-02, 5.856e-02, 5.939e-04) m/s, next Δt: 3.425 minutes
-[87.88%] i: 1000, t: 2.637 days, max(u): (2.045e-02, 5.464e-02, 7.651e-04) m/s, next Δt: 4.074 minutes
-[91.73%] i: 1050, t: 2.752 days, max(u): (3.010e-02, 2.809e-02, 1.100e-03) m/s, next Δt: 2.759 minutes
-[95.10%] i: 1100, t: 2.853 days, max(u): (1.714e-02, 8.333e-03, 4.073e-04) m/s, next Δt: 3.453 minutes
-[99.29%] i: 1150, t: 2.979 days, max(u): (1.560e-02, 8.750e-03, 8.093e-04) m/s, next Δt: 4.178 minutes
+[ Info:     ... initial time step complete (8.285 seconds).
+[15.28%] i: 50, t: 11 hours, wall time: 11.396 seconds, max(u): (2.205e-02, 5.272e-02, 3.914e-04) m/s, next Δt: 6.183 minutes
+[19.31%] i: 100, t: 13.906 hours, wall time: 293.494 ms, max(u): (2.981e-02, 2.366e-02, 5.021e-04) m/s, next Δt: 2.795 minutes
+[22.61%] i: 150, t: 16.282 hours, wall time: 317.106 ms, max(u): (1.448e-02, 3.717e-03, 1.989e-04) m/s, next Δt: 3.382 minutes
+[26.86%] i: 200, t: 19.341 hours, wall time: 298.521 ms, max(u): (1.885e-02, 6.552e-03, 3.549e-04) m/s, next Δt: 4.420 minutes
+[30.87%] i: 250, t: 22.226 hours, wall time: 280.138 ms, max(u): (3.049e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.712 minutes
+[34.20%] i: 300, t: 1.026 days, wall time: 241.139 ms, max(u): (1.763e-02, 5.629e-02, 3.552e-04) m/s, next Δt: 3.422 minutes
+[38.36%] i: 350, t: 1.151 days, wall time: 277.208 ms, max(u): (1.565e-02, 5.854e-02, 3.038e-04) m/s, next Δt: 4.141 minutes
+[42.41%] i: 400, t: 1.272 days, wall time: 292.102 ms, max(u): (3.055e-02, 3.396e-02, 6.365e-04) m/s, next Δt: 2.727 minutes
+[45.61%] i: 450, t: 1.368 days, wall time: 222.337 ms, max(u): (2.307e-02, 1.076e-02, 3.970e-04) m/s, next Δt: 3.076 minutes
+[49.47%] i: 500, t: 1.484 days, wall time: 296.474 ms, max(u): (9.182e-03, 3.661e-03, 2.610e-04) m/s, next Δt: 4.094 minutes
+[53.85%] i: 550, t: 1.616 days, wall time: 277.070 ms, max(u): (2.978e-02, 2.383e-02, 6.374e-04) m/s, next Δt: 2.965 minutes
+[57.01%] i: 600, t: 1.710 days, wall time: 301.551 ms, max(u): (2.578e-02, 4.763e-02, 5.998e-04) m/s, next Δt: 3.092 minutes
+[60.82%] i: 650, t: 1.825 days, wall time: 225.513 ms, max(u): (5.830e-03, 6.150e-02, 1.671e-04) m/s, next Δt: 3.741 minutes
+[65.28%] i: 700, t: 1.958 days, wall time: 297.142 ms, max(u): (2.783e-02, 4.469e-02, 7.864e-04) m/s, next Δt: 2.994 minutes
+[68.51%] i: 750, t: 2.055 days, wall time: 298.801 ms, max(u): (2.840e-02, 2.019e-02, 7.026e-04) m/s, next Δt: 2.800 minutes
+[72.01%] i: 800, t: 2.160 days, wall time: 229.784 ms, max(u): (1.031e-02, 6.012e-03, 1.518e-04) m/s, next Δt: 3.727 minutes
+[76.49%] i: 850, t: 2.295 days, wall time: 360.891 ms, max(u): (2.391e-02, 1.160e-02, 7.266e-04) m/s, next Δt: 4.419 minutes
+[80.12%] i: 900, t: 2.404 days, wall time: 224.314 ms, max(u): (2.944e-02, 3.850e-02, 8.380e-04) m/s, next Δt: 2.831 minutes
+[83.57%] i: 950, t: 2.507 days, wall time: 296.707 ms, max(u): (1.288e-02, 5.856e-02, 5.939e-04) m/s, next Δt: 3.425 minutes
+[87.88%] i: 1000, t: 2.637 days, wall time: 282.014 ms, max(u): (2.045e-02, 5.464e-02, 7.651e-04) m/s, next Δt: 4.074 minutes
+[91.73%] i: 1050, t: 2.752 days, wall time: 293.365 ms, max(u): (3.010e-02, 2.809e-02, 1.100e-03) m/s, next Δt: 2.759 minutes
+[95.10%] i: 1100, t: 2.853 days, wall time: 238.073 ms, max(u): (1.714e-02, 8.333e-03, 4.073e-04) m/s, next Δt: 3.453 minutes
+[99.29%] i: 1150, t: 2.979 days, wall time: 284.251 ms, max(u): (1.560e-02, 8.750e-03, 8.093e-04) m/s, next Δt: 4.178 minutes
+[ Info: Simulation is stopping after running for 54.267 seconds.
 [ Info: Simulation time 3 days equals or exceeds stop time 3 days.
+[ Info: Simulation completed in 54.325 seconds
 
 ````
 
@@ -254,7 +262,7 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
                                     output_filename = "geostrophic_adjustment_offline_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T", "b"), # Which variables to filter
                                     velocity_names = ("u","w","v"), # Velocities to use for remapping
-                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    architecture = arch, # CPU() or GPU(), set above
                                     Δt = 20minutes, # Time step of filtering simulation
                                     T_out = 1hour, # How often to output filtered data
                                     N = 2, # Order of Butterworth filter
@@ -266,13 +274,13 @@ filter_config = OfflineFilterConfig(original_data_filename="geostrophic_adjustme
 ````
 
 ````
-OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("geostrophic_adjustment.jld2", ("T", "b"), ("u", "w", "v"), 0.0, 259200.0, 259200.0, CPU(), 3600.0, (a1 = 8.838834764831844e-6, b1 = 8.838834764831844e-6, c1 = 1.767766952966369e-5, d1 = 1.767766952966369e-5, N_coeffs = 1), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "geostrophic_adjustment_offline_filtered.jld2", 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("geostrophic_adjustment.jld2", ("T", "b"), ("u", "w", "v"), (), 0.0, 259200.0, 259200.0, CPU(), 3600.0, (a1 = 8.838834764831844e-6, b1 = 8.838834764831844e-6, c1 = 1.767766952966369e-5, d1 = 1.767766952966369e-5, N_coeffs = 1, outputs = :combined, sine_parity = :even), 1200.0, true, true, "forward_output.jld2", "backward_output.jld2", "geostrophic_adjustment_offline_filtered.jld2", true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
 └── advecting_velocity_scheme: Centered(order=4), 400×1×80 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 3×0×3 halo
 ├── Periodic x ∈ [-5000.0, 5000.0) regularly spaced with Δx=25.0
 ├── Flat y                         
-└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=1.25, "", false, nothing, nothing, nothing)
+└── Bounded  z ∈ [-100.0, 0.0]     regularly spaced with Δz=1.25, "", nothing, nothing, nothing, nothing, ())
 ````
 
 ### Run the offline Lagrangian filter
@@ -292,7 +300,9 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (12.087 minutes)
 [ Info: Executing initial time step...
+[ Info:     ... initial time step complete (13.116 seconds).
 [ Info: Simulation time: 7.200 hours
 [ Info: Simulation time: 14.400 hours
 [ Info: Simulation time: 21.600 hours
@@ -302,12 +312,15 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 2.100 days
 [ Info: Simulation time: 2.400 days
 [ Info: Simulation time: 2.700 days
+[ Info: Simulation is stopping after running for 12.484 minutes.
 [ Info: Simulation time 3 days equals or exceeds stop time 3 days.
 [ Info: Simulation time: 3 days
 [ Info: Loaded backward input data from geostrophic_adjustment.jld2
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (309.304 ms)
 [ Info: Executing initial time step...
+[ Info:     ... initial time step complete (4.640 ms).
 [ Info: Simulation time: 7.200 hours
 [ Info: Simulation time: 14.400 hours
 [ Info: Simulation time: 21.600 hours
@@ -317,10 +330,10 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 2.100 days
 [ Info: Simulation time: 2.400 days
 [ Info: Simulation time: 2.700 days
+[ Info: Simulation is stopping after running for 11.075 seconds.
 [ Info: Simulation time 3 days equals or exceeds stop time 3 days.
 [ Info: Simulation time: 3 days
 [ Info: Combined forward and backward contributions into geostrophic_adjustment_offline_filtered.jld2
-[ Info: Assuming velocities normal to z boundaries are zero (open boundaries not yet supported for regridding)
 [ Info: Wrote regridded data to new variables with _at_mean suffix in file geostrophic_adjustment_offline_filtered.jld2
 [ Info: Computing Eulerian filter for variable T
 [ Info: Computing Eulerian filter for variable b

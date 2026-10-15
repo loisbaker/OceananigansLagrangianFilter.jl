@@ -34,7 +34,10 @@ M² = (Ro^2*f^2*L_front)/H # Horizontal buoyancy gradient
 filename_stem = "geostrophic_adjustment_online_filtered";
 
 # ### Grid
-grid = RectilinearGrid(CPU(),size = (Nx, Nz), 
+# The example runs on the CPU. To run it on a GPU, install CUDA.jl, add `using CUDA`, and set `arch = GPU()`.
+arch = CPU()
+
+grid = RectilinearGrid(arch, size = (Nx, Nz),
                        x = (-L_front/2, L_front/2),
                        z = (-H, 0),
                        topology = (Periodic, Flat, Bounded))
