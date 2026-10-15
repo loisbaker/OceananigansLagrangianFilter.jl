@@ -33,7 +33,7 @@ using OceananigansLagrangianFilter.Utils
     - `relaxation_mask_func` and `relaxation_params`: optionally, relaxation of the filtered variables towards their
       local equilibrium where the mask is non-zero, e.g. near open boundaries, as for the offline filter (see
       [Boundary relaxation](@ref "Boundary relaxation")).
-    - `frequency_scale_func`, `frequency_scale_params` and `frequency_scale_dependencies`: optionally, a frequency scale that varies the cutoff frequency in space and time, as for the offline filter (see [Varying cutoff frequency](@ref "Varying cutoff frequency")). Online, the dependencies can be any fields of the model.
+    - `frequency_scale_func`, `frequency_scale_params` and `frequency_scale_dependencies`: optionally, a frequency scale that varies the cutoff frequency in space and time, as for the offline filter (see [Varying cutoff frequency](@ref "Varying cutoff frequency")). Online, the dependencies can be any fields of the model at cell centres, apart from its velocities.
 
 ```julia
 filter_config = OnlineFilterConfig( grid = grid,

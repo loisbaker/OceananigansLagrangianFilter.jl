@@ -107,21 +107,19 @@ function check_frequency_scale_options(frequency_scale_func, frequency_scale_par
     return nothing
 end
 
-# `scale` is either `nothing` (a uniform filter) or a NamedTuple (func, dependencies, interps, params). The
-# dependencies are `Val`s of the field names, and interps the operators that interpolate them to cell centres
-# (the identity for fields already there).
+# `scale` is either `nothing` (a uniform filter) or a NamedTuple (func, dependencies, params). The dependencies are
+# `Val`s of the names of fields at cell centres.
 function frequency_scale(config::AbstractConfig)
     isnothing(config.frequency_scale_func) && return nothing
-    names = config.frequency_scale_dependencies
-    return (; func = config.frequency_scale_func, dependencies = Val.(names),
-              interps = velocity_interpolation.(String.(names)), params = config.frequency_scale_params)
+    return (; func = config.frequency_scale_func, dependencies = Val.(config.frequency_scale_dependencies),
+              params = config.frequency_scale_params)
 end
 
 # The frequency scale M at the cell centre (i, j, k), or `nothing` for a uniform filter
 @inline frequency_scale_value(::Nothing, i, j, k, grid, fields) = nothing
 @inline function frequency_scale_value(s::NamedTuple, i, j, k, grid, fields)
     X = node(i, j, k, grid, Center(), Center(), Center())
-    deps = map((name, interp) -> velocity_value(fields, name, interp, i, j, k, grid), s.dependencies, s.interps)
+    deps = map(name -> field_value(fields, name, i, j, k), s.dependencies)
     return s.func(X..., deps..., s.params)
 end
 
@@ -131,16 +129,18 @@ end
 """
     check_frequency_scale_dependencies(model, config)
 
-Check that the fields named in `config.frequency_scale_dependencies` are fields of `model`, and at cell centres
-unless they are velocities.
+Check that the fields named in `config.frequency_scale_dependencies` are fields of `model` at cell centres, and
+not its velocities.
 """
 function check_frequency_scale_dependencies(model, config::AbstractConfig)
     fields = merge(model.velocities, model.tracers, model.auxiliary_fields)
     for name in config.frequency_scale_dependencies
         name in keys(fields) || error("frequency_scale_dependencies includes $name, which is not a field of the model")
+        name in keys(model.velocities) &&
+            error("frequency_scale_dependencies can't include the velocity $name: compute what the frequency scale needs " *
+                  "(e.g. the vorticity) as a field at cell centres instead")
         loc = location(getproperty(fields, name))
-        name in (:u, :v, :w) || loc == (Center, Center, Center) ||
-            error("frequency_scale_dependencies must be velocities or at cell centres, but $name is at $loc")
+        loc == (Center, Center, Center) || error("frequency_scale_dependencies must be at cell centres, but $name is at $loc")
     end
     return nothing
 end

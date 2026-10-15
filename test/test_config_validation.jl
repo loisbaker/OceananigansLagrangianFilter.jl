@@ -21,6 +21,10 @@ using JLD2
 
     # No relaxation by default
     @test isnothing(OfflineFilterConfig(; base...).relaxation_mask_func)
+
+    # T_start + T and T_end are compared to rounding error (0.1 + 0.2 != 0.3)
+    @test OfflineFilterConfig(; base..., T_start = 0.1, T = 0.2, T_end = 0.3).T_end == 0.3
+    @test_throws ErrorException OfflineFilterConfig(; base..., T_start = 0.1, T = 0.2, T_end = 0.4)
 end
 
 @testset "OnlineFilterConfig boundary relaxation validation" begin
@@ -61,9 +65,15 @@ end
     # Dependencies need a frequency_scale_func
     @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_dependencies = (:u,))
 
+    # and can't be the velocities
+    @test_throws ErrorException OnlineFilterConfig(; online..., frequency_scale_func = (x, z, u, p) -> 1.0, frequency_scale_dependencies = (:u,))
+
     # Offline, the dependencies must be read from the data
     @test_throws ErrorException OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, zeta, p) -> 1.0,
                                                       frequency_scale_dependencies = (:zeta,))
+    # and can't be the velocities, which are negated on the backward pass
+    @test_throws ErrorException OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, u, p) -> 1.0,
+                                                      frequency_scale_dependencies = (:u,))
     config = OfflineFilterConfig(; offline..., frequency_scale_func = (x, z, b, p) -> 1.0 + b^2, frequency_scale_dependencies = (:b,))
     @test config.frequency_scale_dependencies == (:b,)
 

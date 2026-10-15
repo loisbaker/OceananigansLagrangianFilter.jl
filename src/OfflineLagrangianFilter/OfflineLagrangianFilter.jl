@@ -76,11 +76,10 @@ prognostic_fields(model::LagrangianFilter) = model.tracers
 ##### Define a config structure
 
 """
-    OfflineFilterConfig(;
-        
-    )
+    OfflineFilterConfig
 
-A configuration object for `apply_offline_filter`.
+The configuration of an offline Lagrangian filter, run with `run_offline_Lagrangian_filter`, made with the keyword
+constructor below.
 """
 struct OfflineFilterConfig <: AbstractOfflineConfig
     original_data_filename::String
@@ -127,7 +126,7 @@ end
                         architecture::AbstractArchitecture = CPU(),
                         T_out::Union{Real,Nothing} = nothing,
                         N::Union{Int, Nothing} = nothing,
-                        freq_c::Union{Int, Nothing} = nothing,
+                        freq_c::Union{Real, Nothing} = nothing,
                         filter_params::Union{NamedTuple, Nothing} = nothing,
                         Δt::Union{Real,Nothing} = nothing,
                         compute_maps::Bool = true,
@@ -179,7 +178,7 @@ Keyword arguments
   - `delete_intermediate_files`: A `Bool` indicating whether to delete `forward_output.jld2` and `backward_output.jld2` after the final combined file is created. Default: `true`.
   - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `output_netcdf`: A `Bool` indicating whether to also convert the final JLD2 output file to a NetCDF file. Default: `false`.
-    - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
+  - `output_original_data`: A `Bool` indicating whether to include the original data in the final output file for comparison. Default: `true`.
   - `lagrangian`: `true` for the Lagrangian filter, or `false` for the Eulerian filter, which filters at fixed points: the filtered variables aren't advected, and the outputs are named `_Eulerian_filtered`. The maps and mean velocities can still be computed, but not regridded. Default: `true`.
   - `advection`: The advection scheme to use for the Lagrangian filter simulation (not used if `lagrangian = false`). Default: `WENO()`. Using lower-order schemes may be a source of error.
   - `grid`: The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
@@ -189,7 +188,7 @@ Keyword arguments
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
   - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
   - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
-  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields whose values at the cell centre are passed to `frequency_scale_func`, e.g. `(:zeta,)`. Velocities are interpolated to cell centres, and other fields must be at cell centres. Offline, they must be in `velocity_names`, `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
+  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields at cell centres whose values are passed to `frequency_scale_func`, e.g. `(:zeta,)`. They can't be the velocities: compute what the frequency scale needs (e.g. the vorticity) as a field at cell centres instead. Offline, they must be in `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
 # Example:
 
 ```jldoctest offline_config
@@ -327,7 +326,7 @@ any other velocity components will be zero by default."
 
     # Check for consistent T_start, T_end, T
     if isnothing(T_start) + isnothing(T_end) + isnothing(T) == 0
-        if T_start + T != T_end
+        if !isapprox(T_start + T, T_end)
             error("Inconsistent time specifications: T_start + T != T_end")
         elseif T_start > T_end
             error("Inconsistent time specifications: T_start > T_end")
@@ -364,11 +363,11 @@ any other velocity components will be zero by default."
 
     # Check that T_start and T_end are within the original data range
     if T_start < times[1] || T_start > times[end]
-        error("T_start=$T_start is outside the range of the original data: [$times[1], $times[end]].")
+        error("T_start=$T_start is outside the range of the original data: [$(times[1]), $(times[end])].")
     end
 
     if T_end < times[1] || T_end > times[end]
-        error("T_end=$T_end is outside the range of the original data: [$times[1], $times[end]].")
+        error("T_end=$T_end is outside the range of the original data: [$(times[1]), $(times[end])].")
     end
 
     @info "Filter interval will be from T_start=$T_start to T_end=$T_end, duration T=$T"
@@ -497,8 +496,12 @@ any other velocity components will be zero by default."
     # Check the frequency scale options
     check_frequency_scale_options(frequency_scale_func, frequency_scale_params, frequency_scale_dependencies, grid)
     for name in frequency_scale_dependencies
-        if !(String(name) in (velocity_names..., var_names_to_filter..., extra_auxiliary_var_names...))
-            error("frequency_scale_dependencies must be in velocity_names, var_names_to_filter or extra_auxiliary_var_names, but '$name' is not")
+        if String(name) in velocity_names
+            error("frequency_scale_dependencies can't include the velocity '$name': save what the frequency scale needs " *
+                  "(e.g. the vorticity) as its own variable in the data, and read it in with extra_auxiliary_var_names")
+        end
+        if !(String(name) in (var_names_to_filter..., extra_auxiliary_var_names...))
+            error("frequency_scale_dependencies must be in var_names_to_filter or extra_auxiliary_var_names, but '$name' is not")
         end
     end
 

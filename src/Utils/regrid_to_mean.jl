@@ -31,7 +31,8 @@ regrid_architecture(config::AbstractOnlineConfig) = Oceananigans.Architectures.a
 # neighbour, and the offset to the upper neighbour (zero in a Flat dimension). Periodic labels are wrapped, bounded
 # labels are kept within the ghost cells.
 @inline function label_neighbours(f, N, kind)
-    f = ifelse(kind == PERIODIC_DIMENSION, mod(f - 1/2, N) + 1/2, clamp(f, zero(f), N + one(f)))
+    half = oftype(f, 1/2)
+    f = ifelse(kind == PERIODIC_DIMENSION, mod(f - half, N) + half, clamp(f, zero(f), N + one(f)))
     i = min(floor(Int, f), N)
     flat = kind == FLAT_DIMENSION
     return (ifelse(flat, 1, i + 1), ifelse(flat, zero(f), f - i), ifelse(flat, 0, 1))
@@ -107,7 +108,7 @@ end
                                                 @inbounds((nodes[i+padding(kind)] - nodes[i-padding(kind)]) / 2))
 
 # Wrap a periodic label, and keep a bounded label within the ghost cells, as in label_neighbours
-@inline tidy_label(f, N, kind) = ifelse(kind == PERIODIC_DIMENSION, mod(f - 1/2, N) + 1/2,
+@inline tidy_label(f, N, kind) = ifelse(kind == PERIODIC_DIMENSION, mod(f - oftype(f, 1/2), N) + oftype(f, 1/2),
                                         ifelse(kind == BOUNDED_DIMENSION, clamp(f, zero(f), N + one(f)), f))
 
 @inline inside_domain(f, N, kind, tol) = (kind != BOUNDED_DIMENSION) | ((f >= 1/2 - tol) & (f <= N + 1/2 + tol))
@@ -375,16 +376,18 @@ Regrid the Lagrangian filtered fields to the mean position, and save each as a n
 
 Each filtered field ``f^*`` is stored at the regular grid points, which label the particles, but belongs at their mean
 position ``\\Xi(\\boldsymbol{x}) = \\boldsymbol{x} + \\boldsymbol{\\xi}(\\boldsymbol{x})``. For each grid point
-``\\boldsymbol{y}``, the label ``\\boldsymbol{x}^*`` with ``\\Xi(\\boldsymbol{x}^*) = \\boldsymbol{y}`` is found by
-Newton's method, with the maps ``\\boldsymbol{\\xi}`` interpolated linearly between cell centres, and the regridded
-field is ``f^*(\\boldsymbol{x}^*)``. This runs on the CPU or GPU, on a `RectilinearGrid` or `LatitudeLongitudeGrid`.
+``\\boldsymbol{y}``, the label ``\\boldsymbol{x} = \\Xi^{-1}(\\boldsymbol{y})`` is found by solving
+``\\boldsymbol{x} + \\boldsymbol{\\xi}(\\boldsymbol{x}) = \\boldsymbol{y}`` with Newton's method, with the maps
+``\\boldsymbol{\\xi}`` interpolated linearly between cell centres, and the regridded field is ``f^*(\\boldsymbol{x})``.
+This runs on the CPU or GPU, on a `RectilinearGrid` or `LatitudeLongitudeGrid`.
 On a `LatitudeLongitudeGrid` the maps are converted from metres to degrees, which assumes the grid is locally Cartesian
 over the trajectory excursions (see [Regridding to the mean position](@ref)).
 
 The regridded field is `NaN` at grid points that are not the mean position of any particle in the fluid: where the
-label ``\\boldsymbol{x}^*`` lies outside the domain, or in an immersed solid (in a solid cell, or below the bottom
+label ``\\boldsymbol{x}`` lies outside the domain, or in an immersed solid (in a solid cell, or below the bottom
 height). This happens, for example, near a boundary where the particles' mean positions are pulled away from it. It is
-also `NaN` at solid grid points and where Newton's method does not converge. Beyond bounded boundaries, the maps and
+also `NaN` at grid points in an immersed solid (including those below the bottom height in a partial cell), and where
+Newton's method does not converge. Beyond bounded boundaries, the maps and
 fields are extrapolated linearly, so nothing is assumed about the flow at the boundary. A warning is given if the map
 folds (so that some grid points are the mean position of more than one label).
 

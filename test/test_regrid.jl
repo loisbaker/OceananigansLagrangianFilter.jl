@@ -37,6 +37,16 @@ end
             @test gpu_status == status
             @test isequal(gpu_regridded[:, :, 1, 1], regridded[:, :, 1, 1]) # the NaNs
             @test gpu_regridded[:, :, 2:end, 1] ≈ regridded[:, :, 2:end, 1] atol = 1e-12
+
+            # And on a Float32 grid
+            grid32 = RectilinearGrid(CPU(), Float32, size = (Nx, Ny, Nz), x = (0, 1), y = (0, 1), z = (0, 1),
+                                     topology = (Bounded, Periodic, Bounded))
+            maps32 = map(m -> Float32.(m), maps)
+            data32 = (Float32.(centre_data(grid32, fstar)),)
+            cpu32, cpu32_status, _ = regrid_fields(grid32, maps32, data32)
+            gpu32, gpu32_status, _ = regrid_fields(grid32, maps32, data32; architecture = GPU())
+            @test gpu32_status == cpu32_status == status
+            @test gpu32[:, :, 2:end, 1] ≈ cpu32[:, :, 2:end, 1]
         end
     end
 
