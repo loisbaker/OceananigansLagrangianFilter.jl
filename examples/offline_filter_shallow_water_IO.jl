@@ -19,7 +19,10 @@ filename_stem = "SW_IO_with_tracer";
 
 # ### Define the grid
 
-grid = RectilinearGrid(CPU(), size = (50, 50),
+# The example runs on the CPU. To run it on a GPU, install CUDA.jl, add `using CUDA`, and set `arch = GPU()`.
+arch = CPU()
+
+grid = RectilinearGrid(arch, size = (50, 50),
                        x = (0, 2*pi),
                        y = (0, 2*pi),
                        topology = (Periodic, Periodic, Flat))
@@ -96,7 +99,7 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
                                     output_filename = "SW_IO_with_tracer_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("T",), # Which variables to filter
                                     velocity_names = ("u","v"), # Velocities to use for remapping
-                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    architecture = arch, # CPU() or GPU(), set above
                                     Δt = 1e-2, # Time step of filtering simulation
                                     T_out=0.1, # How often to output filtered data
                                     N=2, # Order of Butterworth filter

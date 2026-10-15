@@ -46,7 +46,10 @@ filename_stem = "lee_wave";
 
 # ### Define the grid
 
-underlying_grid = RectilinearGrid(CPU(), size = (Nx, Nz), halo = (4, 4),
+# The example runs on the CPU. To run it on a GPU, install CUDA.jl, add `using CUDA`, and set `arch = GPU()`.
+arch = CPU()
+
+underlying_grid = RectilinearGrid(arch, size = (Nx, Nz), halo = (4, 4),
                                   x = (-L, L), z = (-H, 0),
                                   topology = (Periodic, Flat, Bounded))         
 
@@ -170,7 +173,7 @@ filter_config = OfflineFilterConfig(original_data_filename="lee_wave.jld2", # Wh
                                     output_filename = "lee_wave_offline_filtered.jld2", # Where to save the filtered output
                                     var_names_to_filter = ("b",), # Which variables to filter
                                     velocity_names = ("u","w"), # Velocities to use for remapping
-                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    architecture = arch, # CPU() or GPU(), set above
                                     Δt = 1minutes, # Time step of filtering simulation
                                     T_start = 5days,
                                     T_out = 1hour, # How often to output filtered data
