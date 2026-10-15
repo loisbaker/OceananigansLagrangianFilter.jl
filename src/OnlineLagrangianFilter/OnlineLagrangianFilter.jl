@@ -12,11 +12,9 @@ using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient
 
 export OnlineFilterConfig
 """
-    OnlineFilterConfig(;
+    OnlineFilterConfig
 
-    )
-
-A configuration object for online filtering.
+The configuration of an online Lagrangian filter, made with the keyword constructor below.
 """
 struct OnlineFilterConfig <: AbstractOnlineConfig
     grid::AbstractGrid
@@ -38,11 +36,11 @@ end
 
 """
     OnlineFilterConfig(; grid::AbstractGrid,
-                            output_filename::String = "online_filtered_output",
+                            output_filename::String = "online_filtered_output.jld2",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
                             N::Union{Int, Nothing} = nothing,
-                            freq_c::Union{Int, Nothing} = nothing,
+                            freq_c::Union{Real, Nothing} = nothing,
                             filter_params::Union{NamedTuple, Nothing} = nothing,
                             compute_maps::Bool = true,
                             regrid_to_mean::Bool = true,
@@ -63,10 +61,10 @@ before creating the `OnlineFilterConfig` object.
 
 Keyword arguments
 =================
-  - `grid`: (required) The grid for the simulation. If `nothing`, the grid is inferred from the `original_data_filename` (preferred option)
-  - `output_filename`: The filename for the output of the online filtered data. Default: `"online_filtered_output"`.
+  - `grid`: (required) The grid of the model.
+  - `output_filename`: The filename for the output of the online filtered data. Default: `"online_filtered_output.jld2"`.
   - `var_names_to_filter`: (required) A `Tuple` of `String`s specifying the names of the tracer variables to be filtered.
-  - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the velocity fields in the data file to be used for advection.
+  - `velocity_names`: (required) A `Tuple` of `String`s specifying the names of the model's velocity fields to be used for advection.
   - `N`, `freq_c`: Parameters for a Butterworth filter. `N` is the order of the filter, and `freq_c` is the cutoff frequency. 
      These are used to automatically generate `filter_params` if not provided. Must be specified together if `filter_params` is not given.
   - `filter_params`: A `NamedTuple` containing the coefficients for a custom filter. Only filter_params OR `N` and `freq_c` should be given.
@@ -74,14 +72,13 @@ Keyword arguments
   - `regrid_to_mean`: A `Bool` indicating whether the filtered fields should be interpolated to the mean position after the simulation (i.e. calculate the generalised Lagrangian mean), using [`regrid_to_mean_position!`](@ref). This requires the maps, so `compute_maps` is set to `true` if needed. Only possible with normalised filter coefficients on a `RectilinearGrid` or `LatitudeLongitudeGrid`, and set to `false` otherwise. On a `LatitudeLongitudeGrid` it assumes the grid is locally Cartesian over the trajectory excursions (see [Regridding to the mean position](@ref)). Default: `true`.
   - `compute_mean_velocities`: A `Bool` indicating whether to compute and output the mean velocities (from the maps). Default: `true`.
   - `lagrangian`: `true` for the Lagrangian filter, or `false` for the Eulerian filter, which filters at fixed points: the filtered variables mustn't be advected (set the model's `tracer_advection` with [`filtered_vars_advection`](@ref)), and the outputs are named `_Eulerian_filtered`. The maps and mean velocities can still be computed, but not regridded. Default: `true`.
-  - `compute_Eulerian_filter`: A `Bool` indicating whether to also compute an Eulerian-mean-based filter for comparison. Default: `false`.
   - `label`: A `String` label for the variables that will be created to pass to the model. For use when multiple filter configurations are to be run
      at the same time.  Default: "".
   - `relaxation_mask_func`: A `Function` defining the mask for relaxing the filtered variables towards their local equilibrium (see [Boundary relaxation](@ref "Boundary relaxation")), e.g. near the boundaries of the domain. Should be 1 for full relaxation, and 0 for no relaxation. Arguments should be the non-flat spatial coordinates and `relaxation_params`. Relaxation is only included if this is given. Default `nothing`.
   - `relaxation_params`: A `NamedTuple` of parameters for `relaxation_mask_func`, which must include the relaxation `timescale`. Default `nothing`.
   - `frequency_scale_func`: A `Function` giving the frequency scale ``M``, which locally multiplies the filter's frequencies (e.g. the cutoff frequency), so that the filter can vary in space, and in time through `frequency_scale_dependencies`. Must be positive everywhere throughout the run (with `frequency_scale_dependencies`, it is only checked for the initial fields), and GPU-compatible if running on a GPU. Arguments should be the non-flat spatial coordinates, the values of the `frequency_scale_dependencies`, and `frequency_scale_params`. The filter is the same everywhere if this is `nothing`. See [Varying cutoff frequency](@ref). Default `nothing`.
   - `frequency_scale_params`: A `NamedTuple` of parameters for `frequency_scale_func`. Default `nothing`.
-  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields whose values at the cell centre are passed to `frequency_scale_func`, e.g. `(:zeta,)`. Velocities are interpolated to cell centres, and other fields must be at cell centres. Offline, they must be in `velocity_names`, `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
+  - `frequency_scale_dependencies`: A `Tuple` of `Symbol`s naming fields at cell centres whose values are passed to `frequency_scale_func`, e.g. `(:zeta,)`. They can't be the velocities: compute what the frequency scale needs (e.g. the vorticity) as a field at cell centres instead. Offline, they must be in `var_names_to_filter` or `extra_auxiliary_var_names`. Online, they can be any field of the model, e.g. one of its `auxiliary_fields`. Default `()`.
 
 # Example:
 
@@ -121,7 +118,7 @@ OnlineFilterConfig(50×1×20 RectilinearGrid{Float64, Periodic, Flat, Bounded} o
 
 """
 function OnlineFilterConfig(; grid::AbstractGrid,
-                            output_filename::String = "online_filtered_output",
+                            output_filename::String = "online_filtered_output.jld2",
                             var_names_to_filter::Tuple{Vararg{String}},
                             velocity_names::Tuple{Vararg{String}},
                             N::Union{Int, Nothing} = nothing,
@@ -251,6 +248,11 @@ function OnlineFilterConfig(; grid::AbstractGrid,
 
     # Check the frequency scale options
     check_frequency_scale_options(frequency_scale_func, frequency_scale_params, frequency_scale_dependencies, grid)
+    for name in frequency_scale_dependencies
+        String(name) in velocity_names &&
+            error("frequency_scale_dependencies can't include the velocity '$name': compute what the frequency scale needs " *
+                  "(e.g. the vorticity) as a field at cell centres instead, e.g. as one of the model's auxiliary_fields")
+    end
 
     return OnlineFilterConfig(grid,
                             output_filename,

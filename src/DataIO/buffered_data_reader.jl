@@ -245,7 +245,8 @@ Keyword arguments
 - `locations`  : `Dict{String, NTuple{3, DataType}}` mapping variable names to their
                  spatial location, e.g. `Dict("u" => (Face,Center,Center))`.
                  Only required for NetCDF sources (JLD2 sources infer location from
-                 file metadata). Defaults to `(Center,Center,Center)` for all vars.
+                 file metadata). Otherwise the location is read from the variable's attributes
+                 in the file, as written by Oceananigans' `NetCDFWriter`.
 - `time_name`  : name of the time coordinate in a NetCDF file (default `"time"`)
 """
 function create_buffered_reader(config::AbstractConfig;
@@ -272,7 +273,7 @@ function create_buffered_reader(config::AbstractConfig;
     end
 
     if length(stored_times(source)) < 2
-        error("BufferedDataReader requires at least 2 frames in [T_start, T_end]. " *
+        error("BufferedDataReader requires at least 2 saved times covering [T_start, T_end]. " *
               "Found $(length(stored_times(source))).")
     end
 

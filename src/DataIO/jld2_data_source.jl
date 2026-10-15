@@ -37,8 +37,9 @@ function JLD2DataSource(filename::String,
         raw_iters, raw_times
     end
 
-    lo = isnothing(T_start) ? 1              : searchsortedfirst(times, T_start)
-    hi = isnothing(T_end)   ? length(times)  : searchsortedlast(times, T_end)
+    # Keep the saved times either side of [T_start, T_end], so that the data is interpolated (not extrapolated) at the ends
+    lo = isnothing(T_start) ? 1              : max(searchsortedlast(times, T_start), 1)
+    hi = isnothing(T_end)   ? length(times)  : min(searchsortedfirst(times, T_end), length(times))
 
     return JLD2DataSource(filename,
                           collect(String, var_names),

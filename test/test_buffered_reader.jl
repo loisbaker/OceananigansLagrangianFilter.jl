@@ -164,6 +164,13 @@ end
         src_w = NetCDFDataSource(datafile, ["b"], ["u"]; T_start = 7200.0, T_end = 14400.0)
         @test src_w.stored_times   ≈ [7200.0, 10800.0, 14400.0]
         @test src_w.stored_indices == [3, 4, 5]
+
+        # Between saved times, the saved times either side are kept too, so the data is interpolated at the ends.
+        # The JLD2 source selects its frames in the same way
+        src_between = NetCDFDataSource(datafile, ["b"], ["u"]; T_start = 5400.0, T_end = 9000.0)
+        @test src_between.stored_times ≈ [3600.0, 7200.0, 10800.0]
+        @test JLD2DataSource("data/reference_sim.jld2", ["b"], ["u"]; T_start = 5400.0, T_end = 9000.0).stored_times ≈
+              [3600.0, 7200.0, 10800.0]
     end
 
     @testset "read_frame!" begin

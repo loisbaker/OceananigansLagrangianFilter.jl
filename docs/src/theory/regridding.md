@@ -25,7 +25,7 @@ Beyond a bounded boundary, the maps and fields are extrapolated linearly into on
 
 **`NaN` where no particle has its mean position.** This is not a failure: it marks points that are not the mean position of any particle in the fluid. It typically happens next to boundaries, where particles' mean positions are pulled away from the boundary. For example, particles near a flat bottom that ride over a hill within the filter window have mean positions above the bottom, so the bottom row is `NaN`. Points where Newton's method does not converge, usually at the edge of a fold, are also `NaN`, and counted in a warning.
 
-**Next to an immersed boundary the result is approximate.** Solid cells next to the fluid are filled with the mean of their fluid neighbours, so the first fluid cells use maps and fields extrapolated from the fluid. Labels are tested against the bottom height where the immersed boundary has one (`GridFittedBottom`, `PartialCellBottom`), and against the solid cells otherwise.
+**Next to an immersed boundary the result is approximate.** Solid cells next to the fluid are filled with the mean of their fluid neighbours, so the first fluid cells use maps and fields extrapolated from the fluid. Labels, and grid points, are in the solid if they are in a solid cell, or below the bottom height where the immersed boundary has one (`GridFittedBottom`, `PartialCellBottom`), so grid points below the bottom in a partial cell are `NaN` too.
 
 ## On a `LatitudeLongitudeGrid`
 

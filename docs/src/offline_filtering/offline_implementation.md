@@ -107,8 +107,9 @@ config = OfflineFilterConfig(...,
   dependencies only for the initial fields, when the filtered variables are initialised. Make sure it stays
   positive throughout the run, e.g. by using `abs` or `exp` of the fields rather than the fields themselves.
 - `frequency_scale_func` is called inside the filter's kernels, so it must be GPU-compatible to run on a GPU.
-- Fields in `frequency_scale_dependencies` must be at cell centres, apart from the velocities, which are interpolated
-  to cell centres.
+- Fields in `frequency_scale_dependencies` must be in `var_names_to_filter` or `extra_auxiliary_var_names`, and at
+  cell centres. They can't be the velocities: save what the frequency scale needs (e.g. the vorticity) as its own
+  variable in the data.
 - ``M`` can't depend on the filtered fields of the same run (see [Varying cutoff frequency](@ref)): to use a
   filtered field, filter it in a first run and read it in with `extra_auxiliary_var_names` in a second.
 - Choose `Δt` for the largest local cutoff during the run, and leave enough time for spin-up at the smallest one.
