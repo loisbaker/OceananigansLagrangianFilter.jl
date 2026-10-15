@@ -16,11 +16,13 @@ Nsqr = 1e-6               # Buoyancy frequency squared [s⁻²]
 κv = 0.1 # Vertical diffusivity
 κBh = L^2 / pi^2/ Nx^2 * 100 # Horizontal biharmonic diffusivity
 
-filename_stem = &quot;lee_wave&quot;;</code></pre><h3 id="Define-the-grid"><a class="docs-heading-anchor" href="#Define-the-grid">Define the grid</a><a id="Define-the-grid-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-grid" title="Permalink"></a></h3><pre><code class="language-julia hljs">underlying_grid = RectilinearGrid(CPU(), size = (Nx, Nz), halo = (4, 4),
+filename_stem = &quot;lee_wave&quot;;</code></pre><h3 id="Define-the-grid"><a class="docs-heading-anchor" href="#Define-the-grid">Define the grid</a><a id="Define-the-grid-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-grid" title="Permalink"></a></h3><p>The example runs on the CPU. To run it on a GPU, install CUDA.jl, add <code>using CUDA</code>, and set <code>arch = GPU()</code>.</p><pre><code class="language-julia hljs">arch = CPU()
+
+underlying_grid = RectilinearGrid(arch, size = (Nx, Nz), halo = (4, 4),
                                   x = (-L, L), z = (-H, 0),
                                   topology = (Periodic, Flat, Bounded))
 
-grid = ImmersedBoundaryGrid(underlying_grid, PartialCellBottom(bottom))</code></pre><pre><code class="nohighlight hljs">100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo:
+grid = ImmersedBoundaryGrid(underlying_grid, PartialCellBottom(bottom))</code></pre><pre><code class="nohighlight hljs">100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo:
 ├── immersed_boundary: PartialCellBottom(mean(zb)=-1977.76, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
 ├── underlying_grid: 100×1×100 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── Periodic x ∈ [-20000.0, 20000.0) regularly spaced with Δx=400.0
@@ -74,7 +76,7 @@ b_sponge_forcing = Forcing(b_sponge_func, discrete_form=true, parameters=(; Nsqr
                                                 u = u_sponge_forcing, b = b_sponge_forcing),
                                     closure=closure,
                                     )</code></pre><pre><code class="nohighlight hljs">HydrostaticFreeSurfaceModel{CPU, ImmersedBoundaryGrid}(time = 0 seconds, iteration = 0)
-├── grid: 100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo
+├── grid: 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── timestepper: QuasiAdamsBashforth2TimeStepper
 ├── tracers: b
 ├── closure: Tuple with 2 closures:
@@ -118,8 +120,8 @@ function print_progress(sim)
 end
 
 add_callback!(simulation, print_progress, IterationInterval(500))</code></pre><h3 id="Set-up-the-output"><a class="docs-heading-anchor" href="#Set-up-the-output">Set up the output</a><a id="Set-up-the-output-1"></a><a class="docs-heading-anchor-permalink" href="#Set-up-the-output" title="Permalink"></a></h3><pre><code class="language-julia hljs">u, v, w = model.velocities
-b = model.tracers.b</code></pre><pre><code class="nohighlight hljs">100×1×100 Field{Oceananigans.Grids.Center, Oceananigans.Grids.Center, Oceananigans.Grids.Center} on Oceananigans.ImmersedBoundaries.ImmersedBoundaryGrid on CPU
-├── grid: 100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo
+b = model.tracers.b</code></pre><pre><code class="nohighlight hljs">100×1×100 Field{Center, Center, Center} on ImmersedBoundaryGrid on CPU
+├── grid: 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── boundary conditions: FieldBoundaryConditions
 │   └── west: Periodic, east: Periodic, south: Nothing, north: Nothing, bottom: ZeroFlux, top: ZeroFlux, immersed: ZeroFlux
 └── data: 108×1×108 OffsetArray(::Array{Float64, 3}, -3:104, 1:1, -3:104) with eltype Float64 with indices -3:104×1:1×-3:104
@@ -136,50 +138,54 @@ run!(simulation)
 
 @info &quot;Simulation completed in &quot; * prettytime(simulation.run_wall_time)</code></pre><pre><code class="nohighlight hljs">[ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
+[00.00%] i: 0, t: 0 seconds, wall time: 51.628 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
+[ Info:     ... simulation initialization complete (38.275 seconds)
 [ Info: Executing initial time step...
-[00.85%] i: 500, t: 3.049 hours, max(u): (3.645e-01, 7.045e-02, 1.484e-02) m/s, next Δt: 24.200 seconds
-[01.78%] i: 1000, t: 6.403 hours, max(u): (4.274e-01, 1.448e-01, 1.736e-02) m/s, next Δt: 26.620 seconds
-[02.80%] i: 1500, t: 10.081 hours, max(u): (4.636e-01, 1.679e-01, 1.911e-02) m/s, next Δt: 29.282 seconds
-[03.93%] i: 2000, t: 14.146 hours, max(u): (4.768e-01, 1.776e-01, 1.981e-02) m/s, next Δt: 32.210 seconds
-[05.17%] i: 2500, t: 18.608 hours, max(u): (4.778e-01, 1.606e-01, 1.987e-02) m/s, next Δt: 35.431 seconds
-[06.53%] i: 3000, t: 23.512 hours, max(u): (4.809e-01, 1.505e-01, 1.976e-02) m/s, next Δt: 38.974 seconds
-[08.02%] i: 3500, t: 1.204 days, max(u): (4.967e-01, 1.525e-01, 2.022e-02) m/s, next Δt: 42.872 seconds
-[09.68%] i: 4000, t: 1.451 days, max(u): (4.975e-01, 1.535e-01, 2.017e-02) m/s, next Δt: 47.159 seconds
-[11.48%] i: 4500, t: 1.722 days, max(u): (4.914e-01, 1.520e-01, 1.980e-02) m/s, next Δt: 51.875 seconds
-[13.47%] i: 5000, t: 2.020 days, max(u): (4.852e-01, 1.519e-01, 1.959e-02) m/s, next Δt: 57.062 seconds
-[15.63%] i: 5500, t: 2.345 days, max(u): (4.894e-01, 1.502e-01, 1.983e-02) m/s, next Δt: 1.046 minutes
-[18.03%] i: 6000, t: 2.705 days, max(u): (4.913e-01, 1.501e-01, 1.981e-02) m/s, next Δt: 1.151 minutes
-[20.66%] i: 6500, t: 3.099 days, max(u): (4.833e-01, 1.481e-01, 1.961e-02) m/s, next Δt: 1.266 minutes
-[23.55%] i: 7000, t: 3.533 days, max(u): (4.940e-01, 1.512e-01, 1.988e-02) m/s, next Δt: 1.392 minutes
-[26.71%] i: 7500, t: 4.006 days, max(u): (4.873e-01, 1.492e-01, 1.956e-02) m/s, next Δt: 1.518 minutes
-[30.18%] i: 8000, t: 4.526 days, max(u): (4.899e-01, 1.502e-01, 1.967e-02) m/s, next Δt: 1.508 minutes
-[33.65%] i: 8500, t: 5.047 days, max(u): (4.869e-01, 1.492e-01, 1.959e-02) m/s, next Δt: 1.517 minutes
-[37.12%] i: 9000, t: 5.568 days, max(u): (4.898e-01, 1.501e-01, 1.970e-02) m/s, next Δt: 1.508 minutes
-[40.59%] i: 9500, t: 6.089 days, max(u): (4.874e-01, 1.495e-01, 1.958e-02) m/s, next Δt: 1.516 minutes
-[44.06%] i: 10000, t: 6.610 days, max(u): (4.893e-01, 1.501e-01, 1.967e-02) m/s, next Δt: 1.510 minutes
-[47.53%] i: 10500, t: 7.130 days, max(u): (4.878e-01, 1.495e-01, 1.961e-02) m/s, next Δt: 1.514 minutes
-[51.01%] i: 11000, t: 7.651 days, max(u): (4.889e-01, 1.500e-01, 1.965e-02) m/s, next Δt: 1.511 minutes
-[54.48%] i: 11500, t: 8.172 days, max(u): (4.882e-01, 1.496e-01, 1.962e-02) m/s, next Δt: 1.513 minutes
-[57.95%] i: 12000, t: 8.693 days, max(u): (4.885e-01, 1.498e-01, 1.964e-02) m/s, next Δt: 1.512 minutes
-[61.42%] i: 12500, t: 9.214 days, max(u): (4.885e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[64.90%] i: 13000, t: 9.735 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[68.37%] i: 13500, t: 10.255 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[71.84%] i: 14000, t: 10.776 days, max(u): (4.883e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[75.31%] i: 14500, t: 11.297 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[78.79%] i: 15000, t: 11.818 days, max(u): (4.884e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[82.26%] i: 15500, t: 12.339 days, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[85.73%] i: 16000, t: 12.860 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[89.20%] i: 16500, t: 13.380 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[92.68%] i: 17000, t: 13.901 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[96.15%] i: 17500, t: 14.422 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[99.62%] i: 18000, t: 14.943 days, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[ Info:     ... initial time step complete (24.282 seconds).
+[00.85%] i: 500, t: 3.049 hours, wall time: 27.028 seconds, max(u): (3.645e-01, 7.045e-02, 1.484e-02) m/s, next Δt: 24.200 seconds
+[01.78%] i: 1000, t: 6.403 hours, wall time: 1.634 seconds, max(u): (4.274e-01, 1.448e-01, 1.736e-02) m/s, next Δt: 26.620 seconds
+[02.80%] i: 1500, t: 10.081 hours, wall time: 1.887 seconds, max(u): (4.636e-01, 1.679e-01, 1.911e-02) m/s, next Δt: 29.282 seconds
+[03.93%] i: 2000, t: 14.146 hours, wall time: 2.078 seconds, max(u): (4.768e-01, 1.776e-01, 1.981e-02) m/s, next Δt: 32.210 seconds
+[05.17%] i: 2500, t: 18.608 hours, wall time: 1.465 seconds, max(u): (4.778e-01, 1.606e-01, 1.987e-02) m/s, next Δt: 35.431 seconds
+[06.53%] i: 3000, t: 23.512 hours, wall time: 1.723 seconds, max(u): (4.809e-01, 1.505e-01, 1.976e-02) m/s, next Δt: 38.974 seconds
+[08.02%] i: 3500, t: 1.204 days, wall time: 1.656 seconds, max(u): (4.967e-01, 1.525e-01, 2.022e-02) m/s, next Δt: 42.872 seconds
+[09.68%] i: 4000, t: 1.451 days, wall time: 1.658 seconds, max(u): (4.975e-01, 1.535e-01, 2.017e-02) m/s, next Δt: 47.159 seconds
+[11.48%] i: 4500, t: 1.722 days, wall time: 2.631 seconds, max(u): (4.914e-01, 1.520e-01, 1.980e-02) m/s, next Δt: 51.875 seconds
+[13.47%] i: 5000, t: 2.020 days, wall time: 1.887 seconds, max(u): (4.852e-01, 1.519e-01, 1.959e-02) m/s, next Δt: 57.062 seconds
+[15.63%] i: 5500, t: 2.345 days, wall time: 2.255 seconds, max(u): (4.894e-01, 1.502e-01, 1.983e-02) m/s, next Δt: 1.046 minutes
+[18.03%] i: 6000, t: 2.705 days, wall time: 2.317 seconds, max(u): (4.913e-01, 1.501e-01, 1.981e-02) m/s, next Δt: 1.151 minutes
+[20.66%] i: 6500, t: 3.099 days, wall time: 4.353 seconds, max(u): (4.833e-01, 1.481e-01, 1.961e-02) m/s, next Δt: 1.266 minutes
+[23.55%] i: 7000, t: 3.533 days, wall time: 3.406 seconds, max(u): (4.940e-01, 1.512e-01, 1.988e-02) m/s, next Δt: 1.392 minutes
+[26.71%] i: 7500, t: 4.006 days, wall time: 4.029 seconds, max(u): (4.873e-01, 1.492e-01, 1.956e-02) m/s, next Δt: 1.518 minutes
+[30.18%] i: 8000, t: 4.526 days, wall time: 3.786 seconds, max(u): (4.899e-01, 1.502e-01, 1.967e-02) m/s, next Δt: 1.508 minutes
+[33.65%] i: 8500, t: 5.047 days, wall time: 6.538 seconds, max(u): (4.869e-01, 1.492e-01, 1.959e-02) m/s, next Δt: 1.517 minutes
+[37.12%] i: 9000, t: 5.568 days, wall time: 2.459 seconds, max(u): (4.898e-01, 1.501e-01, 1.970e-02) m/s, next Δt: 1.508 minutes
+[40.59%] i: 9500, t: 6.089 days, wall time: 2.632 seconds, max(u): (4.874e-01, 1.495e-01, 1.958e-02) m/s, next Δt: 1.516 minutes
+[44.06%] i: 10000, t: 6.610 days, wall time: 1.324 seconds, max(u): (4.893e-01, 1.501e-01, 1.967e-02) m/s, next Δt: 1.510 minutes
+[47.53%] i: 10500, t: 7.130 days, wall time: 1.391 seconds, max(u): (4.878e-01, 1.495e-01, 1.961e-02) m/s, next Δt: 1.514 minutes
+[51.01%] i: 11000, t: 7.651 days, wall time: 1.289 seconds, max(u): (4.889e-01, 1.500e-01, 1.965e-02) m/s, next Δt: 1.511 minutes
+[54.48%] i: 11500, t: 8.172 days, wall time: 4.042 seconds, max(u): (4.882e-01, 1.496e-01, 1.962e-02) m/s, next Δt: 1.513 minutes
+[57.95%] i: 12000, t: 8.693 days, wall time: 1.368 seconds, max(u): (4.885e-01, 1.498e-01, 1.964e-02) m/s, next Δt: 1.512 minutes
+[61.42%] i: 12500, t: 9.214 days, wall time: 2.731 seconds, max(u): (4.885e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[64.90%] i: 13000, t: 9.735 days, wall time: 1.342 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[68.37%] i: 13500, t: 10.255 days, wall time: 1.446 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[71.84%] i: 14000, t: 10.776 days, wall time: 1.347 seconds, max(u): (4.883e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[75.31%] i: 14500, t: 11.297 days, wall time: 1.341 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[78.79%] i: 15000, t: 11.818 days, wall time: 1.289 seconds, max(u): (4.884e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
+[82.26%] i: 15500, t: 12.339 days, wall time: 1.385 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[85.73%] i: 16000, t: 12.860 days, wall time: 1.307 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[89.20%] i: 16500, t: 13.380 days, wall time: 1.346 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[92.68%] i: 17000, t: 13.901 days, wall time: 1.319 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[96.15%] i: 17500, t: 14.422 days, wall time: 1.351 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[99.62%] i: 18000, t: 14.943 days, wall time: 1.349 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
+[ Info: Simulation is stopping after running for 2.317 minutes.
 [ Info: Simulation time 15 days equals or exceeds stop time 15 days.
+[ Info: Simulation completed in 2.318 minutes
 </code></pre><h2 id="Perform-Lagrangian-filtering"><a class="docs-heading-anchor" href="#Perform-Lagrangian-filtering">Perform Lagrangian filtering</a><a id="Perform-Lagrangian-filtering-1"></a><a class="docs-heading-anchor-permalink" href="#Perform-Lagrangian-filtering" title="Permalink"></a></h2><p>Now we set up and run the offline Lagrangian filter on the output of the above simulation. This could be performed in a different script (with appropriate import of Oceananigans.Units and CUDA if needed)</p><pre><code class="language-julia hljs">using OceananigansLagrangianFilter</code></pre><h3 id="Set-up-the-filter-configuration"><a class="docs-heading-anchor" href="#Set-up-the-filter-configuration">Set up the filter configuration</a><a id="Set-up-the-filter-configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Set-up-the-filter-configuration" title="Permalink"></a></h3><pre><code class="language-julia hljs">filter_config = OfflineFilterConfig(original_data_filename=&quot;lee_wave.jld2&quot;, # Where the original simulation output is
                                     output_filename = &quot;lee_wave_offline_filtered.jld2&quot;, # Where to save the filtered output
                                     var_names_to_filter = (&quot;b&quot;,), # Which variables to filter
                                     velocity_names = (&quot;u&quot;,&quot;w&quot;), # Velocities to use for remapping
-                                    architecture = CPU(), # CPU() or GPU(), if GPU() make sure you have CUDA.jl installed and imported
+                                    architecture = arch, # CPU() or GPU(), set above
                                     Δt = 1minutes, # Time step of filtering simulation
                                     T_start = 5days,
                                     T_out = 1hour, # How often to output filtered data
@@ -188,15 +194,15 @@ run!(simulation)
                                     compute_mean_velocities = true, # Whether to compute the mean velocities
                                     output_netcdf = true, # Whether to output filtered data to a netcdf file in addition to .jld2
                                     delete_intermediate_files = true, # Delete the individual output of the forward and backward passes
-                                    compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison</code></pre><pre><code class="nohighlight hljs">OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig(&quot;lee_wave.jld2&quot;, (&quot;b&quot;,), (&quot;u&quot;, &quot;w&quot;), 432000.0, 1.296e6, 864000.0, CPU(), 3600.0, (a1 = 4.783542904563622e-6, b1 = 1.1548494156391084e-5, c1 = 1.913417161825449e-5, d1 = 4.619397662556434e-5, a2 = 1.1548494156391084e-5, b2 = 4.783542904563623e-6, c2 = 4.619397662556434e-5, d2 = 1.9134171618254493e-5, N_coeffs = 2), 60.0, true, true, &quot;forward_output.jld2&quot;, &quot;backward_output.jld2&quot;, &quot;lee_wave_offline_filtered.jld2&quot;, 5, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
+                                    compute_Eulerian_filter = true) # Whether to compute the Eulerian filter for comparison</code></pre><pre><code class="nohighlight hljs">OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig(&quot;lee_wave.jld2&quot;, (&quot;b&quot;,), (&quot;u&quot;, &quot;w&quot;), (), 432000.0, 1.296e6, 864000.0, CPU(), 3600.0, (a1 = 4.783542904563622e-6, b1 = 1.1548494156391084e-5, c1 = 1.913417161825449e-5, d1 = 4.619397662556434e-5, a2 = 1.1548494156391084e-5, b2 = 4.783542904563623e-6, c2 = 4.619397662556434e-5, d2 = 1.9134171618254493e-5, N_coeffs = 2, outputs = :combined, sine_parity = :even), 60.0, true, true, &quot;forward_output.jld2&quot;, &quot;backward_output.jld2&quot;, &quot;lee_wave_offline_filtered.jld2&quot;, true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
-└── advecting_velocity_scheme: Centered(order=4), 100×1×100 ImmersedBoundaryGrid{Float64, Oceananigans.Grids.Periodic, Oceananigans.Grids.Flat, Oceananigans.Grids.Bounded} on CPU with 4×0×4 halo:
+└── advecting_velocity_scheme: Centered(order=4), 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo:
 ├── immersed_boundary: PartialCellBottom(mean(zb)=-1977.76, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
 ├── underlying_grid: 100×1×100 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── Periodic x ∈ [-20000.0, 20000.0) regularly spaced with Δx=400.0
 ├── Flat y                           
-└── Bounded  z ∈ [-2000.0, 0.0]      regularly spaced with Δz=20.0, &quot;&quot;, false, nothing, nothing, nothing)</code></pre><h3 id="Run-the-offline-Lagrangian-filter"><a class="docs-heading-anchor" href="#Run-the-offline-Lagrangian-filter">Run the offline Lagrangian filter</a><a id="Run-the-offline-Lagrangian-filter-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-offline-Lagrangian-filter" title="Permalink"></a></h3><pre><code class="language-julia hljs">run_offline_Lagrangian_filter(filter_config)</code></pre><pre><code class="nohighlight hljs">[ Info: Created original variables: (:b,)
+└── Bounded  z ∈ [-2000.0, 0.0]      regularly spaced with Δz=20.0, &quot;&quot;, nothing, nothing, nothing, nothing, ())</code></pre><h3 id="Run-the-offline-Lagrangian-filter"><a class="docs-heading-anchor" href="#Run-the-offline-Lagrangian-filter">Run the offline Lagrangian filter</a><a id="Run-the-offline-Lagrangian-filter-1"></a><a class="docs-heading-anchor-permalink" href="#Run-the-offline-Lagrangian-filter" title="Permalink"></a></h3><pre><code class="language-julia hljs">run_offline_Lagrangian_filter(filter_config)</code></pre><pre><code class="nohighlight hljs">[ Info: Created original variables: (:b,)
 [ Info: Created filtered variables: (:b_C1, :b_C2, :xi_u_C1, :xi_u_C2, :xi_w_C1, :xi_w_C2, :b_S1, :b_S2, :xi_u_S1, :xi_u_S2, :xi_w_S1, :xi_w_S2)
 [ Info: Created forcing for filtered variables
 [ Info: Created model
@@ -206,7 +212,9 @@ run!(simulation)
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (14.212 minutes)
 [ Info: Executing initial time step...
+[ Info:     ... initial time step complete (28.268 seconds).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -216,12 +224,15 @@ run!(simulation)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
+[ Info: Simulation is stopping after running for 15.978 minutes.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
 [ Info: Loaded backward input data from lee_wave.jld2
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
+[ Info:     ... simulation initialization complete (177.252 ms)
 [ Info: Executing initial time step...
+[ Info:     ... initial time step complete (6.117 ms).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -231,12 +242,15 @@ run!(simulation)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
+[ Info: Simulation is stopping after running for 1.294 minutes.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
 [ Info: Combined forward and backward contributions into lee_wave_offline_filtered.jld2
-┌ Warning: Grid is an ImmersedBoundaryGrid, regridding to mean position may not be sensible. 
-│             Areas below bottom height will be masked with NaNs, assuming bottom height is a function of x and/or y.
-└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter/src/Utils/post_processing_utils.jl:357
+┌ Warning: Regridding to mean position: Newton&#39;s method did not converge at 437 points (set to NaN)
+└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter-regrid/src/Utils/regrid_to_mean.jl:459
+[ Info: Regridding to mean position: 9221 points are not the mean position of any particle in the fluid (set to NaN)
+┌ Warning: Regridding to mean position: the map folds in 1012 cells over 240 output times, so some points are the mean position of more than one label there
+└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter-regrid/src/Utils/regrid_to_mean.jl:463
 [ Info: Wrote regridded data to new variables with _at_mean suffix in file lee_wave_offline_filtered.jld2
 [ Info: Computing Eulerian filter for variable b
 [ Info: Computing Eulerian filter for variable u
@@ -315,4 +329,4 @@ CairoMakie.record(fig, &quot;lee_wave_filtered_u_movie_offline.mp4&quot;, frames
     n[] = i
 end</code></pre><pre><code class="nohighlight hljs">&quot;lee_wave_filtered_u_movie_offline.mp4&quot;</code></pre><p><video src="../lee_wave_filtered_u_movie_offline.mp4" controls="true" title><a href="../lee_wave_filtered_u_movie_offline.mp4"></a></video></p><p>The filter has been run after the initial simulation spin-up (time shown is time from day 5 of the original simulation, so the raw fields are already in steady state). The filtered fields also need time to spin-up (corresponding to the characteristic timescale of the cut-off filter, here ~1.5 days), so the initial and final frames of the animation show transient behaviour in the filtered fields.</p><p>The Eulerian filtered output looks very similar to the raw output, since the lee waves are steady. They&#39;re steady because they&#39;ve been Doppler-shifted by the mean flow. When we use the Lagrangian filter instead, we see that the lee waves are removed as they are high frequency in the frame of the flow. Note that the colour range shown is an order of magnitude smaller for the Lagrangian filtered fields, allowing us to see the wave impact on the mean flow.</p><p>The contours of buoyancy demonstrate the difference between the displaced Lagrangian filtered field (bottom left) and the Lagrangian filtered field remapped to the mean position (bottom right). This removes the wave-like displacements from the isopycnals. The interpolation stage to calculate this field is imperfect near the immersed boundary (it&#39;s not guaranteed that every spatial location has a corresponding Lagrangian mean defined at the mean position), so it has been masked.</p><p>We remove these files to keep things tidy, keep them for analysis if desired</p><pre><code class="language-julia hljs">rm(filename_stem * &quot;.jld2&quot;)
 rm(filter_config.output_filename)
-rm(filter_config.output_filename[1:end-5] * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../offline_filter_shallow_water_IO/">« Shallow water inertial oscillation offline</a><a class="docs-footer-nextpage" href="../../helpful_tips/">Helpful tips »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 15 October 2026 11:23">Thursday 15 October 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+rm(filter_config.output_filename[1:end-5] * &quot;.nc&quot;)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../offline_filter_shallow_water_IO/">« Shallow water inertial oscillation offline</a><a class="docs-footer-nextpage" href="../../helpful_tips/">Helpful tips »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 15 October 2026 12:15">Thursday 15 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
