@@ -119,4 +119,10 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 If you use this package, please cite it as:
 
+Baker, L. E. (2026). Online and Offline Lagrangian Filtering with PDEs: Theoretical Framework and Implementation in OceananigansLagrangianFilter.jl. ESS Open Archive. 2026. https://doi.org/10.22541/essoar.15010660/v1
+
+The software citation is as below:
+
 Baker, L. E. (2026). OceananigansLagrangianFilter.jl: A set of tools to perform online or offline Lagrangian filtering of Oceananigans.jl simulations. Zenodo. https://doi.org/10.5281/zenodo.18613285  
+
+
