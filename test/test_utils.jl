@@ -2,6 +2,7 @@
 # and test_online_integration.jl.
 
 using JLD2
+using NCDatasets
 
 # The architectures to run the integration tests against reference data on: the GPU too, if CUDA finds one
 test_architectures() = CUDA.functional() ? (CPU(), GPU()) : (CPU(),)
@@ -33,6 +34,11 @@ function compare_filter_output_to_reference(test_filename_stem::String, ref_file
         ref_fts = FieldTimeSeries(ref_filename, name)
         @test isapprox(test_fts.data, ref_fts.data; rtol)
         @test test_fts.grid == ref_fts.grid
+
+        # The NetCDF copy holds the interior of each field only, without halo cells
+        NCDataset(test_filename_stem * ".nc") do ds
+            @test ds[name][:, :, :, :] == Array(interior(test_fts))
+        end
     end
 
     return nothing

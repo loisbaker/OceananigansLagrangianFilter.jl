@@ -72,12 +72,15 @@ The conversion process involves the following steps:
 2.  **Create NetCDF file**: Creates a new NetCDF file with a `.nc` extension.
 3.  **Define dimensions**: Defines NetCDF dimensions based on the grid sizes
     and staggered locations (e.g., `x_caa` for cell centers, `x_faa` for
-    cell faces).
-4.  **Define grid variables**: Writes the grid coordinates and metadata
-    (e.g., `Lx`, `Ny`, `Hx`) as variables to the NetCDF file.
+    cell faces). Only interior points are included, not halo cells.
+4.  **Define grid variables**: Writes the grid coordinates, the cell spacings
+    at each location (e.g., `dz_aaf`, or `dx_fca` on a `LatitudeLongitudeGrid`,
+    where it varies with latitude) and metadata (e.g., `Lx`, `Ny`) as variables
+    to the NetCDF file.
 5.  **Write timeseries data**: Iterates through each variable in the JLD2
     file's timeseries, determines its location on the grid, and writes the
-    data to a new variable in the NetCDF file.
+    interior of the data (dropping any halo cells) to a new variable in the
+    NetCDF file.
 6.  **Add metadata**: Adds attributes to each variable, including boundary
     conditions and units, for better documentation.
 
@@ -100,27 +103,37 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 
         ))
 
-        # Dimensions
-        ds.dim["time"] = length(times)
+        # Coordinates of the interior nodes only: halo cells are not written to the NetCDF file.
+        # A Flat direction has no nodes, so it gets a single dummy coordinate at zero.
+        interior_coordinate(nodes) = isnothing(nodes) ? [0.0] : Array(nodes)
 
         if (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
-            ds.dim["y_afa"] = try; length(grid.yᵃᶠᵃ) catch; 1 end
-            ds.dim["x_faa"] = try; length(grid.xᶠᵃᵃ) catch; 1 end
-            ds.dim["x_caa"] = try; length(grid.xᶜᵃᵃ) catch;1 end
-            ds.dim["y_aca"] = try; length(grid.yᵃᶜᵃ) catch; 1 end
-            ds.dim["z_aaf"] = try; length(grid.z.cᵃᵃᶠ) catch; 1 end
-            ds.dim["z_aac"] = try; length(grid.z.cᵃᵃᶜ) catch; 1 end
+            coordinates = OrderedDict(
+                "x_faa" => interior_coordinate(xnodes(grid, Face())),
+                "x_caa" => interior_coordinate(xnodes(grid, Center())),
+                "y_afa" => interior_coordinate(ynodes(grid, Face())),
+                "y_aca" => interior_coordinate(ynodes(grid, Center())),
+                "z_aaf" => interior_coordinate(znodes(grid, Face())),
+                "z_aac" => interior_coordinate(znodes(grid, Center())),
+            )
         # LatitudeLongitudeGrid has different names for the coordinate arrays
         elseif (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
-            ds.dim["lat_afa"] = try; length(grid.φᵃᶠᵃ) catch; 1 end
-            ds.dim["lon_faa"] = try; length(grid.λᶠᵃᵃ) catch; 1 end
-            ds.dim["lon_caa"] = try; length(grid.λᶜᵃᵃ) catch;1 end
-            ds.dim["lat_aca"] = try; length(grid.φᵃᶜᵃ) catch; 1 end
-            ds.dim["z_aaf"] = try; length(grid.z.cᵃᵃᶠ) catch; 1 end
-            ds.dim["z_aac"] = try; length(grid.z.cᵃᵃᶜ) catch; 1 end
-
-        else 
+            coordinates = OrderedDict(
+                "lon_faa" => interior_coordinate(λnodes(grid, Face())),
+                "lon_caa" => interior_coordinate(λnodes(grid, Center())),
+                "lat_afa" => interior_coordinate(φnodes(grid, Face())),
+                "lat_aca" => interior_coordinate(φnodes(grid, Center())),
+                "z_aaf"   => interior_coordinate(znodes(grid, Face())),
+                "z_aac"   => interior_coordinate(znodes(grid, Center())),
+            )
+        else
             error("Grid type $(typeof(grid)) not supported for NetCDF conversion")
+        end
+
+        # Dimensions
+        ds.dim["time"] = length(times)
+        for (name, coordinate) in coordinates
+            ds.dim[name] = length(coordinate)
         end
         
         # Declare and fill time variables
@@ -141,193 +154,48 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
             nctime[:] = t_shifted
         end
 
-        # Declare grid variables
+        # Declare and fill grid variables: the interior node coordinates...
+        direction_names = Dict("x" => "x", "y" => "y", "z" => "z", "lon" => "longitude", "lat" => "latitude")
+        coordinate_units = Dict("x" => "m", "y" => "m", "z" => "m", "lon" => "degrees_east", "lat" => "degrees_north")
+
+        for (name, coordinate) in coordinates
+            direction, location = split(name, "_")
+            position = occursin('f', location) ? "face" : "center"
+            ncvar = defVar(ds, name, Float32, (name,), attrib = OrderedDict(
+                "units"                     => coordinate_units[direction],
+                "long_name"                 => "Cell $position locations in the $(direction_names[direction]) direction.",
+            ))
+            ncvar[:] = coordinate
+        end
+
+        # ...and the cell spacings (in metres) at each location, taken from Oceananigans' spacing operators so that
+        # stretched grids and grids without precomputed metrics are handled. On a LatitudeLongitudeGrid the x-spacing
+        # varies with latitude (and with longitude if that is stretched), so x- and y-spacings are written in 2D.
         if (grid isa RectilinearGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa RectilinearGrid))
-            ncy_afa = defVar(ds,"y_afa", Float32, ("y_afa",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell face locations in the y-direction.",
-            ))
-            
-
-            ncx_faa = defVar(ds,"x_faa", Float32, ("x_faa",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell face locations in the x-direction.",
-            ))
-            
-
-            ncx_caa = defVar(ds,"x_caa", Float32, ("x_caa",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell center locations in the x-direction.",
-            ))
-            
-
-            ncy_aca = defVar(ds,"y_aca", Float32, ("y_aca",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell center locations in the y-direction.",
-            ))
-            
-
-            ncz_aac = defVar(ds,"z_aac", Float32, ("z_aac",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell center locations in the z-direction.",
-            ))
-            
-
-            ncz_aaf = defVar(ds,"z_aaf", Float32, ("z_aaf",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell face locations in the z-direction.",
-            ))
-            
-
-            ncdx_caa = defVar(ds,"dx_caa", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at the cell centers) in the x-direction.",
-            ))
-            
-
-            ncdx_faa = defVar(ds,"dx_faa", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at the cell faces) in the x-direction.",
-            ))
-            
-
-            ncdy_aca = defVar(ds,"dy_aca", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at cell centers) in the y-direction.",
-            ))
-            
-
-            ncdy_afa = defVar(ds,"dy_afa", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at cell faces) in the y-direction.",
-            ))
-            
-            ncdz_aac = defVar(ds,"dz_aac", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at cell centers) in the z-direction.",
-            ))
-            
-
-            ncdz_aaf = defVar(ds,"dz_aaf", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at cell faces) in the z-direction.",
-            ))
-
-            # Fill grid variables
-
-            ncx_faa[:] = try; parent(grid.xᶠᵃᵃ) catch; 0 end
-            ncy_afa[:] = try; parent(grid.yᵃᶠᵃ) catch; 0 end
-            ncx_caa[:] = try; parent(grid.xᶜᵃᵃ) catch; 0 end
-            ncy_aca[:] = try; parent(grid.yᵃᶜᵃ) catch; 0 end
-            ncz_aac[:] = try; parent(grid.z.cᵃᵃᶜ) catch; 0 end
-            ncz_aaf[:] = try; parent(grid.z.cᵃᵃᶠ) catch; 0 end
-            ncdx_caa[:] = try; parent(grid.Δxᶜᵃᵃ) catch; 0 end
-            ncdx_faa[:] = try; parent(grid.Δxᶠᵃᵃ) catch; 0 end
-            ncdy_aca[:] = try; parent(grid.Δyᵃᶜᵃ) catch; 0 end
-            ncdy_afa[:] = try; parent(grid.Δyᵃᶠᵃ) catch; 0 end
-            ncdz_aac[:] = try; parent(grid.z.Δᵃᵃᶜ) catch; 0 end
-            ncdz_aaf[:] = try; parent(grid.z.Δᵃᵃᶠ) catch; 0 end
-
+            spacings = (
+                ("dx_caa", ("x_caa",), xspacings(grid, Center())),
+                ("dx_faa", ("x_faa",), xspacings(grid, Face())),
+                ("dy_aca", ("y_aca",), yspacings(grid, Center())),
+                ("dy_afa", ("y_afa",), yspacings(grid, Face())),
+            )
         elseif (grid isa LatitudeLongitudeGrid) || ((grid isa ImmersedBoundaryGrid) && (grid.underlying_grid isa LatitudeLongitudeGrid))
-            nclat_afa = defVar(ds,"lat_afa", Float32, ("lat_afa",), attrib = OrderedDict(
-                "units"                     => "degrees_north",
-                "long_name"                 => "Cell face locations in the latitude direction.",
-            ))
-            
-
-            nclon_faa = defVar(ds,"lon_faa", Float32, ("lon_faa",), attrib = OrderedDict(
-                "units"                     => "degrees_east",
-                "long_name"                 => "Cell face locations in the longitude direction.",
-            ))
-            
-
-            nclon_caa = defVar(ds,"lon_caa", Float32, ("lon_caa",), attrib = OrderedDict(
-                "units"                     => "degrees_east",
-                "long_name"                 => "Cell center locations in the longitude direction.",
-            ))
-            
-
-            nclat_aca = defVar(ds,"lat_aca", Float32, ("lat_aca",), attrib = OrderedDict(
-                "units"                     => "degrees_north",
-                "long_name"                 => "Cell center locations in the latitude direction.",
-            ))
-            
-
-            ncz_aac = defVar(ds,"z_aac", Float32, ("z_aac",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell center locations in the z-direction.",
-            ))
-            
-
-            ncz_aaf = defVar(ds,"z_aaf", Float32, ("z_aaf",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Cell face locations in the z-direction.",
-            ))
-            
-            # ncdx_cfa = defVar(ds,"dx_cfa", Float32, ("lat_afa",), attrib = OrderedDict(
-            #     "units"                     => "m",
-            #     "long_name"                 => "Spacing between cell faces (located at the cell centers in x and faces in y) in the x-direction.",
-            # ))
-            
-
-            # ncdx_ffa = defVar(ds,"dx_ffa", Float32, ("lat_afa",), attrib = OrderedDict(
-            #     "units"                     => "m",
-            #     "long_name"                 => "Spacing between cell centres (located at the cell faces in x and y) in the x-direction.",
-            # ))
-
-            ncdx_fca = defVar(ds,"dx_fca", Float32, ("lat_aca",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centres (located at the cell faces in x and centers in y) in the x-direction.",
-            ))
-            
-
-            ncdx_cca = defVar(ds,"dx_cca", Float32, ("lat_aca",), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at the cell centers in x and y) in the x-direction.",
-            ))
-            
-
-            ncdy_fca = defVar(ds,"dy_fca", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at cell faces in x and centers in y) in the y-direction.",
-            ))
-            
-
-            ncdy_cfa = defVar(ds,"dy_cfa", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at cell centers in x and faces in y) in the y-direction.",
-            ))
-            
-            ncdz_aac = defVar(ds,"dz_aac", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell faces (located at cell centers) in the z-direction.",
-            ))
-            
-
-            ncdz_aaf = defVar(ds,"dz_aaf", Float32, (), attrib = OrderedDict(
-                "units"                     => "m",
-                "long_name"                 => "Spacing between cell centers (located at cell faces) in the z-direction.",
-            ))
-
-            # Fill grid variables
-
-            nclon_faa[:] = try; parent(grid.λᶠᵃᵃ) catch ; 0 end
-            nclat_afa[:] = try; parent(grid.φᵃᶠᵃ) catch; 0 end
-            nclon_caa[:] = try; parent(grid.λᶜᵃᵃ) catch; 0 end
-            nclat_aca[:] = try; parent(grid.φᵃᶜᵃ) catch; 0 end
-            ncz_aac[:] = try; parent(grid.z.cᵃᵃᶜ) catch; 0 end
-            ncz_aaf[:] = try; parent(grid.z.cᵃᵃᶠ) catch; 0 end
-            # ncdx_cfa[:] = try; parent(grid.Δxᶜᶠᵃ) catch; 0 end # We should include these and figure out what dimensions they live on
-            # ncdx_ffa[:] = try; parent(grid.Δxᶠᶠᵃ) catch; 0 end
-            ncdx_cca[:] = try; parent(grid.Δxᶜᶜᵃ) catch; 0 end
-            ncdx_fca[:] = try; parent(grid.Δxᶠᶜᵃ) catch; 0 end
-            ncdy_fca[:] = try; parent(grid.Δyᶠᶜᵃ) catch; 0 end
-            ncdy_cfa[:] = try; parent(grid.Δyᶜᶠᵃ) catch; 0 end
-            ncdz_aac[:] = try; parent(grid.z.Δᵃᵃᶜ) catch; 0 end
-            ncdz_aaf[:] = try; parent(grid.z.Δᵃᵃᶠ) catch; 0 end
-        
+            spacings = Tuple(("d$(d)_$(lx)$(ly)a", ("lon_$(lx)aa", "lat_a$(ly)a"), spacing(grid, ℓx, ℓy))
+                             for (d, spacing) in (("x", xspacings), ("y", yspacings))
+                             for (lx, ℓx) in (("c", Center()), ("f", Face()))
+                             for (ly, ℓy) in (("c", Center()), ("f", Face())))
         else 
             error("Grid type $(typeof(grid)) not supported for NetCDF conversion")
+        end
+        spacings = (spacings..., ("dz_aac", ("z_aac",), zspacings(grid, Center())),
+                                 ("dz_aaf", ("z_aaf",), zspacings(grid, Face())))
+
+        for (name, dims, spacing) in spacings
+            direction = name[2]
+            ncvar = defVar(ds, name, Float32, dims, attrib = OrderedDict(
+                "units"                     => "m",
+                "long_name"                 => "Cell spacing in the $direction-direction, at cell $(name[4:end]) locations (c: center, f: face, a: any).",
+            ))
+            ncvar[:] = reshape(collect(spacing), Tuple(length(coordinates[dim]) for dim in dims))
         end
 
         # Define dimensions - the same for rectilinear and lat-lon grids
@@ -350,26 +218,6 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
             "long_name"                 => "Number of cells in the z-direction.",
         ))
         ncNz[:] = grid.Nz
-        # Define halos
-
-        ncHx = defVar(ds,"Hx", Int64, (), attrib = OrderedDict(
-            "units"                     => "None",
-            "long_name"                 => "Number of halo cells in the x-direction.",
-        ))
-        ncHx[:] = grid.Hx
-
-        ncHy = defVar(ds,"Hy", Int64, (), attrib = OrderedDict(
-            "units"                     => "None",
-            "long_name"                 => "Number of halo cells in the y-direction.",
-        ))
-        ncHy[:] = grid.Hy
-
-        ncHz = defVar(ds,"Hz", Int64, (), attrib = OrderedDict(
-            "units"                     => "None",
-            "long_name"                 => "Number of halo cells in the z-direction.",
-        ))
-        ncHz[:] = grid.Hz
-
         # Define dimension lengths
 
         ncLx = defVar(ds,"Lx", Float64, (), attrib = OrderedDict(
@@ -422,13 +270,17 @@ function jld2_to_netcdf(jld2_filename::String, nc_filename::String)
 
                 # Create a variable in the NetCDF file
                 bc_string = sprint(show, file["timeseries/$varname/serialized/boundary_conditions"])
-                ncv = defVar(ds, varname, Float64, (location_map[file["timeseries/$varname/serialized/location"]]...,"time"), attrib = OrderedDict(
+                dims = location_map[file["timeseries/$varname/serialized/location"]]
+                ncv = defVar(ds, varname, Float64, (dims...,"time"), attrib = OrderedDict(
                     "boundary conditions"                     => bc_string,
                 ))
-                
+                interior_size = Tuple(length(coordinates[dim]) for dim in dims)
+
                 for (it,iter) in enumerate(iterations)
-                    # Assign data to the variable
-                    ncv[:, :, :, it] = file["timeseries/$varname/$iter"]
+                    # Assign data to the variable, dropping any halo cells (an equal number either side)
+                    data = file["timeseries/$varname/$iter"]
+                    interior_indices = map((n, N) -> (n - N) ÷ 2 .+ (1:N), size(data), interior_size)
+                    ncv[:, :, :, it] = data[interior_indices...]
                 end
                 
             end
