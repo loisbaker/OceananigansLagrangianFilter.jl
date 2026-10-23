@@ -4,7 +4,7 @@
 
 ### Breaking changes
 
-- Oceananigans 0.113 and JLD2 0.6 are now required. Data saved by older Oceananigans versions can still be filtered, by passing the grid of the original simulation to the config.
+- Oceananigans 0.115 and JLD2 0.6 are now required. Data saved by older Oceananigans versions can still be filtered, by passing the grid of the original simulation to the config.
 - `map_to_mean` is replaced by `compute_maps` (output the maps) and `regrid_to_mean` (regrid to the mean position, which needs the maps). With Julie Meunier.
 - The relaxation options are renamed: `relaxation_mask_func` and `relaxation_params` replace `boundary_relaxation`, `relax_timescale`, `mask_func` and `mask_params`.
 - Offline, `advection = nothing` is replaced by `lagrangian = false` (see below).

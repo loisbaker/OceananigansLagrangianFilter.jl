@@ -31,9 +31,7 @@ are corrected to satisfy the incompressibility constraint.
 function tracer_rk3_substep!(model, Δt, γⁿ, ζⁿ, callbacks)
     
     grid = model.grid
-    FT        = eltype(grid)
-    kernel_Δt = convert(FT, Δt)
-    Δτ        = convert(FT, stage_Δt(Δt, γⁿ, ζⁿ))
+    Δτ = stage_Δt(Δt, γⁿ, ζⁿ)
 
     compute_flux_bc_tendencies!(model)
     model_fields = prognostic_fields(model)

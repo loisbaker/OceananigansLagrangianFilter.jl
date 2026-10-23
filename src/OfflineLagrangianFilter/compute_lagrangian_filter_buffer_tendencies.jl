@@ -1,7 +1,7 @@
 import Oceananigans.Models: compute_buffer_tendencies!
 
 using Oceananigans.TurbulenceClosures: required_halo_size_x, required_halo_size_y
-using Oceananigans.Grids: XFlatGrid, YFlatGrid
+using Oceananigans.Grids: CommunicatingSide, Sides
 using Oceananigans.Utils: worksize
 
 # We assume here that top/bottom BC are always synched (no partitioning in z)
@@ -68,18 +68,20 @@ function buffer_κ_kernel_parameters(grid, closure, arch)
     return buffer_parameters(params, grid, arch)
 end
 
-# Recompute only on communicating sides 
-function buffer_parameters(parameters, grid, arch) 
-    Rx, Ry, _ = arch.ranks
-    Tx, Ty, _ = topology(grid)
+# Recompute only on communicating sides
+function buffer_parameters(parameters, grid, arch)
+    TX, TY, _ = topology(grid)
 
-    include_west  = !isa(grid, XFlatGrid) && (Rx != 1) && !(Tx == RightConnected)
-    include_east  = !isa(grid, XFlatGrid) && (Rx != 1) && !(Tx == LeftConnected)
-    include_south = !isa(grid, YFlatGrid) && (Ry != 1) && !(Ty == RightConnected)
-    include_north = !isa(grid, YFlatGrid) && (Ry != 1) && !(Ty == LeftConnected)
+    include_west  = TX <: Sides{<:CommunicatingSide}
+    include_east  = TX <: Sides{<:Any, <:CommunicatingSide}
+    include_south = TY <: Sides{<:CommunicatingSide}
+    include_north = TY <: Sides{<:Any, <:CommunicatingSide}
 
-    include_side = (include_west, include_east, include_south, include_north)
+    west  = include_west  ? (KernelParameters(parameters[1]...),) : ()
+    east  = include_east  ? (KernelParameters(parameters[2]...),) : ()
+    south = include_south ? (KernelParameters(parameters[3]...),) : ()
+    north = include_north ? (KernelParameters(parameters[4]...),) : ()
 
-    return Tuple(KernelParameters(parameters[i]...) for i in findall(include_side))
+    return (west..., east..., south..., north...)
 end
 

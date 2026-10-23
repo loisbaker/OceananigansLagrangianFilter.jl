@@ -23,7 +23,6 @@ does not advance velocities or correct pressure. The step proceeds as follows:
 """
 function tracer_ab2_step!(model, Δt, callbacks)
     grid = model.grid
-    kernel_Δt = convert(eltype(grid), Δt)
 
     # Compute flux bc tendencies
     compute_flux_bc_tendencies!(model)
@@ -42,7 +41,7 @@ function tracer_ab2_step!(model, Δt, callbacks)
                        Val(i),
                        model.clock,
                        fields(model),
-                       kernel_Δt,
+                       Δt,
                        model.advection,
                        model.velocities)
     end
