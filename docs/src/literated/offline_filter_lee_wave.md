@@ -61,8 +61,7 @@ f = 1e-4                  # Coriolis frequency [s⁻¹]
 U = 0.2                   # Background flow speed [m/s]
 Nsqr = 1e-6               # Buoyancy frequency squared [s⁻²]
 
-κv = 0.1 # Vertical diffusivity
-κBh = L^2 / pi^2/ Nx^2 * 100 # Horizontal biharmonic diffusivity
+κ = 0.1 # Diffusivity
 
 filename_stem = "lee_wave";
 ````
@@ -93,13 +92,11 @@ grid = ImmersedBoundaryGrid(underlying_grid, PartialCellBottom(bottom))
 ### Closures
 
 ````julia
-horizontal_closure = HorizontalScalarBiharmonicDiffusivity(ν=κBh, κ=κBh)
-vertical_closure = VerticalScalarDiffusivity(ν=κv, κ=κv)
-closure = (horizontal_closure, vertical_closure)
+closure = ScalarDiffusivity(ν=κ, κ=κ)
 ````
 
 ````
-(ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4.05285e5, κ=4.05285e5), VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=0.1))
+ScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=0.1)
 ````
 
 ### Forcing
@@ -180,6 +177,8 @@ model = HydrostaticFreeSurfaceModel(grid;
                                     coriolis = FPlane(f = f),
                                     buoyancy = BuoyancyTracer(),
                                     tracers = :b,
+                                    tracer_advection = WENO(),
+                                    momentum_advection = WENO(),
                                     forcing = (; v = (v_steady_forcing, v_sponge_forcing),
                                                 u = u_sponge_forcing, b = b_sponge_forcing),
                                     closure=closure,
@@ -191,15 +190,13 @@ HydrostaticFreeSurfaceModel{CPU, ImmersedBoundaryGrid}(time = 0 seconds, iterati
 ├── grid: 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── timestepper: QuasiAdamsBashforth2TimeStepper
 ├── tracers: b
-├── closure: Tuple with 2 closures:
-│   ├── ScalarBiharmonicDiffusivity{HorizontalFormulation}(ν=4.05285e5, κ=(b=4.05285e5,))
-│   └── VerticalScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=(b=0.1,))
+├── closure: ScalarDiffusivity{ExplicitTimeDiscretization}(ν=0.1, κ=(b=0.1,))
 ├── buoyancy: Oceananigans.BuoyancyFormulations.BuoyancyTracer with ĝ = NegativeZDirection()
-├── free surface: Oceananigans.Models.HydrostaticFreeSurfaceModels.SplitExplicitFreeSurfaces.SplitExplicitFreeSurface with gravitational acceleration 9.80665 m s⁻²
+├── free surface: SplitExplicitFreeSurface with gravitational acceleration 9.80665 m s⁻²
 │   └── substepping: FixedTimeStepSize(1.999 seconds)
 ├── advection scheme: 
-│   ├── momentum: VectorInvariant
-│   └── b: Centered(order=2)
+│   ├── momentum: WENO{3, Float64, Oceananigans.Utils.BackendOptimizedDivision}(order=5)
+│   └── b: WENO{3, Float64, Oceananigans.Utils.BackendOptimizedDivision}(order=5)
 ├── vertical_coordinate: Oceananigans.Models.HydrostaticFreeSurfaceModels.ZCoordinate
 └── coriolis: Oceananigans.Coriolis.FPlane{Oceananigans.Advection.EnstrophyConserving{Float64}, Float64}
 ````
@@ -308,49 +305,48 @@ run!(simulation)
 ````
 [ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, wall time: 51.628 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
-[ Info:     ... simulation initialization complete (38.275 seconds)
+[00.00%] i: 0, t: 0 seconds, wall time: 51.262 seconds, max(u): (2.000e-01, 0.000e+00, 1.203e-02) m/s, next Δt: 22 seconds
+[ Info:     ... simulation initialization complete (36.967 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (24.282 seconds).
-[00.85%] i: 500, t: 3.049 hours, wall time: 27.028 seconds, max(u): (3.645e-01, 7.045e-02, 1.484e-02) m/s, next Δt: 24.200 seconds
-[01.78%] i: 1000, t: 6.403 hours, wall time: 1.634 seconds, max(u): (4.274e-01, 1.448e-01, 1.736e-02) m/s, next Δt: 26.620 seconds
-[02.80%] i: 1500, t: 10.081 hours, wall time: 1.887 seconds, max(u): (4.636e-01, 1.679e-01, 1.911e-02) m/s, next Δt: 29.282 seconds
-[03.93%] i: 2000, t: 14.146 hours, wall time: 2.078 seconds, max(u): (4.768e-01, 1.776e-01, 1.981e-02) m/s, next Δt: 32.210 seconds
-[05.17%] i: 2500, t: 18.608 hours, wall time: 1.465 seconds, max(u): (4.778e-01, 1.606e-01, 1.987e-02) m/s, next Δt: 35.431 seconds
-[06.53%] i: 3000, t: 23.512 hours, wall time: 1.723 seconds, max(u): (4.809e-01, 1.505e-01, 1.976e-02) m/s, next Δt: 38.974 seconds
-[08.02%] i: 3500, t: 1.204 days, wall time: 1.656 seconds, max(u): (4.967e-01, 1.525e-01, 2.022e-02) m/s, next Δt: 42.872 seconds
-[09.68%] i: 4000, t: 1.451 days, wall time: 1.658 seconds, max(u): (4.975e-01, 1.535e-01, 2.017e-02) m/s, next Δt: 47.159 seconds
-[11.48%] i: 4500, t: 1.722 days, wall time: 2.631 seconds, max(u): (4.914e-01, 1.520e-01, 1.980e-02) m/s, next Δt: 51.875 seconds
-[13.47%] i: 5000, t: 2.020 days, wall time: 1.887 seconds, max(u): (4.852e-01, 1.519e-01, 1.959e-02) m/s, next Δt: 57.062 seconds
-[15.63%] i: 5500, t: 2.345 days, wall time: 2.255 seconds, max(u): (4.894e-01, 1.502e-01, 1.983e-02) m/s, next Δt: 1.046 minutes
-[18.03%] i: 6000, t: 2.705 days, wall time: 2.317 seconds, max(u): (4.913e-01, 1.501e-01, 1.981e-02) m/s, next Δt: 1.151 minutes
-[20.66%] i: 6500, t: 3.099 days, wall time: 4.353 seconds, max(u): (4.833e-01, 1.481e-01, 1.961e-02) m/s, next Δt: 1.266 minutes
-[23.55%] i: 7000, t: 3.533 days, wall time: 3.406 seconds, max(u): (4.940e-01, 1.512e-01, 1.988e-02) m/s, next Δt: 1.392 minutes
-[26.71%] i: 7500, t: 4.006 days, wall time: 4.029 seconds, max(u): (4.873e-01, 1.492e-01, 1.956e-02) m/s, next Δt: 1.518 minutes
-[30.18%] i: 8000, t: 4.526 days, wall time: 3.786 seconds, max(u): (4.899e-01, 1.502e-01, 1.967e-02) m/s, next Δt: 1.508 minutes
-[33.65%] i: 8500, t: 5.047 days, wall time: 6.538 seconds, max(u): (4.869e-01, 1.492e-01, 1.959e-02) m/s, next Δt: 1.517 minutes
-[37.12%] i: 9000, t: 5.568 days, wall time: 2.459 seconds, max(u): (4.898e-01, 1.501e-01, 1.970e-02) m/s, next Δt: 1.508 minutes
-[40.59%] i: 9500, t: 6.089 days, wall time: 2.632 seconds, max(u): (4.874e-01, 1.495e-01, 1.958e-02) m/s, next Δt: 1.516 minutes
-[44.06%] i: 10000, t: 6.610 days, wall time: 1.324 seconds, max(u): (4.893e-01, 1.501e-01, 1.967e-02) m/s, next Δt: 1.510 minutes
-[47.53%] i: 10500, t: 7.130 days, wall time: 1.391 seconds, max(u): (4.878e-01, 1.495e-01, 1.961e-02) m/s, next Δt: 1.514 minutes
-[51.01%] i: 11000, t: 7.651 days, wall time: 1.289 seconds, max(u): (4.889e-01, 1.500e-01, 1.965e-02) m/s, next Δt: 1.511 minutes
-[54.48%] i: 11500, t: 8.172 days, wall time: 4.042 seconds, max(u): (4.882e-01, 1.496e-01, 1.962e-02) m/s, next Δt: 1.513 minutes
-[57.95%] i: 12000, t: 8.693 days, wall time: 1.368 seconds, max(u): (4.885e-01, 1.498e-01, 1.964e-02) m/s, next Δt: 1.512 minutes
-[61.42%] i: 12500, t: 9.214 days, wall time: 2.731 seconds, max(u): (4.885e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[64.90%] i: 13000, t: 9.735 days, wall time: 1.342 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[68.37%] i: 13500, t: 10.255 days, wall time: 1.446 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[71.84%] i: 14000, t: 10.776 days, wall time: 1.347 seconds, max(u): (4.883e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[75.31%] i: 14500, t: 11.297 days, wall time: 1.341 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[78.79%] i: 15000, t: 11.818 days, wall time: 1.289 seconds, max(u): (4.884e-01, 1.497e-01, 1.963e-02) m/s, next Δt: 1.513 minutes
-[82.26%] i: 15500, t: 12.339 days, wall time: 1.385 seconds, max(u): (4.885e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[85.73%] i: 16000, t: 12.860 days, wall time: 1.307 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[89.20%] i: 16500, t: 13.380 days, wall time: 1.346 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[92.68%] i: 17000, t: 13.901 days, wall time: 1.319 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[96.15%] i: 17500, t: 14.422 days, wall time: 1.351 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[99.62%] i: 18000, t: 14.943 days, wall time: 1.349 seconds, max(u): (4.884e-01, 1.498e-01, 1.963e-02) m/s, next Δt: 1.512 minutes
-[ Info: Simulation is stopping after running for 2.317 minutes.
+[ Info:     ... initial time step complete (27.180 seconds).
+[00.85%] i: 500, t: 3.049 hours, wall time: 30.032 seconds, max(u): (3.617e-01, 5.716e-02, 1.489e-02) m/s, next Δt: 24.200 seconds
+[01.78%] i: 1000, t: 6.403 hours, wall time: 2.258 seconds, max(u): (4.114e-01, 1.338e-01, 1.762e-02) m/s, next Δt: 26.620 seconds
+[02.80%] i: 1500, t: 10.081 hours, wall time: 1.789 seconds, max(u): (4.421e-01, 1.539e-01, 1.895e-02) m/s, next Δt: 29.282 seconds
+[03.93%] i: 2000, t: 14.146 hours, wall time: 2.193 seconds, max(u): (4.527e-01, 1.518e-01, 1.966e-02) m/s, next Δt: 32.210 seconds
+[05.17%] i: 2500, t: 18.608 hours, wall time: 2.012 seconds, max(u): (4.518e-01, 1.483e-01, 1.992e-02) m/s, next Δt: 35.431 seconds
+[06.53%] i: 3000, t: 23.512 hours, wall time: 2.353 seconds, max(u): (4.549e-01, 1.374e-01, 2.000e-02) m/s, next Δt: 38.974 seconds
+[08.02%] i: 3500, t: 1.204 days, wall time: 2.262 seconds, max(u): (4.697e-01, 1.331e-01, 2.060e-02) m/s, next Δt: 42.872 seconds
+[09.68%] i: 4000, t: 1.451 days, wall time: 1.978 seconds, max(u): (4.732e-01, 1.343e-01, 2.064e-02) m/s, next Δt: 47.159 seconds
+[11.48%] i: 4500, t: 1.722 days, wall time: 3.629 seconds, max(u): (4.679e-01, 1.315e-01, 2.040e-02) m/s, next Δt: 51.875 seconds
+[13.47%] i: 5000, t: 2.020 days, wall time: 2.448 seconds, max(u): (4.635e-01, 1.288e-01, 2.013e-02) m/s, next Δt: 57.062 seconds
+[15.63%] i: 5500, t: 2.345 days, wall time: 3.060 seconds, max(u): (4.651e-01, 1.316e-01, 2.040e-02) m/s, next Δt: 1.046 minutes
+[18.03%] i: 6000, t: 2.705 days, wall time: 2.857 seconds, max(u): (4.700e-01, 1.338e-01, 2.045e-02) m/s, next Δt: 1.151 minutes
+[20.66%] i: 6500, t: 3.099 days, wall time: 5.859 seconds, max(u): (4.594e-01, 1.320e-01, 2.035e-02) m/s, next Δt: 1.266 minutes
+[23.55%] i: 7000, t: 3.533 days, wall time: 4.378 seconds, max(u): (4.691e-01, 1.313e-01, 2.076e-02) m/s, next Δt: 1.392 minutes
+[26.71%] i: 7500, t: 4.006 days, wall time: 5.004 seconds, max(u): (4.633e-01, 1.317e-01, 2.069e-02) m/s, next Δt: 1.532 minutes
+[30.18%] i: 8000, t: 4.528 days, wall time: 4.595 seconds, max(u): (4.662e-01, 1.315e-01, 2.068e-02) m/s, next Δt: 1.612 minutes
+[33.84%] i: 8500, t: 5.076 days, wall time: 6.288 seconds, max(u): (4.639e-01, 1.319e-01, 2.071e-02) m/s, next Δt: 1.622 minutes
+[37.59%] i: 9000, t: 5.639 days, wall time: 5.536 seconds, max(u): (4.671e-01, 1.316e-01, 2.080e-02) m/s, next Δt: 1.610 minutes
+[41.25%] i: 9500, t: 6.187 days, wall time: 1.438 seconds, max(u): (4.632e-01, 1.317e-01, 2.076e-02) m/s, next Δt: 1.624 minutes
+[44.99%] i: 10000, t: 6.749 days, wall time: 4.722 seconds, max(u): (4.671e-01, 1.316e-01, 2.079e-02) m/s, next Δt: 1.610 minutes
+[48.65%] i: 10500, t: 7.297 days, wall time: 1.510 seconds, max(u): (4.636e-01, 1.317e-01, 2.076e-02) m/s, next Δt: 1.622 minutes
+[52.39%] i: 11000, t: 7.859 days, wall time: 1.426 seconds, max(u): (4.664e-01, 1.318e-01, 2.077e-02) m/s, next Δt: 1.613 minutes
+[56.05%] i: 11500, t: 8.407 days, wall time: 2.013 seconds, max(u): (4.644e-01, 1.316e-01, 2.076e-02) m/s, next Δt: 1.619 minutes
+[59.71%] i: 12000, t: 8.956 days, wall time: 1.430 seconds, max(u): (4.658e-01, 1.318e-01, 2.078e-02) m/s, next Δt: 1.615 minutes
+[63.36%] i: 12500, t: 9.503 days, wall time: 1.452 seconds, max(u): (4.647e-01, 1.316e-01, 2.076e-02) m/s, next Δt: 1.619 minutes
+[67.01%] i: 13000, t: 10.052 days, wall time: 1.436 seconds, max(u): (4.657e-01, 1.317e-01, 2.077e-02) m/s, next Δt: 1.615 minutes
+[70.67%] i: 13500, t: 10.600 days, wall time: 1.489 seconds, max(u): (4.647e-01, 1.316e-01, 2.076e-02) m/s, next Δt: 1.618 minutes
+[74.32%] i: 14000, t: 11.149 days, wall time: 1.520 seconds, max(u): (4.656e-01, 1.317e-01, 2.077e-02) m/s, next Δt: 1.615 minutes
+[77.98%] i: 14500, t: 11.697 days, wall time: 1.488 seconds, max(u): (4.648e-01, 1.316e-01, 2.077e-02) m/s, next Δt: 1.618 minutes
+[81.64%] i: 15000, t: 12.245 days, wall time: 1.503 seconds, max(u): (4.655e-01, 1.317e-01, 2.077e-02) m/s, next Δt: 1.616 minutes
+[85.29%] i: 15500, t: 12.793 days, wall time: 1.985 seconds, max(u): (4.649e-01, 1.316e-01, 2.076e-02) m/s, next Δt: 1.618 minutes
+[88.94%] i: 16000, t: 13.341 days, wall time: 1.453 seconds, max(u): (4.654e-01, 1.317e-01, 2.077e-02) m/s, next Δt: 1.616 minutes
+[92.60%] i: 16500, t: 13.890 days, wall time: 1.443 seconds, max(u): (4.651e-01, 1.316e-01, 2.077e-02) m/s, next Δt: 1.617 minutes
+[96.25%] i: 17000, t: 14.438 days, wall time: 1.442 seconds, max(u): (4.652e-01, 1.317e-01, 2.077e-02) m/s, next Δt: 1.617 minutes
+[99.91%] i: 17500, t: 14.986 days, wall time: 1.480 seconds, max(u): (4.651e-01, 1.316e-01, 2.077e-02) m/s, next Δt: 1.617 minutes
+[ Info: Simulation is stopping after running for 2.551 minutes.
 [ Info: Simulation time 15 days equals or exceeds stop time 15 days.
-[ Info: Simulation completed in 2.318 minutes
+[ Info: Simulation completed in 2.551 minutes
 
 ````
 
@@ -385,7 +381,7 @@ filter_config = OfflineFilterConfig(original_data_filename="lee_wave.jld2", # Wh
 OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("lee_wave.jld2", ("b",), ("u", "w"), (), 432000.0, 1.296e6, 864000.0, CPU(), 3600.0, (a1 = 4.783542904563622e-6, b1 = 1.1548494156391084e-5, c1 = 1.913417161825449e-5, d1 = 4.619397662556434e-5, a2 = 1.1548494156391084e-5, b2 = 4.783542904563623e-6, c2 = 4.619397662556434e-5, d2 = 1.9134171618254493e-5, N_coeffs = 2, outputs = :combined, sine_parity = :even), 60.0, true, true, "forward_output.jld2", "backward_output.jld2", "lee_wave_offline_filtered.jld2", true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
-└── advecting_velocity_scheme: Centered(order=4), 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo:
+└── advecting_velocity_scheme: Centered(order=2), 100×1×100 ImmersedBoundaryGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo:
 ├── immersed_boundary: PartialCellBottom(mean(zb)=-1977.76, min(zb)=-2000.0, max(zb)=-1824.0, ϵ=0.2)
 ├── underlying_grid: 100×1×100 RectilinearGrid{Float64, Periodic, Flat, Bounded} on CPU with 4×0×4 halo
 ├── Periodic x ∈ [-20000.0, 20000.0) regularly spaced with Δx=400.0
@@ -410,9 +406,9 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (14.212 minutes)
+[ Info:     ... simulation initialization complete (21.765 minutes)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (28.268 seconds).
+[ Info:     ... initial time step complete (52.304 seconds).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -422,15 +418,15 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
-[ Info: Simulation is stopping after running for 15.978 minutes.
+[ Info: Simulation is stopping after running for 24.664 minutes.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
 [ Info: Loaded backward input data from lee_wave.jld2
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (177.252 ms)
+[ Info:     ... simulation initialization complete (268.124 ms)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (6.117 ms).
+[ Info:     ... initial time step complete (9.454 ms).
 [ Info: Simulation time: 1 day
 [ Info: Simulation time: 2 days
 [ Info: Simulation time: 3 days
@@ -440,15 +436,15 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 7 days
 [ Info: Simulation time: 8 days
 [ Info: Simulation time: 9 days
-[ Info: Simulation is stopping after running for 1.294 minutes.
+[ Info: Simulation is stopping after running for 2.059 minutes.
 [ Info: Simulation time 10 days equals or exceeds stop time 10 days.
 [ Info: Simulation time: 10 days
 [ Info: Combined forward and backward contributions into lee_wave_offline_filtered.jld2
-┌ Warning: Regridding to mean position: Newton's method did not converge at 437 points (set to NaN)
-└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter-regrid/src/Utils/regrid_to_mean.jl:459
-[ Info: Regridding to mean position: 9221 points are not the mean position of any particle in the fluid (set to NaN)
-┌ Warning: Regridding to mean position: the map folds in 1012 cells over 240 output times, so some points are the mean position of more than one label there
-└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter-regrid/src/Utils/regrid_to_mean.jl:463
+┌ Warning: Regridding to mean position: Newton's method did not converge at 454 points (set to NaN)
+└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter/src/Utils/regrid_to_mean.jl:462
+[ Info: Regridding to mean position: 9411 points are not the mean position of any particle in the fluid (set to NaN)
+┌ Warning: Regridding to mean position: the map folds in 1008 cells over 240 output times, so some points are the mean position of more than one label there
+└ @ OceananigansLagrangianFilter.Utils ~/Documents/Projects/OceananigansLagrangianFilter/src/Utils/regrid_to_mean.jl:466
 [ Info: Wrote regridded data to new variables with _at_mean suffix in file lee_wave_offline_filtered.jld2
 [ Info: Computing Eulerian filter for variable b
 [ Info: Computing Eulerian filter for variable u

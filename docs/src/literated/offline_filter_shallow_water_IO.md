@@ -166,9 +166,9 @@ run!(simulation)
 ````
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds, max(|uh|, |vh|, |h|): 6.28e-01, 0.00e+00, 1.00e+00 
-[ Info:     ... simulation initialization complete (34.225 seconds)
+[ Info:     ... simulation initialization complete (34.219 seconds)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (34.925 seconds).
+[ Info:     ... initial time step complete (51.772 seconds).
 [ Info: Simulation time: 990.000 ms, max(|uh|, |vh|, |h|): 3.45e-01, 5.25e-01, 1.00e+00 
 [ Info: Simulation time: 1.990 seconds, max(|uh|, |vh|, |h|): 2.56e-01, 5.74e-01, 1.00e+00 
 [ Info: Simulation time: 2.900 seconds, max(|uh|, |vh|, |h|): 6.10e-01, 1.50e-01, 1.00e+00 
@@ -190,7 +190,7 @@ run!(simulation)
 [ Info: Simulation time: 17.590 seconds, max(|uh|, |vh|, |h|): 1.92e-01, 5.98e-01, 1.00e+00 
 [ Info: Simulation time: 18.590 seconds, max(|uh|, |vh|, |h|): 6.07e-01, 1.61e-01, 1.00e+00 
 [ Info: Simulation time: 19.590 seconds, max(|uh|, |vh|, |h|): 4.64e-01, 4.24e-01, 1.00e+00 
-[ Info: Simulation is stopping after running for 1.229 minutes.
+[ Info: Simulation is stopping after running for 1.564 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 
 ````
@@ -225,7 +225,7 @@ filter_config = OfflineFilterConfig(original_data_filename="SW_IO_with_tracer.jl
 OceananigansLagrangianFilter.OfflineLagrangianFilter.OfflineFilterConfig("SW_IO_with_tracer.jld2", ("T",), ("u", "v"), (), 0.0, 20.0, 20.0, CPU(), 0.1, (a1 = 0.17677669529663687, b1 = 0.1767766952966369, c1 = 0.35355339059327373, d1 = 0.3535533905932738, N_coeffs = 1, outputs = :combined, sine_parity = :even), 0.01, true, true, "forward_output.jld2", "backward_output.jld2", "SW_IO_with_tracer_filtered.jld2", true, true, true, true, true, true, WENO{3, Float64, Nothing}(order=5)
 ├── buffer_scheme: WENO{2, Float64, Nothing}(order=3)
 │   └── buffer_scheme: Centered(order=2)
-└── advecting_velocity_scheme: Centered(order=4), 50×50×1 RectilinearGrid{Float64, Periodic, Periodic, Flat} on CPU with 3×3×0 halo
+└── advecting_velocity_scheme: Centered(order=2), 50×50×1 RectilinearGrid{Float64, Periodic, Periodic, Flat} on CPU with 3×3×0 halo
 ├── Periodic x ∈ [4.03717e-17, 6.28319) regularly spaced with Δx=0.125664
 ├── Periodic y ∈ [4.03717e-17, 6.28319) regularly spaced with Δy=0.125664
 └── Flat z                              , "", nothing, nothing, nothing, nothing, ())
@@ -248,9 +248,9 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Defined simulation
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (4.452 minutes)
+[ Info:     ... simulation initialization complete (7.009 minutes)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (4.902 seconds).
+[ Info:     ... initial time step complete (8.666 seconds).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -260,15 +260,15 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 4.645 minutes.
+[ Info: Simulation is stopping after running for 7.354 minutes.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Loaded backward input data from SW_IO_with_tracer.jld2
 [ Info: Initializing simulation...
 [ Info: Simulation time: 0 seconds
-[ Info:     ... simulation initialization complete (136.435 ms)
+[ Info:     ... simulation initialization complete (166.408 ms)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (2.269 ms).
+[ Info:     ... initial time step complete (4.123 ms).
 [ Info: Simulation time: 2 seconds
 [ Info: Simulation time: 4 seconds
 [ Info: Simulation time: 6 seconds
@@ -278,7 +278,7 @@ run_offline_Lagrangian_filter(filter_config)
 [ Info: Simulation time: 14 seconds
 [ Info: Simulation time: 16 seconds
 [ Info: Simulation time: 18 seconds
-[ Info: Simulation is stopping after running for 6.968 seconds.
+[ Info: Simulation is stopping after running for 11.658 seconds.
 [ Info: Simulation time 20 seconds equals or exceeds stop time 20 seconds.
 [ Info: Simulation time: 20 seconds
 [ Info: Combined forward and backward contributions into SW_IO_with_tracer_filtered.jld2

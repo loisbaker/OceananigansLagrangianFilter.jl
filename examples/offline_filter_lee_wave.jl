@@ -39,8 +39,7 @@ f = 1e-4                  # Coriolis frequency [s⁻¹]
 U = 0.2                   # Background flow speed [m/s]
 Nsqr = 1e-6               # Buoyancy frequency squared [s⁻²]
 
-κv = 0.1 # Vertical diffusivity
-κBh = L^2 / pi^2/ Nx^2 * 100 # Horizontal biharmonic diffusivity
+κ = 0.1 # Diffusivity
 
 filename_stem = "lee_wave";
 
@@ -56,9 +55,7 @@ underlying_grid = RectilinearGrid(arch, size = (Nx, Nz), halo = (4, 4),
 grid = ImmersedBoundaryGrid(underlying_grid, PartialCellBottom(bottom))
 
 # ### Closures                     
-horizontal_closure = HorizontalScalarBiharmonicDiffusivity(ν=κBh, κ=κBh)
-vertical_closure = VerticalScalarDiffusivity(ν=κv, κ=κv)
-closure = (horizontal_closure, vertical_closure)
+closure = ScalarDiffusivity(ν=κ, κ=κ)
 
 # ### Forcing
 
@@ -111,6 +108,8 @@ model = HydrostaticFreeSurfaceModel(grid;
                                     coriolis = FPlane(f = f),
                                     buoyancy = BuoyancyTracer(),
                                     tracers = :b,
+                                    tracer_advection = WENO(),
+                                    momentum_advection = WENO(),
                                     forcing = (; v = (v_steady_forcing, v_sponge_forcing),
                                                 u = u_sponge_forcing, b = b_sponge_forcing),                                                                                       
                                     closure=closure,

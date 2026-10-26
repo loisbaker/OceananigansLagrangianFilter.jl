@@ -285,36 +285,36 @@ run!(simulation)
 ````
 [ Info: Running the simulation...
 [ Info: Initializing simulation...
-[00.00%] i: 0, t: 0 seconds, wall time: 12.722 minutes, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
-[ Info:     ... simulation initialization complete (12.857 minutes)
+[00.00%] i: 0, t: 0 seconds, wall time: 19.917 minutes, max(u): (0.000e+00, 0.000e+00, 0.000e+00) m/s, next Δt: 20 minutes
+[ Info:     ... simulation initialization complete (20.183 minutes)
 [ Info: Executing initial time step...
-[ Info:     ... initial time step complete (15.813 seconds).
-[15.28%] i: 50, t: 11 hours, wall time: 33.127 seconds, max(u): (2.205e-02, 5.272e-02, 3.914e-04) m/s, next Δt: 6.183 minutes
-[19.31%] i: 100, t: 13.906 hours, wall time: 674.301 ms, max(u): (2.981e-02, 2.366e-02, 5.021e-04) m/s, next Δt: 2.795 minutes
-[22.61%] i: 150, t: 16.282 hours, wall time: 681.821 ms, max(u): (1.448e-02, 3.717e-03, 1.989e-04) m/s, next Δt: 3.382 minutes
-[26.86%] i: 200, t: 19.341 hours, wall time: 682.853 ms, max(u): (1.885e-02, 6.552e-03, 3.549e-04) m/s, next Δt: 4.420 minutes
-[30.87%] i: 250, t: 22.226 hours, wall time: 684.383 ms, max(u): (3.049e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.712 minutes
-[34.20%] i: 300, t: 1.026 days, wall time: 541.254 ms, max(u): (1.763e-02, 5.629e-02, 3.552e-04) m/s, next Δt: 3.422 minutes
-[38.36%] i: 350, t: 1.151 days, wall time: 682.308 ms, max(u): (1.565e-02, 5.854e-02, 3.038e-04) m/s, next Δt: 4.141 minutes
-[42.41%] i: 400, t: 1.272 days, wall time: 682.618 ms, max(u): (3.055e-02, 3.396e-02, 6.365e-04) m/s, next Δt: 2.727 minutes
-[45.61%] i: 450, t: 1.368 days, wall time: 541.488 ms, max(u): (2.307e-02, 1.076e-02, 3.970e-04) m/s, next Δt: 3.076 minutes
-[49.47%] i: 500, t: 1.484 days, wall time: 684.186 ms, max(u): (9.182e-03, 3.661e-03, 2.610e-04) m/s, next Δt: 4.094 minutes
-[53.85%] i: 550, t: 1.616 days, wall time: 680.616 ms, max(u): (2.978e-02, 2.383e-02, 6.374e-04) m/s, next Δt: 2.965 minutes
-[57.01%] i: 600, t: 1.710 days, wall time: 675.291 ms, max(u): (2.578e-02, 4.763e-02, 5.998e-04) m/s, next Δt: 3.092 minutes
-[60.82%] i: 650, t: 1.825 days, wall time: 558.240 ms, max(u): (5.830e-03, 6.150e-02, 1.671e-04) m/s, next Δt: 3.741 minutes
-[65.28%] i: 700, t: 1.958 days, wall time: 691.464 ms, max(u): (2.783e-02, 4.469e-02, 7.864e-04) m/s, next Δt: 2.994 minutes
-[68.51%] i: 750, t: 2.055 days, wall time: 691.326 ms, max(u): (2.840e-02, 2.019e-02, 7.026e-04) m/s, next Δt: 2.800 minutes
-[72.01%] i: 800, t: 2.160 days, wall time: 549.501 ms, max(u): (1.031e-02, 6.012e-03, 1.518e-04) m/s, next Δt: 3.727 minutes
-[76.49%] i: 850, t: 2.295 days, wall time: 819.153 ms, max(u): (2.391e-02, 1.160e-02, 7.266e-04) m/s, next Δt: 4.419 minutes
-[80.12%] i: 900, t: 2.404 days, wall time: 557.860 ms, max(u): (2.944e-02, 3.850e-02, 8.380e-04) m/s, next Δt: 2.831 minutes
-[83.57%] i: 950, t: 2.507 days, wall time: 684.835 ms, max(u): (1.288e-02, 5.856e-02, 5.939e-04) m/s, next Δt: 3.425 minutes
-[87.88%] i: 1000, t: 2.637 days, wall time: 694.407 ms, max(u): (2.045e-02, 5.464e-02, 7.651e-04) m/s, next Δt: 4.074 minutes
-[91.73%] i: 1050, t: 2.752 days, wall time: 703.025 ms, max(u): (3.010e-02, 2.809e-02, 1.100e-03) m/s, next Δt: 2.759 minutes
-[95.10%] i: 1100, t: 2.853 days, wall time: 559.448 ms, max(u): (1.714e-02, 8.333e-03, 4.073e-04) m/s, next Δt: 3.453 minutes
-[99.29%] i: 1150, t: 2.979 days, wall time: 704.775 ms, max(u): (1.560e-02, 8.750e-03, 8.093e-04) m/s, next Δt: 4.178 minutes
-[ Info: Simulation is stopping after running for 13.390 minutes.
+[ Info:     ... initial time step complete (43.310 seconds).
+[15.28%] i: 50, t: 11 hours, wall time: 1.162 minutes, max(u): (2.205e-02, 5.272e-02, 3.914e-04) m/s, next Δt: 6.183 minutes
+[19.31%] i: 100, t: 13.906 hours, wall time: 1.147 seconds, max(u): (2.981e-02, 2.366e-02, 5.021e-04) m/s, next Δt: 2.795 minutes
+[22.61%] i: 150, t: 16.282 hours, wall time: 1.099 seconds, max(u): (1.448e-02, 3.717e-03, 1.989e-04) m/s, next Δt: 3.382 minutes
+[26.86%] i: 200, t: 19.341 hours, wall time: 1.160 seconds, max(u): (1.885e-02, 6.552e-03, 3.549e-04) m/s, next Δt: 4.420 minutes
+[30.87%] i: 250, t: 22.226 hours, wall time: 1.089 seconds, max(u): (3.049e-02, 3.460e-02, 5.432e-04) m/s, next Δt: 2.712 minutes
+[34.20%] i: 300, t: 1.026 days, wall time: 945.931 ms, max(u): (1.763e-02, 5.629e-02, 3.552e-04) m/s, next Δt: 3.422 minutes
+[38.36%] i: 350, t: 1.151 days, wall time: 1.069 seconds, max(u): (1.565e-02, 5.854e-02, 3.038e-04) m/s, next Δt: 4.141 minutes
+[42.41%] i: 400, t: 1.272 days, wall time: 1.171 seconds, max(u): (3.055e-02, 3.396e-02, 6.365e-04) m/s, next Δt: 2.727 minutes
+[45.61%] i: 450, t: 1.368 days, wall time: 844.781 ms, max(u): (2.307e-02, 1.076e-02, 3.970e-04) m/s, next Δt: 3.076 minutes
+[49.47%] i: 500, t: 1.484 days, wall time: 1.123 seconds, max(u): (9.182e-03, 3.661e-03, 2.610e-04) m/s, next Δt: 4.094 minutes
+[53.85%] i: 550, t: 1.616 days, wall time: 1.135 seconds, max(u): (2.978e-02, 2.383e-02, 6.374e-04) m/s, next Δt: 2.965 minutes
+[57.01%] i: 600, t: 1.710 days, wall time: 1.108 seconds, max(u): (2.578e-02, 4.763e-02, 5.998e-04) m/s, next Δt: 3.092 minutes
+[60.82%] i: 650, t: 1.825 days, wall time: 936.975 ms, max(u): (5.830e-03, 6.150e-02, 1.670e-04) m/s, next Δt: 3.741 minutes
+[65.28%] i: 700, t: 1.958 days, wall time: 1.081 seconds, max(u): (2.783e-02, 4.469e-02, 7.863e-04) m/s, next Δt: 2.994 minutes
+[68.51%] i: 750, t: 2.055 days, wall time: 1.173 seconds, max(u): (2.840e-02, 2.019e-02, 7.026e-04) m/s, next Δt: 2.800 minutes
+[72.01%] i: 800, t: 2.160 days, wall time: 853.794 ms, max(u): (1.031e-02, 6.012e-03, 1.518e-04) m/s, next Δt: 3.727 minutes
+[76.49%] i: 850, t: 2.295 days, wall time: 1.346 seconds, max(u): (2.391e-02, 1.160e-02, 7.267e-04) m/s, next Δt: 4.419 minutes
+[80.12%] i: 900, t: 2.404 days, wall time: 908.122 ms, max(u): (2.944e-02, 3.850e-02, 8.381e-04) m/s, next Δt: 2.831 minutes
+[83.57%] i: 950, t: 2.507 days, wall time: 1.118 seconds, max(u): (1.288e-02, 5.856e-02, 5.937e-04) m/s, next Δt: 3.425 minutes
+[87.88%] i: 1000, t: 2.637 days, wall time: 1.150 seconds, max(u): (2.045e-02, 5.464e-02, 7.650e-04) m/s, next Δt: 4.074 minutes
+[91.73%] i: 1050, t: 2.752 days, wall time: 1.105 seconds, max(u): (3.010e-02, 2.809e-02, 1.100e-03) m/s, next Δt: 2.759 minutes
+[95.10%] i: 1100, t: 2.853 days, wall time: 953.679 ms, max(u): (1.714e-02, 8.332e-03, 4.071e-04) m/s, next Δt: 3.453 minutes
+[99.29%] i: 1150, t: 2.979 days, wall time: 1.086 seconds, max(u): (1.560e-02, 8.749e-03, 8.097e-04) m/s, next Δt: 4.178 minutes
+[ Info: Simulation is stopping after running for 21.342 minutes.
 [ Info: Simulation time 3 days equals or exceeds stop time 3 days.
-[ Info: Simulation completed in 13.392 minutes
+[ Info: Simulation completed in 21.346 minutes
 
 ````
 
