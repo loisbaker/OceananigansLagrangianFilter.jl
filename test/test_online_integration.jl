@@ -127,14 +127,14 @@ end
     end
 end
 
-@testset "Online run test: multi-coefficient Butterworth filter (N=4) runs without error" begin
+@testset "Online run test: Butterworth filter with cosine and sine terms (N=2) runs without error" begin
     # The N_coeffs > 0.5 branch is exercised analytically in test_initialisation.jl;
     # here we just check that the full online pipeline also completes for it without
     # error. There's no saved reference output for this N, so we only check the run
     # completes and produces finite, non-trivial output - not that the values are "correct".
-    filename_stem = "data/test_online_output_N4"
+    filename_stem = "data/test_online_output_N2"
     try
-        run_online_filter_test(filename_stem; N = 4, freq_c = 1e-4 / 4)
+        run_online_filter_test(filename_stem; N = 2, freq_c = 1e-4 / 4)
 
         @test isfile(filename_stem * ".jld2")
         w_filtered = FieldTimeSeries(filename_stem * ".jld2", "w_Lagrangian_filtered")

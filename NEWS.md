@@ -13,6 +13,7 @@
 - Input data is now always read by a `BufferedDataReader` from the original data file, so the intermediate input file and `create_input_data_on_disk` and `load_data` are removed. `initialise_filtered_vars_from_data` and `update_input_data!` now take a `BufferedDataReader` (made with `create_buffered_reader`).
 - `get_frequency_response` replaces `get_offline_frequency_response` and `get_online_frequency_response`, and the `direction` of `get_weight_function` is now a `Symbol` (`:both`, `:forward` or `:backward`).
 - Python is no longer needed: PythonCall, CondaPkg and SciPy are no longer dependencies.
+- `jld2_to_netcdf` writes the interior points only, without halos, and the grid spacings from `xspacings`, `yspacings` and `zspacings` (2D on a `LatitudeLongitudeGrid`), so the NetCDF layout changes.
 
 ### New features
 

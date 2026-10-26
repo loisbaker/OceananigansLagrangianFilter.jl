@@ -213,7 +213,7 @@ end
     mask_func(x, z, p) = p.a + x * z # varies in space (and isn't symmetric in x and z), to check it's evaluated at the cell centre
     relax_timescale = 1hour
 
-    for N in (1, 2) # single exponential and N_coeffs = 2
+    for N in (1, 2) # single exponential and N_coeffs = 1
         config_norelax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
                                             velocity_names = ("u", "w"), N = N, freq_c = 1e-4)
         config_relax = OnlineFilterConfig(grid = grid, var_names_to_filter = ("b",),
@@ -288,7 +288,7 @@ end
     i, k = 2, 3
     x, z = Oceananigans.Grids.xnode(i, grid, Center()), Oceananigans.Grids.znode(k, grid, Center())
     M = M_func(x, z, (; m))
-    for N in (1, 2) # single exponential and N_coeffs = 2
+    for N in (1, 2) # single exponential and N_coeffs = 1
         filtered_vars = create_filtered_vars(config(N))
         fields = merge((; u = XFaceField(grid), w = ZFaceField(grid), b = CenterField(grid)),
                        NamedTuple(name => CenterField(grid) for name in filtered_vars))
