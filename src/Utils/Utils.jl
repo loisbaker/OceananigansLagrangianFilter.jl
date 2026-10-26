@@ -4,11 +4,12 @@ using OceananigansLagrangianFilter: AbstractConfig, AbstractOfflineConfig, Abstr
 using JLD2
 using JLD2: Group
 using Oceananigans
-using Oceananigans.Fields: Center, location
+using Oceananigans.Fields: Center, location, indices
 using Oceananigans.Units: Time
 using Oceananigans.OutputReaders: InMemory, load_serialized_grid
-using Oceananigans: AbstractModel
-using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions
+using Oceananigans.OutputWriters: serializeproperty!
+using Oceananigans: AbstractModel, boundary_conditions
+using Oceananigans.BoundaryConditions: PeriodicBoundaryCondition, FieldBoundaryConditions, fill_halo_regions!
 using Oceananigans.Grids: AbstractGrid, topology, Flat, on_architecture, λnodes, φnodes, xspacings, yspacings, zspacings
 using Oceananigans.ImmersedBoundaries: immersed_cell
 using KernelAbstractions: @kernel, @index
@@ -19,6 +20,7 @@ using Oceananigans.Grids: node
 using Oceananigans.Operators: interpolation_operator, assumed_field_location
 
 using ..DataIO: BufferedDataReader, create_buffered_reader, advance_buffer!, interpolate_to_model!, update_input_data!, stored_times, shared_halo_regions
+using ..DataIO: create_data_source, cpu_frame_templates, read_frame!
 
 include("filter_params.jl")
 include("filter_variables.jl")

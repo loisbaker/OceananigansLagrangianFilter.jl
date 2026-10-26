@@ -25,6 +25,7 @@
 
 ### Changes and fixes
 
+- Offline, the Eulerian filter in post-processing (`compute_Eulerian_filter!`) reads the original data, at its saved times, rather than the fields in the output file, so it no longer depends on `T_out`.
 - The Eulerian filter in post-processing (`compute_Eulerian_filter!`) is computed with running sums, so its cost grows linearly with the number of saved times, and it treats the ends of the data as the Lagrangian filter does. A field that is constant in time is now unchanged by it. It also supports separate outputs, and a frequency scale that depends only on position. The reference test data was regenerated for this and for the new regridding.
 - The offline filter compiles its output writer once, rather than again for the backward pass.
 - The code is reorganised: the utilities are split into files by purpose (filter parameters, variables, forcing, outputs, initialisation, post-processing and regridding), the forcing of each filtered variable is a single `DiscreteForcing`, and input data is read in a new `DataIO` module, which now holds `update_input_data!` (still exported).

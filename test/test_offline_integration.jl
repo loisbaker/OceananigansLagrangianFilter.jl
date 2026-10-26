@@ -170,6 +170,30 @@ end
     end
 end
 
+@testset "Offline Eulerian filter in post-processing reads the original data" begin
+    # Offline, the Eulerian filter reads the fields from the original data, so it doesn't depend on the output interval
+    # or need the unfiltered fields in the output file: with every other output time removed from the reference output
+    # (as if T_out were twice the interval of the original data), and the unfiltered fields, it is the same at the
+    # remaining output times
+    coarse = reference_output_without_Eulerian_filter("data/reference_offline_output.jld2")
+    jldopen(coarse, "a+") do file
+        foreach(name -> Base.delete!(file["timeseries"], name), ("b", "u", "w"))
+        iterations = sort(parse.(Int, collect(keys(file["timeseries/t"]))))
+        for name in keys(file["timeseries"]), iter in iterations[2:2:end]
+            Base.delete!(file, "timeseries/$name/$iter")
+        end
+    end
+    compute_Eulerian_filter!(OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2", output_filename = coarse,
+                                                 var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 2,
+                                                 freq_c = 1e-4 / 4))
+    for name in ("b_Eulerian_filtered", "u_Eulerian_filtered", "w_Eulerian_filtered")
+        coarse_output = FieldTimeSeries(coarse, name)
+        reference = FieldTimeSeries("data/reference_offline_output.jld2", name)
+        @test length(coarse_output.times) < length(reference.times)
+        @test coarse_output.data ≈ reference.data[:, :, :, findall(t -> t in coarse_output.times, reference.times)]
+    end
+end
+
 @testset "Eulerian filter in post-processing of a constant field" begin
     # Each field is taken to be constant before the first saved time (and offline, the sums over later times start
     # from the sums over earlier times), and the weight function is integrated exactly between saved times, so a field
@@ -186,10 +210,11 @@ end
         return filename
     end
 
-    offline = constant_b_copy("data/reference_offline_output.jld2")
-    compute_Eulerian_filter!(OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2", output_filename = offline,
-                                                 var_names_to_filter = ("b",), velocity_names = ("u", "w"), N = 2,
-                                                 freq_c = 1e-4 / 4))
+    # Offline, the fields are read from the original data
+    offline = reference_output_without_Eulerian_filter("data/reference_offline_output.jld2")
+    compute_Eulerian_filter!(OfflineFilterConfig(original_data_filename = constant_b_copy("data/reference_sim.jld2"),
+                                                 output_filename = offline, var_names_to_filter = ("b",),
+                                                 velocity_names = ("u", "w"), N = 2, freq_c = 1e-4 / 4))
     @test all(FieldTimeSeries(offline, "b_Eulerian_filtered").data .≈ 2.5)
 
     online = constant_b_copy("data/reference_online_output.jld2")

@@ -234,6 +234,37 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
+    create_data_source(config; time_name="time")
+
+The data source (a `JLD2DataSource`, or a `NetCDFDataSource` for a file ending in `.nc` or `.netcdf`) for the
+original data file named in `config`, covering the time window [`config.T_start`, `config.T_end`], for the variables to
+filter, `config.extra_auxiliary_var_names` and the velocities. `time_name` is the name of the time coordinate in a
+NetCDF file.
+"""
+function create_data_source(config::AbstractConfig; time_name::String = "time")
+    filename  = config.original_data_filename
+    var_names = collect(String, (config.var_names_to_filter..., config.extra_auxiliary_var_names...))
+    vel_names = collect(String, config.velocity_names)
+
+    if endswith(filename, ".nc") || endswith(filename, ".netcdf")
+        return NetCDFDataSource(filename, var_names, vel_names;
+                                T_start   = Float64(config.T_start),
+                                T_end     = Float64(config.T_end),
+                                time_name = time_name)
+    else
+        return JLD2DataSource(filename, var_names, vel_names;
+                              T_start = Float64(config.T_start),
+                              T_end   = Float64(config.T_end))
+    end
+end
+
+# CPU fields on `grid` to read frames of the variables `names` from `source` into (see `_build_templates`)
+cpu_frame_templates(source::JLD2DataSource, names, grid; locations = nothing) =
+    first(_build_templates(source, names, CPU(), grid))
+cpu_frame_templates(source::NetCDFDataSource, names, grid; locations = Dict{String, NTuple{3, DataType}}()) =
+    first(_build_templates(source, names, CPU(), grid, locations))
+
+"""
     create_buffered_reader(config; direction=:forward, locations=Dict(), time_name="time")
 
 Build a `BufferedDataReader` for the data file named in `config`, covering the
@@ -254,23 +285,13 @@ function create_buffered_reader(config::AbstractConfig;
                                 locations :: Dict{String, NTuple{3, DataType}} = Dict{String, NTuple{3, DataType}}(),
                                 time_name :: String                            = "time")
 
-    filename  = config.original_data_filename
     var_names = collect(String, (config.var_names_to_filter..., config.extra_auxiliary_var_names...))
     vel_names = collect(String, config.velocity_names)
     arch      = config.architecture
     all_names = [vel_names; var_names]
 
     # Build the data source ────────────────────────────────────────────────────
-    source = if endswith(filename, ".nc") || endswith(filename, ".netcdf")
-        NetCDFDataSource(filename, var_names, vel_names;
-                         T_start   = Float64(config.T_start),
-                         T_end     = Float64(config.T_end),
-                         time_name = time_name)
-    else
-        JLD2DataSource(filename, var_names, vel_names;
-                       T_start = Float64(config.T_start),
-                       T_end   = Float64(config.T_end))
-    end
+    source = create_data_source(config; time_name)
 
     if length(stored_times(source)) < 2
         error("BufferedDataReader requires at least 2 saved times covering [T_start, T_end]. " *
