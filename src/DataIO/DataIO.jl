@@ -18,7 +18,7 @@ include("netcdf_data_source.jl")
 include("buffered_data_reader.jl")
 
 export AbstractDataSource, JLD2DataSource, NetCDFDataSource
-export BufferedDataReader, create_buffered_reader
+export BufferedDataReader, create_buffered_reader, create_data_source
 export advance_buffer!, interpolate_to_model!, update_input_data!
 
 end # module DataIO

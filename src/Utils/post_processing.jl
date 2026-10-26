@@ -167,21 +167,20 @@ end
 scale_terms(terms, ::Nothing) = terms
 scale_terms(terms, M) = [(; past = M .* term.past, future = M .* term.future, lambda = M .* term.lambda) for term in terms]
 
-# The frequency scale at the points where var_name is saved in the output file (which may include halo points), or
-# nothing for a uniform filter. It can only depend on the coordinates (not on frequency_scale_dependencies), so that it
-# doesn't vary in time
-function saved_frequency_scale(config::AbstractConfig, file, var_name, saved_size)
+# The frequency scale at the points of `field` where the filtered fields are saved, of size `saved_size` (with or without
+# halo points), or nothing for a uniform filter. It can only depend on the coordinates (not on
+# frequency_scale_dependencies), so that it doesn't vary in time
+function saved_frequency_scale(config::AbstractConfig, field, saved_size)
     isnothing(config.frequency_scale_func) && return nothing
     func, params = config.frequency_scale_func, config.frequency_scale_params
-    grid = on_architecture(CPU(), load_serialized_grid(file, var_name))
-    LX, LY, LZ = file["timeseries/$var_name/serialized/location"]
-    M = Field{LX, LY, LZ}(grid; indices = file["timeseries/$var_name/serialized/indices"])
+    LX, LY, LZ = location(field)
+    M = similar(field)
     for index in CartesianIndices(M.data)
-        M.data[index] = func(node(Tuple(index)..., grid, LX(), LY(), LZ())..., params)
+        M.data[index] = func(node(Tuple(index)..., field.grid, LX(), LY(), LZ())..., params)
     end
     size(parent(M)) == saved_size && return Array(parent(M))
     size(interior(M)) == saved_size && return Array(interior(M))
-    error("The saved $var_name, of size $saved_size, doesn't match its grid, of size $(size(parent(M))) with halos or " *
+    error("The saved size $saved_size doesn't match the grid, of size $(size(parent(M))) with halos or " *
           "$(size(interior(M))) without")
 end
 
@@ -211,15 +210,15 @@ running_sums_value(running_sums, terms, amplitude) =
     sum(real.(getproperty(term, amplitude) .* running_sum) for (running_sum, term) in zip(running_sums, terms))
 
 # The Eulerian filter as running sums, so that each field is read at most twice (rather than once for every output
-# time). read(j) gives the input f_j for each weight function in terms_list (each a list of exponential terms), and for
-# each output time t_i, output(i, values) is called with the integrals of G(t_i - t) f(t) over t, one for each weight
-# function. Between saved times each field is taken to vary linearly, and the exponentials are integrated exactly. The
-# ends are treated as by the Lagrangian filter: the sums over earlier times start from their steady values f / lambda,
-# as if each field were constant before the first saved time; and offline (direction = :both), the sums over later
-# times start at the last saved time from the sums over earlier times, as the backward pass of the offline filter
-# starts from the end of the forward pass. The sums are kept in `store` (anything indexed by a String, e.g. a JLD2
-# file) until the outputs are written, in order.
-function Eulerian_running_sums(read, output, times, terms_list, direction, store)
+# time). read(j) gives the input f_j at time t_j for each weight function in terms_list (each a list of exponential
+# terms), and for each time t_i with is_output[i], output(i, values) is called with the integrals of G(t_i - t) f(t)
+# over t, one for each weight function. Between the times t_j each field is taken to vary linearly, and the exponentials
+# are integrated exactly. The ends are treated as by the Lagrangian filter: the sums over earlier times start from their
+# steady values f / lambda, as if each field were constant before the first time; and offline (direction = :both), the
+# sums over later times start at the last time from the sums over earlier times, as the backward pass of the offline
+# filter starts from the end of the forward pass. The sums are kept in `store` (anything indexed by a String, e.g. a
+# JLD2 file) until the outputs are written, in order.
+function Eulerian_running_sums(read, output, times, terms_list, direction, store; is_output = trues(length(times)))
     n = length(times)
 
     # Sweep through the saved times in `order` from the running sums `start` (the steady values if `nothing`), calling
@@ -238,7 +237,7 @@ function Eulerian_running_sums(read, output, times, terms_list, direction, store
                     step_running_sums!(sums, terms, f, f_previous, dt)
                 end
             end
-            emit(i, [running_sums_value(sums, terms, amplitude) for (terms, sums) in zip(terms_list, running_sums)])
+            is_output[i] && emit(i, [running_sums_value(sums, terms, amplitude) for (terms, sums) in zip(terms_list, running_sums)])
             previous_inputs, previous_i = inputs, i
         end
         return running_sums
@@ -251,24 +250,85 @@ function Eulerian_running_sums(read, output, times, terms_list, direction, store
         sums_at_end = sweep(1:n, :past, nothing, keep("past"))
         sweep(n:-1:1, :future, sums_at_end, keep("future"))
         for i in 1:n
-            output(i, [store["past/$i/$w"] .+ store["future/$i/$w"] for w in eachindex(terms_list)])
+            is_output[i] && output(i, [store["past/$i/$w"] .+ store["future/$i/$w"] for w in eachindex(terms_list)])
         end
     end
     return nothing
+end
+
+# The times at which the offline Eulerian filter takes the fields (from T_start, as the output times): the saved times of
+# the original data between T_start and T_end, and T_start, T_end and the output times, where the fields are linearly
+# interpolated from the saved times either side, as the Lagrangian filter reads them. Times within rounding error of
+# each other are taken to be the same. Also returns, for each of these times, the index of the output time it is, or 0
+function offline_Eulerian_filter_times(config::AbstractConfig, source, output_times)
+    T = config.T_end - config.T_start
+    tolerance = 1e-9 * max(abs(config.T_start), abs(config.T_end), 1)
+    saved_times = stored_times(source) .- config.T_start
+    candidates = sort(vcat(0.0, filter(t -> tolerance < t < T - tolerance, saved_times), T, output_times))
+    times = Float64[]
+    for t in candidates
+        (isempty(times) || t - times[end] > tolerance) && push!(times, t)
+    end
+    output_index = zeros(Int, length(times))
+    for (n, t) in enumerate(output_times)
+        i = argmin(abs.(times .- t))
+        abs(times[i] - t) <= tolerance || error("The output time $t is outside the filter interval [0, $T]")
+        output_index[i] = n
+    end
+    return times, output_index
+end
+
+# read(i), the field var_name at the i-th of `times` (from T_start), linearly interpolated from the saved times of the
+# original data either side (read into `template`), with the halos of `field`, on the grid of the output file. The two
+# most recently read frames are kept, as the times are read in order, forwards and then backwards
+function original_data_reader(config::AbstractConfig, source, var_name, template, field, times)
+    saved_times = stored_times(source)
+    frames = Dict{Int, Array}()
+
+    # A saved frame, with its halos as saved if they match those of `field`, or else filled
+    function frame(index)
+        haskey(frames, index) && return frames[index]
+        length(frames) >= 2 && delete!(frames, argmax(j -> abs(j - index), collect(keys(frames))))
+        read_frame!(template, source, var_name, index)
+        if size(parent(template)) == size(parent(field))
+            data = Array(parent(template))
+        else
+            interior(field) .= interior(template)
+            fill_halo_regions!(field)
+            data = Array(parent(field))
+        end
+        return frames[index] = data
+    end
+
+    function read(i)
+        t = config.T_start + times[i]
+        lo = clamp(searchsortedlast(saved_times, t), 1, length(saved_times) - 1)
+        alpha = clamp((t - saved_times[lo]) / (saved_times[lo + 1] - saved_times[lo]), 0, 1)
+        alpha == 0 && return frame(lo)
+        alpha == 1 && return frame(lo + 1)
+        return (1 - alpha) .* frame(lo) .+ alpha .* frame(lo + 1)
+    end
+    return read
 end
 
 """
     compute_Eulerian_filter!(config::AbstractConfig)
 
 Computes the Eulerian filter for specified variables and writes the results to a
-combined output file. At each grid point, the saved fields are filtered in time with
+combined output file. At each grid point, the unfiltered fields are filtered in time with
 the filter's weight function. Each term of the weight function is a decaying complex
 exponential, so the filtered fields at all the output times are built up as running
 sums: forwards in time over the earlier times, and offline also backwards over the later
-times. Each saved field is read once in each direction, so the cost grows linearly with
+times. Each field is read once in each direction, so the cost grows linearly with
 the number of saved times. Offline, the sums are kept in a temporary file next to the output
 file until they are written. The results are saved to the same JLD2 file in a new group
-with the `_Eulerian_filtered` suffix.
+with the `_Eulerian_filtered` suffix, at the output times.
+
+Offline, the unfiltered fields are read from the original data file, as the Lagrangian filter reads them: at the saved
+times between `T_start` and `T_end`, and linearly interpolated between them, so the result doesn't depend on the output
+interval `T_out`. Online, the unfiltered fields are read from the output file, so they must be added to the outputs
+(see the online example), and saved often enough to resolve the motions being filtered out; otherwise, run the filter
+with `lagrangian = false`.
 
 This method serves as a benchmark for comparison with the main Lagrangian filter.
 
@@ -277,8 +337,8 @@ weight function, and named like the Lagrangian outputs with `_Eulerian_filtered`
 `b_Eulerian_filtered_C1_scaled` and `b_Eulerian_filtered_S1_scaled`.
 
 The ends of the data are treated as by the Lagrangian filter, so that the two can be compared: each field is taken
-to be constant before the first saved time (see [`initialise_filtered_vars_from_model`](@ref)), and offline, the
-sums over later times start at the last saved time from the sums over earlier times, as the backward pass of the
+to be constant before the start (see [`initialise_filtered_vars_from_model`](@ref)), and offline, the
+sums over later times start at the end from the sums over earlier times, as the backward pass of the
 offline filter starts from the end of the forward pass. Between saved times each field is taken to vary linearly, and
 the weight function is integrated exactly, so a field that is constant in time is unchanged by a normalised filter.
 
@@ -286,10 +346,6 @@ With a frequency scale ``M`` that only depends on the coordinates (no `frequency
 function at each point is ``M G(M \\tau)``, with ``M`` evaluated where each variable is saved (e.g. at the `u` points
 for `u`). A frequency scale with `frequency_scale_dependencies` varies in time, which isn't supported here: for the
 Eulerian filter with that frequency scale, run the filter with `lagrangian = false` instead.
-
-The method uses data saved to the filter output file - incase we decide to save this
-at lower frequency than the original data, it should be rewritten to use the original
-data file instead.
 
 Arguments
 =========
@@ -326,30 +382,58 @@ function compute_Eulerian_filter!(config::AbstractConfig)
     # Open existing file
     jldopen(output_filename,"r+") do file
         iterations = parse.(Int, keys(file["timeseries/t"]))
-        times = [file["timeseries/t/$iter"] for iter in iterations]
+        output_times = [file["timeseries/t/$iter"] for iter in iterations]
+
+        # Offline, the fields are read from the original data, at its saved times and the output times; online, from
+        # the output file at the output times
+        if direction === :both
+            source = create_data_source(config)
+            times, output_index = offline_Eulerian_filter_times(config, source, output_times)
+        else
+            missing_names = filter(name -> !haskey(file, "timeseries/$name"), var_names_to_Eulerian_filter)
+            isempty(missing_names) || error("The Eulerian filter in post-processing filters the unfiltered fields saved " *
+                                            "in the output file, but $missing_names are not saved: add them to the outputs")
+            times, output_index = output_times, collect(eachindex(output_times))
+        end
 
         # Loop over variables to filter
         for var_name in var_names_to_Eulerian_filter
             @info "Computing Eulerian filter for variable $var_name"
 
-            # Create a group for each filtered output, copying over the serialized properties
+            # A field of var_name on the grid of the output file, and the fields to filter, with their size: offline,
+            # from the original data (saved with halos, as the other outputs); online, from the output file
+            grid = on_architecture(CPU(), load_serialized_grid(file, var_name))
+            if direction === :both
+                template = cpu_frame_templates(source, [var_name], config.grid)[Symbol(var_name)]
+                LX, LY, LZ = location(template)
+                field = Field{LX, LY, LZ}(grid)
+                saved_size = size(parent(field))
+                read_field = original_data_reader(config, source, var_name, template, field, times)
+            else
+                LX, LY, LZ = file["timeseries/$var_name/serialized/location"]
+                field = Field{LX, LY, LZ}(grid)
+                saved_size = size(file["timeseries/$(var_name)/$(iterations[1])"])
+                read_field = i -> file["timeseries/$(var_name)/$(iterations[i])"]
+            end
+
+            # Create a group for each filtered output, with its location, indices and boundary conditions as the
+            # output writer saves them
             groups = map(weights) do (suffix, _)
                 name = var_name * label * "_Eulerian_filtered" * suffix
                 g_EF = Group(file, "timeseries/$name")
-                g_EF_serialized = Group(file, "timeseries/$name/serialized")
-                for property in keys(file["timeseries/$var_name/serialized"])
-                    g_EF_serialized[property] = file["timeseries/$var_name/serialized/$property"]
-                end
+                file["timeseries/$name/serialized/location"] = location(field)
+                file["timeseries/$name/serialized/indices"] = indices(field)
+                serializeproperty!(file, "timeseries/$name/serialized/boundary_conditions", boundary_conditions(field))
                 g_EF
             end
 
             # The terms of each weight function, scaled by the frequency scale where there is one
-            M = saved_frequency_scale(config, file, var_name, size(file["timeseries/$(var_name)/$(iterations[1])"]))
+            M = saved_frequency_scale(config, field, saved_size)
             terms_list = [scale_terms(exponential_terms(p), M) for (_, p) in weights]
-            read_inputs(i) = fill(file["timeseries/$(var_name)/$(iterations[i])"], length(weights))
+            read_inputs(i) = fill(read_field(i), length(weights))
             function write_outputs(i, values)
                 for (g_EF, value) in zip(groups, values)
-                    g_EF["$(iterations[i])"] = value
+                    g_EF["$(iterations[output_index[i]])"] = value
                 end
             end
 
@@ -358,7 +442,8 @@ function compute_Eulerian_filter!(config::AbstractConfig)
                 sums_filename = output_filename * ".Eulerian_sums.jld2"
                 try
                     jldopen(sums_filename, "w") do store
-                        Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, store)
+                        Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, store;
+                                              is_output = output_index .> 0)
                     end
                 finally
                     rm(sums_filename, force = true)
