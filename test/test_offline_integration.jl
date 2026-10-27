@@ -137,6 +137,50 @@ end
     end
 end
 
+@testset "Offline run test: batches of filter terms" begin
+    # The filter terms are independent, so running them in batches gives the same output as running them together:
+    # - a spectrum filter with five terms output separately, run in batches of 2 (and a last batch of 1) and of 1,
+    #   whose outputs are renumbered as in the whole filter and should be identical
+    # - a Butterworth filter (N = 4, two terms) with combined outputs, maps and mean velocities, run in batches of 1,
+    #   whose outputs are summed, so agree to the Float32 precision they are saved with. The regridding to the mean
+    #   position and the Eulerian filter are then computed from the merged output
+    spectrum = set_offline_spectrum_filter_params(alpha = 1e-4, freqs = [0, 1e-4, 1.5e-4, 2e-4, 3e-4])
+    butterworth = set_offline_BW2_filter_params(N = 4, freq_c = 1e-4)
+    cases = [(spectrum, false, nothing), (spectrum, false, 2), (spectrum, false, 1),
+             (butterworth, true, nothing), (butterworth, true, 1)]
+    stem(filter_params, batch_size) = "data/test_offline_output_" * (filter_params === spectrum ? "spectrum" : "butterworth") *
+                                      "_batch_size_$batch_size"
+    try
+        for (filter_params, maps, batch_size) in cases
+            filter_config = OfflineFilterConfig(original_data_filename = "data/reference_sim.jld2",
+                                                output_filename = stem(filter_params, batch_size) * ".jld2",
+                                                var_names_to_filter = ("b",), velocity_names = ("u", "w"),
+                                                architecture = CPU(), Δt = 20minutes, T = 3hours, T_out = 1hour,
+                                                filter_params = filter_params, compute_maps = maps, compute_mean_velocities = maps,
+                                                compute_Eulerian_filter = true, delete_intermediate_files = true)
+            run_offline_Lagrangian_filter(filter_config; batch_size)
+            @test !isfile(stem(filter_params, batch_size) * "_batch1.jld2")
+        end
+
+        names(filename) = jldopen(file -> sort(keys(file["timeseries"])), filename)
+        data(filename, name) = FieldTimeSeries(filename, name).data
+        for (filter_params, _, batch_size) in cases
+            isnothing(batch_size) && continue
+            whole, batched = stem(filter_params, nothing) * ".jld2", stem(filter_params, batch_size) * ".jld2"
+            @test names(batched) == names(whole)
+            same(name) = filter_params === spectrum ? data(batched, name) == data(whole, name) :
+                                                      isapprox(data(batched, name), data(whole, name); rtol = 1e-6, nans = true)
+            @test all(name -> name == "t" || same(name), names(whole))
+        end
+        @test "b_C5_scaled" in names(stem(spectrum, 1) * ".jld2")
+        @test "u_Lagrangian_filtered_at_mean" in names(stem(butterworth, 1) * ".jld2")
+    finally
+        for (filter_params, _, batch_size) in cases
+            rm(stem(filter_params, batch_size) * ".jld2", force = true)
+        end
+    end
+end
+
 @testset "Offline Eulerian filter in post-processing with a frequency scale" begin
     # compute_Eulerian_filter! on copies of the reference output, with a frequency scale M that only depends on the
     # coordinates. At a fixed point the weight function is then M G(M tau), so a uniform M = m is the same as a cutoff

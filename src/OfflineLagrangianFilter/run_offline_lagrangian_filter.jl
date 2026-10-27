@@ -2,10 +2,12 @@ using Oceananigans.TimeSteppers: reset!
 using Printf
 
 # Run the filtering operation. This is the main function that a user will call to perform offline filtering.
-# The utility functions used here can also be called individually if desired to create a custom filtering workflow.
+# The steps of the filter itself are in run_forward_and_backward_passes: the utility functions used there can also be
+# called individually if desired to create a custom filtering workflow. Running the filter in batches of terms
+# (batch_size) is in filter_term_batches.jl.
 
 """
-    run_offline_Lagrangian_filter(config::OfflineFilterConfig)
+    run_offline_Lagrangian_filter(config::OfflineFilterConfig; batch_size::Union{Int, Nothing} = nothing)
 
 Runs an offline Lagrangian filter on an Oceananigans `FieldTimeSeries` dataset as configured by `config`.
 
@@ -15,12 +17,53 @@ This function performs a series of steps to filter the data:
 3.  **Combine results**: The forward and backward simulation outputs are summed to produce the final filtered data.
 4.  **Post-processing**: Optional post-processing steps are performed, including regridding the data to the mean position, computing a comparative Eulerian filter, and converting the output file to NetCDF.
 
+The filter can also be run in batches of `batch_size` terms (each term of the filter, e.g. each frequency of a
+spectrum filter, has a cosine and a sine tracer for each filtered variable and map), one after the other. Each batch
+runs steps 1-3 with a smaller model, writing to its own file (`<output_filename>_batch<n>.jld2`), which is merged into
+`output_filename` as soon as the batch is done and then deleted (unless `delete_intermediate_files = false`).
+Outputs of separate terms (`outputs = :separate`) are numbered as in the whole filter, and combined outputs are the
+sums of those of the batches. The output is then the same as without batches (combined outputs to the Float32
+precision they are saved with), and the post-processing in step 4 is done once on the merged output. Batches of the
+same size have the same model types, so only the first is compiled (and the last, if it is smaller). Batches help when
+a filter has many terms, as the compilation time grows faster than the number of terms, and a smaller model needs less
+memory.
+
 Arguments
 =========
 
 - `config`: An instance of `OfflineFilterConfig` that specifies all parameters and file paths for the filtering process.
+- `batch_size`: The number of filter terms in each batch, or `nothing` (default) to run all the terms together.
 """
-function run_offline_Lagrangian_filter(config)
+function run_offline_Lagrangian_filter(config; batch_size::Union{Int, Nothing} = nothing)
+
+    N_terms = config.filter_params.N_coeffs
+    if isnothing(batch_size) || N_terms == 0.5 || batch_size >= N_terms # N_terms = 0.5 is a single exponential
+        run_forward_and_backward_passes(config)
+    else
+        run_batches(config, batch_size)
+    end
+
+    # ── Post-processing ───────────────────────────────────────────────────────
+
+    # Option to regrid to mean position
+    if config.regrid_to_mean
+        regrid_to_mean_position!(config)
+    end
+
+    # Option to calculate Eulerian filter too
+    if config.compute_Eulerian_filter
+        compute_Eulerian_filter!(config)
+    end
+
+    # Option to output final netcdf
+    if config.output_netcdf
+        jld2_to_netcdf(config.output_filename, config.output_filename[1:end-5] * ".nc")
+    end
+
+end
+
+# Run the forward and backward passes of the filter in `config`, and sum them into `config.output_filename`
+function run_forward_and_backward_passes(config)
 
     # Create the original variables - these will be auxiliary fields in the model
     original_vars = create_original_vars(config)
@@ -52,7 +95,7 @@ function run_offline_Lagrangian_filter(config)
     # Define our outputs. Oceananigans names interpolation operators with a global counter, so building the same
     # outputs again for the backward pass would give new types, and the output writer would be compiled again.
     # Restoring the counter before the backward pass gives the same types (if a future Oceananigans has no such
-    # counter, the backward pass is just compiled again)
+    # counter, the backward pass is just compiled again).
     identity_counter = output_identity_counter()
     filtered_outputs = create_output_fields(model, config)
     @info "Defined outputs"
@@ -110,8 +153,6 @@ function run_offline_Lagrangian_filter(config)
     # Run the backward simulation
     run!(simulation)
 
-    # ── Post-processing ───────────────────────────────────────────────────────
-
     # Sum the forward and backward components
     sum_forward_backward_contributions!(config)
 
@@ -121,21 +162,7 @@ function run_offline_Lagrangian_filter(config)
         rm(config.backward_output_filename)
     end
 
-    # Option to regrid to mean position
-    if config.regrid_to_mean
-        regrid_to_mean_position!(config)
-    end
-
-    # Option to calculate Eulerian filter too
-    if config.compute_Eulerian_filter
-        compute_Eulerian_filter!(config)
-    end
-
-    # Option to output final netcdf
-    if config.output_netcdf
-        jld2_to_netcdf(config.output_filename, config.output_filename[1:end-5] * ".nc")
-    end
-
+    return nothing
 end
 
 # The global counter that Oceananigans uses to name interpolation operators, or nothing if there is none
