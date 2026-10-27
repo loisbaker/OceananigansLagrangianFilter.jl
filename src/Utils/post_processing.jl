@@ -195,50 +195,68 @@ end
 end
 @inline near_weight(lambda, dt) = -expm1(-lambda * dt) / lambda - far_weight(lambda, dt)
 
-# Moves the running sum of each term on by dt, to the next saved time: it decays by exp(-lambda dt) and gains the
+# Moves the running sum for each decay rate on by dt, to the next saved time: it decays by exp(-lambda dt) and gains the
 # integral over the interval, with the field taken to vary linearly from f_far (the previous saved time) to f_near
-function step_running_sums!(running_sums, terms, f_near, f_far, dt)
-    for (running_sum, term) in zip(running_sums, terms)
-        running_sum .= exp.(-term.lambda .* dt) .* running_sum .+
-                       near_weight.(term.lambda, dt) .* f_near .+ far_weight.(term.lambda, dt) .* f_far
+function step_running_sums!(running_sums, lambdas, f_near, f_far, dt)
+    for (running_sum, lambda) in zip(running_sums, lambdas)
+        step_running_sum!(running_sum, lambda, f_near, f_far, dt)
     end
     return running_sums
 end
 
-# The sum over the terms of Re[amplitude * running sum], where amplitude is the past or future amplitude of the term
-running_sums_value(running_sums, terms, amplitude) =
-    sum(real.(getproperty(term, amplitude) .* running_sum) for (running_sum, term) in zip(running_sums, terms))
+# With a uniform decay rate, the weights are computed once rather than at every point (inside the fused broadcast they
+# would be, which is over 100 times slower)
+function step_running_sum!(running_sum, lambda::Number, f_near, f_far, dt)
+    decay, w_near, w_far = exp(-lambda * dt), near_weight(lambda, dt), far_weight(lambda, dt)
+    running_sum .= decay .* running_sum .+ w_near .* f_near .+ w_far .* f_far
+end
+
+# With a frequency scale, lambda is an array, so the weights vary in space
+step_running_sum!(running_sum, lambda, f_near, f_far, dt) =
+    running_sum .= exp.(-lambda .* dt) .* running_sum .+ near_weight.(lambda, dt) .* f_near .+ far_weight.(lambda, dt) .* f_far
 
 # The Eulerian filter as running sums, so that each field is read at most twice (rather than once for every output
-# time). read(j) gives the input f_j at time t_j for each weight function in terms_list (each a list of exponential
-# terms), and for each time t_i with is_output[i], output(i, values) is called with the integrals of G(t_i - t) f(t)
-# over t, one for each weight function. Between the times t_j each field is taken to vary linearly, and the exponentials
-# are integrated exactly. The ends are treated as by the Lagrangian filter: the sums over earlier times start from their
-# steady values f / lambda, as if each field were constant before the first time; and offline (direction = :both), the
-# sums over later times start at the last time from the sums over earlier times, as the backward pass of the offline
-# filter starts from the end of the forward pass. The sums are kept in `store` (anything indexed by a String, e.g. a
-# JLD2 file) until the outputs are written, in order.
-function Eulerian_running_sums(read, output, times, terms_list, direction, store; is_output = trues(length(times)))
+# time). read(j) gives the input f_j at time t_j, and for each time t_i with is_output[i], output(i, values) is called
+# with the integrals of G(t_i - t) f(t) over t, one for each weight function in terms_list (each a list of exponential
+# terms). Between the times t_j the field is taken to vary linearly, and the exponentials are integrated exactly. The
+# ends are treated as by the Lagrangian filter: the sums over earlier times start from their steady values f / lambda,
+# as if the field were constant before the first time; and offline (direction = :both), the sums over later times start
+# at the last time from the sums over earlier times, as the backward pass of the offline filter starts from the end of
+# the forward pass. The running sums are kept on `arch`, and the values passed to output on the CPU. Offline, the values
+# are kept in `store` (anything indexed by a String, e.g. a JLD2 file) until the outputs are written, in order.
+function Eulerian_running_sums(read, output, times, terms_list, direction, store;
+                               is_output = trues(length(times)), arch = CPU())
     n = length(times)
+
+    # Terms with the same decay rate share a running sum (e.g. the cosine and sine terms at each frequency of a
+    # spectral filter, which only differ in their amplitudes), so the terms of each weight function are indices into
+    # the decay rates
+    lambdas = unique(term.lambda for terms in terms_list for term in terms)
+    indices = [[findfirst(isequal(term.lambda), lambdas) for term in terms] for terms in terms_list]
+    to_arch(x) = x isa AbstractArray ? on_architecture(arch, x) : x
+    lambdas = to_arch.(lambdas)
+    amplitudes = Dict(amplitude => [[to_arch(getproperty(term, amplitude)) for term in terms] for terms in terms_list]
+                      for amplitude in (:past, :future))
+
+    # The value of each weight function: the sum over its terms of Re[amplitude * running sum], where amplitude is the
+    # past or future amplitude of the term
+    values(running_sums, amplitude) =
+        [Array(sum(real.(a .* running_sums[j]) for (a, j) in zip(as, js))) for (as, js) in zip(amplitudes[amplitude], indices)]
 
     # Sweep through the saved times in `order` from the running sums `start` (the steady values if `nothing`), calling
     # emit(i, values) at each; returns the running sums at the last time of the sweep
     function sweep(order, amplitude, start, emit)
         running_sums = deepcopy(start)
-        previous_inputs, previous_i = nothing, 0
+        f_previous, previous_i = nothing, 0
         for i in order
-            inputs = read(i)
+            f = to_arch(read(i))
             if isnothing(running_sums)
-                running_sums = [[complex.(f ./ term.lambda) for term in terms]
-                                for (terms, f) in zip(terms_list, inputs)]
+                running_sums = [complex.(f ./ lambda) for lambda in lambdas]
             elseif previous_i != 0
-                dt = abs(times[i] - times[previous_i])
-                for (terms, sums, f, f_previous) in zip(terms_list, running_sums, inputs, previous_inputs)
-                    step_running_sums!(sums, terms, f, f_previous, dt)
-                end
+                step_running_sums!(running_sums, lambdas, f, f_previous, abs(times[i] - times[previous_i]))
             end
-            is_output[i] && emit(i, [running_sums_value(sums, terms, amplitude) for (terms, sums) in zip(terms_list, running_sums)])
-            previous_inputs, previous_i = inputs, i
+            is_output[i] && emit(i, values(running_sums, amplitude))
+            f_previous, previous_i = f, i
         end
         return running_sums
     end
@@ -322,7 +340,8 @@ sums: forwards in time over the earlier times, and offline also backwards over t
 times. Each field is read once in each direction, so the cost grows linearly with
 the number of saved times. Offline, the sums are kept in a temporary file next to the output
 file until they are written. The results are saved to the same JLD2 file in a new group
-with the `_Eulerian_filtered` suffix, at the output times.
+with the `_Eulerian_filtered` suffix, at the output times. The running sums are computed on the filter's architecture
+(the offline `architecture`, or that of the online model grid), so on a GPU if the filter runs on one.
 
 Offline, the unfiltered fields are read from the original data file, as the Lagrangian filter reads them: at the saved
 times between `T_start` and `T_end`, and linearly interpolated between them, so the result doesn't depend on the output
@@ -430,26 +449,27 @@ function compute_Eulerian_filter!(config::AbstractConfig)
             # The terms of each weight function, scaled by the frequency scale where there is one
             M = saved_frequency_scale(config, field, saved_size)
             terms_list = [scale_terms(exponential_terms(p), M) for (_, p) in weights]
-            read_inputs(i) = fill(read_field(i), length(weights))
             function write_outputs(i, values)
                 for (g_EF, value) in zip(groups, values)
                     g_EF["$(iterations[output_index[i]])"] = value
                 end
             end
 
-            # The offline filter keeps the running sums in a temporary file next to the output
+            # The running sums are kept on the filter's architecture; the offline filter keeps their values at the output
+            # times in a temporary file next to the output
+            arch = filter_architecture(config)
             if direction === :both
                 sums_filename = output_filename * ".Eulerian_sums.jld2"
                 try
                     jldopen(sums_filename, "w") do store
-                        Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, store;
-                                              is_output = output_index .> 0)
+                        Eulerian_running_sums(read_field, write_outputs, times, terms_list, direction, store;
+                                              is_output = output_index .> 0, arch)
                     end
                 finally
                     rm(sums_filename, force = true)
                 end
             else
-                Eulerian_running_sums(read_inputs, write_outputs, times, terms_list, direction, nothing)
+                Eulerian_running_sums(read_field, write_outputs, times, terms_list, direction, nothing; arch)
             end
         end
     end
