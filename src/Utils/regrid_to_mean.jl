@@ -18,9 +18,9 @@ const FLAT_DIMENSION, PERIODIC_DIMENSION, BOUNDED_DIMENSION = 0, 1, 2
 # Status of each regridded point. Any status but REGRID_OK gives NaN.
 const REGRID_OK, REGRID_SOLID_POINT, REGRID_NO_MEAN_POSITION, REGRID_NOT_CONVERGED = 0, 1, 2, 3
 
-# The architecture to regrid on: the offline filter's, or the online model grid's
-regrid_architecture(config::AbstractOfflineConfig) = config.architecture
-regrid_architecture(config::AbstractOnlineConfig) = Oceananigans.Architectures.architecture(config.grid)
+# The architecture to regrid and Eulerian filter on: the offline filter's, or the online model grid's
+filter_architecture(config::AbstractOfflineConfig) = config.architecture
+filter_architecture(config::AbstractOnlineConfig) = Oceananigans.Architectures.architecture(config.grid)
 
 #####
 ##### Kernel helpers. Arrays are padded with one ghost cell beyond each end of every non-Flat dimension, so cell
@@ -368,7 +368,7 @@ function regrid_fields(grid, maps, fields; architecture = CPU(), maxiter = 50, s
 end
 
 """
-    regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid = (), architecture = regrid_architecture(config),
+    regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid = (), architecture = filter_architecture(config),
                              maxiter = 50)
 
 Regrid the Lagrangian filtered fields to the mean position, and save each as a new variable with the suffix
@@ -400,7 +400,7 @@ Arguments
 - `maxiter`: The maximum number of Newton iterations. Default: `50`.
 """
 function regrid_to_mean_position!(config::AbstractConfig; extra_vars_to_regrid::Tuple{Vararg{String}} = (),
-                                  architecture = regrid_architecture(config), maxiter::Int = 50)
+                                  architecture = filter_architecture(config), maxiter::Int = 50)
     config.lagrangian || error("Regridding to mean position is not meaningful for Eulerian filtering")
     var_names_to_filter = config.compute_mean_velocities ? (config.var_names_to_filter..., config.velocity_names...) :
                                                            config.var_names_to_filter
