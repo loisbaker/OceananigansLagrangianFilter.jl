@@ -28,9 +28,10 @@ import Oceananigans.OutputWriters: default_included_properties
 export OfflineFilterConfig, run_offline_Lagrangian_filter, LagrangianFilter
 
 using ..Utils
-using ..Utils: resolve_map_options, filter_output_options, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options, check_frequency_scale_options
+using ..Utils: resolve_map_options, filter_output_options, filtered_output_names, number_of_coefficient_fields, zero_frequency_gain, check_relaxation_options, check_frequency_scale_options
 
 include("run_offline_lagrangian_filter.jl")
+include("filter_term_batches.jl")
 include("lagrangian_filter.jl")
 include("lagrangian_filter_rk3_substep.jl")
 include("lagrangian_filter_ab2_step.jl")
