@@ -23,12 +23,13 @@
 - Spectral filters, with `set_offline_spectrum_filter_params` and `set_online_spectrum_filter_params`. Filters can have sine terms that are odd in time (`sine_parity = :odd`), and their terms can be output separately (`outputs = :separate`). `get_weight_function` and `get_frequency_response` can give the response of a single term. With Julie Meunier.
 - `extra_auxiliary_var_names` reads unfiltered variables into the offline filter, e.g. for the frequency scale.
 - Offline input data can be read from NetCDF files.
+- `run_offline_Lagrangian_filter` can run the filter in batches of its terms (`batch_size`), one after the other, each with a smaller model. A model with many tracers is slow to compile, so this reduces the compile time of filters with many terms. The output is the same as without batches.
 
 ### Changes and fixes
 
 - Offline, the Eulerian filter in post-processing (`compute_Eulerian_filter!`) reads the original data, at its saved times, rather than the fields in the output file, so it no longer depends on `T_out`.
 - The Eulerian filter in post-processing (`compute_Eulerian_filter!`) is computed with running sums, so its cost grows linearly with the number of saved times, and it treats the ends of the data as the Lagrangian filter does. A field that is constant in time is now unchanged by it. It also supports separate outputs, and a frequency scale that depends only on position. The reference test data was regenerated for this and for the new regridding.
-- The Eulerian filter in post-processing is over 100 times faster: the weights of each running sum are computed once rather than at every point, terms with the same decay rate (such as the cosine and sine terms at each frequency of a spectral filter) share a running sum, and the running sums are computed on the filter's architecture, so on a GPU if the filter runs on one.
+- The Eulerian filter in post-processing is sped up: the weights of each running sum are computed once rather than at every point, terms with the same decay rate (such as the cosine and sine terms at each frequency of a spectral filter) share a running sum, and the running sums are computed on the filter's architecture, so on a GPU if the filter runs on one.
 - The offline filter compiles its output writer once, rather than again for the backward pass.
 - The code is reorganised: the utilities are split into files by purpose (filter parameters, variables, forcing, outputs, initialisation, post-processing and regridding), the forcing of each filtered variable is a single `DiscreteForcing`, and input data is read in a new `DataIO` module, which now holds `update_input_data!` (still exported).
 - The integration tests also run on a GPU, if there is one, and CI tests on the LTS and latest Julia.
