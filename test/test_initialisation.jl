@@ -149,6 +149,18 @@ end
     @test_throws ErrorException create_output_fields(model, filter_config; direction = :sideways)
 end
 
+@testset "filtered_output_names with no variables to filter" begin
+    filtered_output_names = OceananigansLagrangianFilter.Utils.filtered_output_names # internal (not exported)
+    grid = RectilinearGrid(CPU(), size = (4, 4), x = (-1, 1), z = (-1, 0),
+                            topology = (Periodic, Flat, Bounded))
+
+    # Only the mean velocities are output
+    filter_config = OnlineFilterConfig(grid = grid, var_names_to_filter = (), velocity_names = ("u", "w"),
+                                       N = 2, freq_c = 1e-4, compute_maps = false, regrid_to_mean = false,
+                                       compute_mean_velocities = true)
+    @test sort(filtered_output_names(filter_config)) == ["u_Lagrangian_filtered", "w_Lagrangian_filtered"]
+end
+
 @testset "create_output_fields: separate outputs and odd sine terms" begin
     filtered_output_names = OceananigansLagrangianFilter.Utils.filtered_output_names # internal (not exported)
 
