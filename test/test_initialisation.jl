@@ -158,7 +158,7 @@ end
     filter_config = OnlineFilterConfig(grid = grid, var_names_to_filter = (), velocity_names = ("u", "w"),
                                        N = 2, freq_c = 1e-4, compute_maps = false, regrid_to_mean = false,
                                        compute_mean_velocities = true)
-    @test sort(filtered_output_names(filter_config)) == ["u_Lagrangian_filtered", "w_Lagrangian_filtered"]
+    @test sort(collect(filtered_output_names(filter_config))) ==["u_Lagrangian_filtered", "w_Lagrangian_filtered"]
 end
 
 @testset "create_output_fields: separate outputs and odd sine terms" begin
