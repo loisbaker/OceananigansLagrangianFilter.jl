@@ -118,7 +118,9 @@ function filtered_output_quantities(config::AbstractConfig)
 
     row(quantity, combined_name, separate_stem, tracer_stem) = (; quantity, combined_name, separate_stem, tracer_stem)
 
-    quantities = [row(:tracer, var * label * filter_identifier, var * label, var * label) for var in config.var_names_to_filter]
+    # The element type is given so that the vector can be appended to when there are no variables to filter
+    Row = typeof(row(:tracer, "", "", ""))
+    quantities = Row[row(:tracer, var * label * filter_identifier, var * label, var * label) for var in config.var_names_to_filter]
     if config.compute_maps
         append!(quantities, [row(:tracer, "xi_" * vel * label, "xi_" * vel * label, "xi_" * vel * label) for vel in config.velocity_names])
     end
