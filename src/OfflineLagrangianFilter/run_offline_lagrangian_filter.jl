@@ -25,8 +25,7 @@ Outputs of separate terms (`outputs = :separate`) are numbered as in the whole f
 sums of those of the batches. The output is then the same as without batches (combined outputs to the Float32
 precision they are saved with), and the post-processing in step 4 is done once on the merged output. Batches of the
 same size have the same model types, so only the first is compiled (and the last, if it is smaller). Batches help when
-a filter has many terms, as the compilation time grows faster than the number of terms, and a smaller model needs less
-memory.
+a filter has many terms, as a smaller model needs less memory and, on a GPU, can be quicker to time step per term.
 
 Arguments
 =========
