@@ -1,7 +1,7 @@
 import Oceananigans.Models: compute_buffer_tendencies!
 
 using Oceananigans.TurbulenceClosures: required_halo_size_x, required_halo_size_y
-using Oceananigans.Grids: CommunicatingSide, Sides
+using Oceananigans.Grids: CommunicatingSide, TwoSided
 using Oceananigans.Utils: worksize
 
 # We assume here that top/bottom BC are always synched (no partitioning in z)
@@ -72,10 +72,10 @@ end
 function buffer_parameters(parameters, grid, arch)
     TX, TY, _ = topology(grid)
 
-    include_west  = TX <: Sides{<:CommunicatingSide}
-    include_east  = TX <: Sides{<:Any, <:CommunicatingSide}
-    include_south = TY <: Sides{<:CommunicatingSide}
-    include_north = TY <: Sides{<:Any, <:CommunicatingSide}
+    include_west  = TX <: TwoSided{<:CommunicatingSide}
+    include_east  = TX <: TwoSided{<:Any, <:CommunicatingSide}
+    include_south = TY <: TwoSided{<:CommunicatingSide}
+    include_north = TY <: TwoSided{<:Any, <:CommunicatingSide}
 
     west  = include_west  ? (KernelParameters(parameters[1]...),) : ()
     east  = include_east  ? (KernelParameters(parameters[2]...),) : ()
