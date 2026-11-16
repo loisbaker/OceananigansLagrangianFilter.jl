@@ -1,5 +1,15 @@
 # OceananigansLagrangianFilter.jl release notes
 
+## v0.3.0
+
+### Breaking changes
+
+- Oceananigans 0.118 is now required. Data saved by Oceananigans 0.95–0.117 can still be filtered by passing the grid of the original simulation to the config.
+
+### Changes and fixes
+
+- Oceananigans 0.117.1 made initialising a `JLD2Writer` much faster for many computed outputs, as in the filters here, so filters with many terms compile much faster.
+
 ## v0.2.0
 
 ### Breaking changes
